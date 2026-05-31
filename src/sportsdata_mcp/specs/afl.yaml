@@ -1,0 +1,618 @@
+spec_version: 1
+
+provider:
+  id: afl
+  display_name: "AFL (Australian Football League)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/AFL.md"
+  base_urls:
+    public: https://aflapi.afl.com.au
+    premium: https://api.afl.com.au
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Origin: https://www.afl.com.au
+    Referer: https://www.afl.com.au/
+  auth:
+    public:
+      type: none
+    premium:
+      type: afl_wmctok
+      mint_url: https://api.afl.com.au/cfs/afl/WMCTok
+      mint_headers:
+        Origin: https://www.afl.com.au
+        Referer: https://www.afl.com.au/
+      header: x-media-mis-token
+
+reference_resources:
+  - uri: "afl://teams/idmap"
+    summary: "Map CD_T* team providerIds ↔ integer aflapi team ids."
+    base: public
+    path: /afl/v2/teams/idmap
+    auth: public
+
+endpoints:
+  # ─── afl.public.core (22) ──────────────────────────────────────────
+  - name: afl_competitions_list
+    group: afl.public.core
+    capabilities: [sport.competitions_list]
+    summary: "List all AFL competitions (AFL, AFLW, VFL, SANFL, …)."
+    base: public
+    path: /afl/v2/competitions
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0, description: "Page index (0-based)" }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Items per page (≤50)" }
+    response_hint: "{meta:{pagination}, competitions:[{id, providerId, code, name}]}"
+    examples:
+      - description: "All 16 competitions"
+        params: {pageSize: 50}
+
+  - name: afl_competition_get
+    group: afl.public.core
+    capabilities: [sport.competitions_list]
+    summary: "Get a single competition by integer id."
+    base: public
+    path: /afl/v2/competitions/{competitionId}
+    auth: public
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Competition id (e.g. 1 = AFL)" }
+    response_hint: "{meta, competitions:[{id, providerId, code, name}]}"
+
+  - name: afl_compseasons_list
+    group: afl.public.core
+    capabilities: [ref.seasons]
+    summary: "List comp seasons across all competitions (2012–present)."
+    base: public
+    path: /afl/v2/compseasons
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 150 }
+    response_hint: "{meta:{pagination}, compSeasons:[{id, providerId, name, competition, season}]}"
+
+  - name: afl_competition_compseasons
+    group: afl.public.core
+    capabilities: [ref.seasons]
+    summary: "List comp seasons within one competition."
+    base: public
+    path: /afl/v2/competitions/{competitionId}/compseasons
+    auth: public
+    params:
+      - { name: competitionId, in: path, type: integer }
+      - { name: pageSize, in: query, type: integer, default: 20 }
+    response_hint: "{meta, compSeasons:[...]}"
+
+  - name: afl_compseason_get
+    group: afl.public.core
+    capabilities: [ref.seasons]
+    summary: "Get a single comp season (embeds its full rounds array + currentRoundNumber)."
+    base: public
+    path: /afl/v2/compseasons/{compSeasonId}
+    auth: public
+    params:
+      - { name: compSeasonId, in: path, type: integer, description: "Comp season id (e.g. 85 = 2026 AFL)" }
+    response_hint: "{meta, compSeasons:[{id, providerId, name, shortName, season, rounds:[...], currentRoundNumber}]}"
+
+  - name: afl_rounds_list
+    group: afl.public.core
+    summary: "List rounds for a comp season (incl. byes, start/end times)."
+    base: public
+    path: /afl/v2/compseasons/{compSeasonId}/rounds
+    auth: public
+    params:
+      - { name: compSeasonId, in: path, type: integer }
+      - { name: roundNumber, in: query, type: integer, description: "Filter to a single round" }
+      - { name: pageSize, in: query, type: integer, default: 50 }
+    response_hint: "{rounds:[{id, providerId, roundNumber, abbreviation, byes, utcStartTime, utcEndTime}]}"
+
+  - name: afl_ladders_get
+    group: afl.public.core
+    capabilities: [stats.ladder]
+    summary: "Competition ladder up to a comp season's current round."
+    base: public
+    path: /afl/v2/compseasons/{compSeasonId}/ladders
+    auth: public
+    params:
+      - { name: compSeasonId, in: path, type: integer }
+    response_hint: "{compSeason, round, ladders:[{entries:[{position, team, played, thisSeasonRecord}]}]}"
+    examples:
+      - description: "2026 AFL ladder"
+        params: {compSeasonId: 85}
+
+  - name: afl_seasons_list
+    group: afl.public.core
+    capabilities: [ref.seasons]
+    summary: "List calendar-year season records."
+    base: public
+    path: /afl/v2/seasons
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 20 }
+    response_hint: "{meta, seasons:[{id, year}]}"
+
+  - name: afl_season_get
+    group: afl.public.core
+    capabilities: [ref.seasons]
+    summary: "Get a single calendar-year season by id."
+    base: public
+    path: /afl/v2/seasons/{seasonId}
+    auth: public
+    params:
+      - { name: seasonId, in: path, type: integer }
+    response_hint: "{meta, seasons:[{id, year}]}"
+
+  - name: afl_clubs_list
+    group: afl.public.core
+    summary: "List AFL/AFLW clubs (32)."
+    base: public
+    path: /afl/v2/clubs
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 50 }
+    response_hint: "{clubs:[{id, providerId, name, abbreviation, nickname}]}"
+
+  - name: afl_club_get
+    group: afl.public.core
+    summary: "Get a single club by id."
+    base: public
+    path: /afl/v2/clubs/{clubId}
+    auth: public
+    params:
+      - { name: clubId, in: path, type: integer }
+    response_hint: "{clubs:[{id, providerId, name}]}"
+
+  - name: afl_teams_list
+    group: afl.public.core
+    capabilities: [ref.teams]
+    summary: "List teams (150 incl. AFL men, AFLW, state leagues, historical)."
+    base: public
+    path: /afl/v2/teams
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 50 }
+    response_hint: "{teams:[{id, providerId, name, abbreviation, nickname, club, teamType, metadata}]}"
+
+  - name: afl_team_get
+    group: afl.public.core
+    capabilities: [ref.teams]
+    summary: "Get a single team by id (incl. social/home-venue metadata)."
+    base: public
+    path: /afl/v2/teams/{teamId}
+    auth: public
+    params:
+      - { name: teamId, in: path, type: integer, description: "Team id (e.g. 1 = Adelaide Crows)" }
+    response_hint: "{teams:[{id, providerId, name, club, teamType, metadata}]}"
+
+  - name: afl_teams_idmap
+    group: afl.public.core
+    capabilities: [ref.teams]
+    summary: "Map CD_T* team providerIds to integer aflapi ids (and vice versa)."
+    base: public
+    path: /afl/v2/teams/idmap
+    auth: public
+    response_hint: "{entityType:'team', idMapResponse:{ids:{'CD_T10':1, ...}}}"
+
+  - name: afl_venues_list
+    group: afl.public.core
+    capabilities: [ref.venues]
+    summary: "List venues (191) incl. location, state, timezone, landOwner."
+    base: public
+    path: /afl/v2/venues
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 50 }
+    response_hint: "{venues:[{id, providerId, name, location, state, timezone, landOwner}]}"
+
+  - name: afl_venue_get
+    group: afl.public.core
+    capabilities: [ref.venues]
+    summary: "Get a single venue by id."
+    base: public
+    path: /afl/v2/venues/{venueId}
+    auth: public
+    params:
+      - { name: venueId, in: path, type: integer }
+    response_hint: "{venues:[{id, providerId, name, location, state, timezone}]}"
+
+  - name: afl_players_list
+    group: afl.public.core
+    capabilities: [ref.players]
+    summary: "List players (17k+ all-time catalogue)."
+    base: public
+    path: /afl/v2/players
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 50 }
+    response_hint: "{players:[{id, providerId, firstName, surname, dateOfBirth, draftYear, heightInCm}]}"
+
+  - name: afl_player_get
+    group: afl.public.core
+    capabilities: [ref.players, stats.player_profile]
+    summary: "Get a single player by id (bio, draft, height/weight)."
+    base: public
+    path: /afl/v2/players/{playerId}
+    auth: public
+    params:
+      - { name: playerId, in: path, type: integer }
+    response_hint: "{players:[{id, providerId, firstName, surname, draftYear, debutYear, recruitedFrom}]}"
+
+  - name: afl_matches_list
+    group: afl.public.core
+    capabilities: [sport.fixtures_by_date, sport.match_detail]
+    summary: "List matches with filters (competition, season, round, team, status, date)."
+    base: public
+    path: /afl/v2/matches
+    auth: public
+    params:
+      - { name: competitionId, in: query, type: string_csv, description: "Competition id(s), comma-list ok" }
+      - { name: compSeasonId, in: query, type: integer, description: "Comp season id" }
+      - { name: roundNumber, in: query, type: integer }
+      - { name: teamId, in: query, type: string_csv, description: "Team id(s), e.g. 11,9" }
+      - { name: status, in: query, type: string_csv, description: "Status CSV: U,L,C,P,B,S" }
+      - { name: startDate, in: query, type: string, description: "Lower bound YYYY-MM-DD" }
+      - { name: endDate, in: query, type: string, description: "Upper bound YYYY-MM-DD" }
+      - { name: sort, in: query, type: string, enum: [asc, desc] }
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Up to 300" }
+    response_hint: "{meta:{pagination}, matches:[{id, providerId, round, home, away, venue, utcStartTime, status}]}"
+    examples:
+      - description: "Live + upcoming AFL matches from a date"
+        params: {status: "L,U", startDate: "2026-05-25", competitionId: "1"}
+
+  - name: afl_match_get
+    group: afl.public.core
+    capabilities: [sport.match_detail, sport.match_score]
+    summary: "Get a single match by integer id (teams, venue, time, score when started)."
+    base: public
+    path: /afl/v2/matches/{matchId}
+    auth: public
+    params:
+      - { name: matchId, in: path, type: integer, description: "Match id (NOT providerId)" }
+    response_hint: "{meta, matches:[{id, providerId, home, away, venue, utcStartTime, status, score?}]}"
+
+  - name: afl_matches_idmap
+    group: afl.public.core
+    summary: "Map every match providerId (CD_M*) to its integer id (~48 KB)."
+    base: public
+    path: /afl/v2/matches/idmap
+    auth: public
+    response_hint: "{entityType:'match', idMapResponse:{ids:{'CD_M20260141201':8139, ...}}}"
+
+  - name: afl_players_idmap
+    group: afl.public.core
+    summary: "Map every player providerId (CD_I*) to its integer id (~98 KB, 17k+)."
+    base: public
+    path: /afl/v2/players/idmap
+    auth: public
+    response_hint: "{entityType:'player', idMapResponse:{ids:{...}}}"
+
+  # ─── afl.public.broadcasting (9) ───────────────────────────────────
+  - name: afl_broadcast_regions
+    group: afl.public.broadcasting
+    summary: "List broadcast regions (26) with timezones."
+    base: public
+    path: /broadcasting/regions
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 100 }
+    response_hint: "{pageInfo, content:[{id, name, timezone}]}"
+
+  - name: afl_broadcast_region_get
+    group: afl.public.broadcasting
+    summary: "Get a single broadcast region by id."
+    base: public
+    path: /broadcasting/regions/{regionId}
+    auth: public
+    params:
+      - { name: regionId, in: path, type: integer }
+    response_hint: "{id, name, timezone}"
+
+  - name: afl_broadcasters_list
+    group: afl.public.broadcasting
+    capabilities: [broadcast.channels]
+    summary: "List broadcasters (49: Foxtel, Channel 7, BBC, ESPN, …)."
+    base: public
+    path: /broadcasting/broadcasters
+    auth: public
+    params:
+      - { name: pageSize, in: query, type: integer, default: 100 }
+    response_hint: "{pageInfo, content:[{id, name, abbreviation, logo, restrictedCountries}]}"
+
+  - name: afl_broadcast_channels
+    group: afl.public.broadcasting
+    capabilities: [broadcast.channels]
+    summary: "List broadcast channels (272) with media types (VIDEO/AUDIO/TEXT)."
+    base: public
+    path: /broadcasting/channels
+    auth: public
+    params:
+      - { name: page, in: query, type: integer, default: 0 }
+      - { name: pageSize, in: query, type: integer, default: 100 }
+    response_hint: "{pageInfo, content:[{id, name, abbreviation, broadcaster, channelTypes:[{name, mediaType}]}]}"
+
+  - name: afl_broadcast_events
+    group: afl.public.broadcasting
+    capabilities: [broadcast.schedule]
+    summary: "Broadcast schedule — one entry per match per channel."
+    base: public
+    path: /broadcasting/events
+    auth: public
+    params:
+      - { name: fromDate, in: query, type: string, description: "ISO 8601 lower bound, e.g. 2026-05-25T07:00:00Z" }
+      - { name: toDate, in: query, type: string, description: "ISO 8601 upper bound" }
+      - { name: compseason, in: query, type: integer }
+      - { name: round, in: query, type: integer }
+      - { name: pageSize, in: query, type: integer, default: 100 }
+    response_hint: "{pageInfo, content:[{id, name, startDateTime, channels:[...], contentReference:{id, type}}]}"
+
+  - name: afl_broadcast_event_get
+    group: afl.public.broadcasting
+    capabilities: [broadcast.schedule]
+    summary: "Get a single broadcast event by id."
+    base: public
+    path: /broadcasting/events/{eventId}
+    auth: public
+    params:
+      - { name: eventId, in: path, type: integer }
+    response_hint: "{id, name, startDateTime, channels:[...], contentReference}"
+
+  - name: afl_broadcast_match_events
+    group: afl.public.broadcasting
+    capabilities: [broadcast.schedule]
+    summary: "Broadcast events scoped to one (compseason, round)."
+    base: public
+    path: /broadcasting/match-events
+    auth: public
+    params:
+      - { name: compseason, in: query, type: integer, required: true }
+      - { name: round, in: query, type: integer, required: true }
+      - { name: pageSize, in: query, type: integer, default: 50 }
+    response_hint: "{pageInfo, content:[{id, name, startDateTime, channels}]}"
+
+  - name: afl_live_video
+    group: afl.public.broadcasting
+    capabilities: [sport.live_video]
+    summary: "Live AFL video streams (empty when no game is live)."
+    base: public
+    path: /broadcasting/afl/live/video
+    auth: public
+    params:
+      - { name: pageSize, in: query, type: integer, default: 25 }
+      - { name: compseason, in: query, type: integer }
+      - { name: round, in: query, type: integer }
+    response_hint: "{pageInfo, content:[{id, name, channels:[{streamUrl, type:'LIVE'}]}]}"
+
+  - name: afl_live_audio
+    group: afl.public.broadcasting
+    capabilities: [sport.live_audio]
+    summary: "Live AFL audio streams (empty when no game is live)."
+    base: public
+    path: /broadcasting/afl/live/audio
+    auth: public
+    params:
+      - { name: pageSize, in: query, type: integer, default: 25 }
+      - { name: compseason, in: query, type: integer }
+      - { name: round, in: query, type: integer }
+    response_hint: "{pageInfo, content:[{id, name, channels:[...]}]}"
+
+  # ─── afl.public.content (8) ────────────────────────────────────────
+  - name: afl_content_text_list
+    group: afl.public.content
+    capabilities: [content.news]
+    summary: "List text articles (news) with reference/tag filters."
+    base: public
+    path: /content/afl/text/EN
+    auth: public
+    params:
+      - { name: referenceExpression, in: query, type: string, description: "Boolean ref expr, e.g. (AFL_COMPETITION:1) or (AFL_COMPETITION:3)" }
+      - { name: tagExpression, in: query, type: string, description: 'Tag expr, e.g. ("News")' }
+      - { name: tagNames, in: query, type: string_csv, description: "Tag labels CSV" }
+      - { name: references, in: query, type: string_csv, description: "TYPE:id shorthand CSV, e.g. AFL_MATCH:8130" }
+      - { name: offset, in: query, type: integer, default: 0 }
+      - { name: limit, in: query, type: integer, default: 10 }
+      - { name: page, in: query, type: integer }
+      - { name: pageSize, in: query, type: integer }
+      - { name: sort, in: query, type: string }
+    response_hint: "{pageInfo, content:[{id, type:'text', title, date, tags, references, body, author}]}"
+    examples:
+      - description: "AFL+AFLW news index"
+        params: {referenceExpression: "(AFL_COMPETITION:1) or (AFL_COMPETITION:3)", tagExpression: '("News")', limit: 17}
+
+  - name: afl_content_text_get
+    group: afl.public.content
+    capabilities: [content.news]
+    summary: "Get a single text article by id."
+    base: public
+    path: /content/afl/text/EN/{id}
+    auth: public
+    params:
+      - { name: id, in: path, type: integer }
+    response_hint: "{id, type:'text', title, body, author, references, tags}"
+
+  - name: afl_content_video_list
+    group: afl.public.content
+    capabilities: [content.video]
+    summary: "List video content (highlights, replays, press conferences)."
+    base: public
+    path: /content/afl/video/EN
+    auth: public
+    params:
+      - { name: referenceExpression, in: query, type: string }
+      - { name: tagExpression, in: query, type: string }
+      - { name: tagNames, in: query, type: string_csv, description: 'e.g. ProgramCategory:Match Replays' }
+      - { name: references, in: query, type: string_csv, description: "e.g. AFL_MATCH:8130" }
+      - { name: offset, in: query, type: integer, default: 0 }
+      - { name: limit, in: query, type: integer, default: 10 }
+    response_hint: "{pageInfo, content:[{id, type:'video', title, duration, onDemandUrl, additionalInfo}]}"
+
+  - name: afl_content_video_get
+    group: afl.public.content
+    capabilities: [content.video]
+    summary: "Get a single video content item by id."
+    base: public
+    path: /content/afl/video/EN/{id}
+    auth: public
+    params:
+      - { name: id, in: path, type: integer }
+    response_hint: "{id, type:'video', title, duration, onDemandUrl}"
+
+  - name: afl_content_photo_list
+    group: afl.public.content
+    summary: "List photo content."
+    base: public
+    path: /content/afl/photo/EN
+    auth: public
+    params:
+      - { name: referenceExpression, in: query, type: string }
+      - { name: tagExpression, in: query, type: string }
+      - { name: tagNames, in: query, type: string_csv }
+      - { name: offset, in: query, type: integer, default: 0 }
+      - { name: limit, in: query, type: integer, default: 10 }
+    response_hint: "{pageInfo, content:[{id, type:'photo', title, leadMedia}]}"
+
+  - name: afl_content_photo_get
+    group: afl.public.content
+    summary: "Get a single photo content item by id."
+    base: public
+    path: /content/afl/photo/EN/{id}
+    auth: public
+    params:
+      - { name: id, in: path, type: integer }
+    response_hint: "{id, type:'photo', title}"
+
+  - name: afl_content_promo_list
+    group: afl.public.content
+    capabilities: [content.promo]
+    summary: "List promo / marketing cards (each embeds a links[] of CTAs)."
+    base: public
+    path: /content/afl/promo/EN
+    auth: public
+    params:
+      - { name: referenceExpression, in: query, type: string }
+      - { name: tagNames, in: query, type: string_csv, description: "e.g. lineups-sponsor" }
+      - { name: limit, in: query, type: integer, default: 10 }
+    response_hint: "{pageInfo, content:[{id, type:'promo', title, links:[{promoUrl, linkText}]}]}"
+
+  - name: afl_content_promo_get
+    group: afl.public.content
+    capabilities: [content.promo]
+    summary: "Get a single promo content item by id."
+    base: public
+    path: /content/afl/promo/EN/{id}
+    auth: public
+    params:
+      - { name: id, in: path, type: integer }
+      - { name: limit, in: query, type: integer, default: 1 }
+    response_hint: "{id, type:'promo', title, links:[...]}"
+
+  # ─── afl.premium.keyserver (1) — HLS video URL signing ─────────────────
+  # Requires the anonymous x-media-mis-token (auth: premium, minted from WMCTok).
+  - name: afl_keyserver_url_signing
+    group: afl.premium.keyserver
+    capabilities: [sport.live_video]
+    summary: "Sign an AFL HLS video URL for playback (returns a token-signed CDN URL)."
+    base: premium
+    path: /keyserver/urlSigning
+    auth: premium
+    params:
+      - { name: url, in: query, type: string, required: true, description: "The unsigned HLS .m3u8 URL to sign." }
+    response_hint: "{signedUrl} (anonymous tokens may return {code: KEYSERVER001, status: 401})"
+
+dispatchers:
+  # ─── afl.premium.cfs (26 ops) ──────────────────────────────────────────
+  # Every op requires an x-media-mis-token (auth: premium, minted from WMCTok).
+  # Path params take provider IDs (CD_*), NOT the integer ids the public API uses.
+  - name: afl_cfs_call
+    group: afl.premium.cfs
+    capabilities:
+      [
+        sport.match_detail,
+        stats.player_match,
+        stats.team_match,
+        stats.player_profile,
+        stats.player_career,
+        stats.ladder,
+        sport.commentary,
+        ref.players,
+        ref.seasons,
+        ref.venues,
+      ]
+    kind: templated_rest
+    summary: |
+      Call any of the AFL CFS premium operations (api.afl.com.au/cfs/afl/...).
+      Requires the anonymous x-media-mis-token (minted automatically). Path params
+      use provider IDs (CD_M*/CD_R*/CD_S*/CD_I*/CD_T*) — map integer ids via the
+      idmap endpoints/resources. Read afl://cfs/operations for the full op list.
+    base: premium
+    auth: premium
+    method: GET
+    catalog_resource: "afl://cfs/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "CFS operation name (see catalogue)" }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Map of path-parameter values, e.g. {matchProviderId: 'CD_M20260141201'}" }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Map of query-string values" }
+    operations:
+      # Match
+      - { name: matchItem, path: "/cfs/afl/matchItem/{matchProviderId}", path_params: [matchProviderId], summary: "Match detail (scoreboard, qtr scores, lineups, key stats)." }
+      - { name: matchInterchange, path: "/cfs/afl/matchInterchange/{matchProviderId}", path_params: [matchProviderId], summary: "Real-time bench rotation / interchange data." }
+      - { name: matchRosters_round, path: "/cfs/afl/matchRosters/round/{roundProviderId}", path_params: [roundProviderId], query_params: [minimal], summary: "Confirmed rosters for every match in a round (minimal=true strips metadata)." }
+      - { name: matchRoster_full, path: "/cfs/afl/matchRoster/full/{matchProviderId}", path_params: [matchProviderId], summary: "Full roster for one match (positions, jumper numbers, metadata)." }
+      # Stats
+      - { name: playerStats_match, path: "/cfs/afl/playerStats/match/{matchProviderId}", path_params: [matchProviderId], summary: "Per-player stats for one match (all categories)." }
+      - { name: teamStats_match, path: "/cfs/afl/teamStats/match/{matchProviderId}", path_params: [matchProviderId], summary: "Per-team aggregate stats for one match." }
+      - { name: coach_match_teamStats, path: "/cfs/afl/coach/match/{matchProviderId}/teamStats", path_params: [matchProviderId], summary: "AFL Coach coach-view aggregate stats for a match." }
+      - { name: statsCentre_players, path: "/cfs/afl/statsCentre/players", query_params: [competitionId, teamIds], summary: "Stats Centre player rollups. competitionId is a comp-season CD_S*." }
+      - { name: statsCentre_teams, path: "/cfs/afl/statsCentre/teams", query_params: [competitionId], summary: "Stats Centre team rollups." }
+      - { name: statsCentre_player_best_season, path: "/cfs/afl/statsCentre/player/best/season", query_params: [playerId, competitionId], summary: "A player's best stats for a single season." }
+      - { name: statsCentre_player_best_career, path: "/cfs/afl/statsCentre/player/best/career", query_params: [playerId, competitionType], summary: "A player's career-best stats. competitionType=AFLW for the AFLW dataset." }
+      - { name: seasonStats, path: "/cfs/afl/seasonStats", query_params: [competitionId, teamId], summary: "Aggregate season-stat tables." }
+      # Catalogue
+      - { name: players, path: "/cfs/afl/players", query_params: [pageSize, pageNum, sortBy, seasonId, teamIds, playerPosition], summary: "CFS player catalogue with rich filters (pageNum is 1-based)." }
+      - { name: playerProfile, path: "/cfs/afl/playerProfile/{playerProviderId}", path_params: [playerProviderId], summary: "Player biographical / career profile." }
+      - { name: competitions, path: "/cfs/afl/competitions", summary: "CFS-side competition catalogue (providerId values)." }
+      - { name: seasons, path: "/cfs/afl/seasons", summary: "CFS-side season catalogue." }
+      - { name: venues, path: "/cfs/afl/venues", summary: "CFS-side venue catalogue." }
+      # Awards / wagering / live / draft / auth
+      - { name: bfawards_season, path: "/cfs/afl/bfawards/season/{seasonProviderId}", path_params: [seasonProviderId], summary: "Best & Fairest awards for a season." }
+      - { name: wagering, path: "/cfs/afl/wagering", query_params: [application], summary: "Sportsbook integration odds feed (web passes application=Web)." }
+      - { name: wagering_playerMarket_brownlow, path: "/cfs/afl/wagering/playerMarket/brownlow", summary: "Brownlow Medal player markets (odds, projections)." }
+      - { name: liveLadder_round, path: "/cfs/afl/liveLadder/round/{roundProviderId}", path_params: [roundProviderId], summary: "Projected ladder as currently playing (recalculates in-play)." }
+      - { name: draft_year, path: "/cfs/afl/draft/year/{year}", path_params: [year], summary: "Draft year overview (selections, board, picks)." }
+      - { name: draft_year_prospectProfile, path: "/cfs/afl/draft/year/{year}/prospectProfile/{playerProviderId}", path_params: [year, playerProviderId], summary: "Detailed prospect profile within a draft year." }
+      - { name: draft_prospect, path: "/cfs/afl/draft/prospect/{year}", path_params: [year], query_params: [playerId], summary: "Lookup a prospect by player id and year." }
+      - { name: mediaAuth, path: "/cfs/afl/mediaAuth", summary: "Media-auth descriptor (used internally for video URL signing)." }
+      - { name: commentaryFeed, path: "/cfs/commentaryFeed/{matchProviderId}", path_params: [matchProviderId], summary: "Live text commentary feed (one line per game event)." }
+
+  # ─── afl.premium.statspro (9 ops) ──────────────────────────────────────
+  - name: afl_statspro_call
+    group: afl.premium.statspro
+    capabilities:
+      [stats.leaders_season, stats.player_season, stats.team_season, stats.player_career, stats.advanced_metrics]
+    kind: templated_rest
+    summary: |
+      Call any of the AFL StatsPro operations (api.afl.com.au/statspro/...).
+      Requires the anonymous x-media-mis-token (minted automatically). Path params
+      use provider IDs (CD_S*/CD_R*/CD_I*). Read afl://statspro/operations for the list.
+    base: premium
+    auth: premium
+    method: GET
+    catalog_resource: "afl://statspro/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "StatsPro operation name (see catalogue)" }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Map of path-parameter values, e.g. {seasonProviderId: 'CD_S2026014'}" }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Map of query-string values" }
+    operations:
+      - { name: leadingPlayerStats_season, path: "/statspro/leadingPlayerStats/season/{seasonProviderId}", path_params: [seasonProviderId], query_params: [limit], summary: "Season-leader leaderboards (one entry per stat)." }
+      - { name: leadingPlayerMatchTotals_round, path: "/statspro/leadingPlayerMatchTotals/round/{roundProviderId}", path_params: [roundProviderId], summary: "Round leaders (per-stat best in the round)." }
+      - { name: leadingPlayerMatchTotals_season, path: "/statspro/leadingPlayerMatchTotals/season/{seasonProviderId}", path_params: [seasonProviderId], summary: "Best single-game performances of the season." }
+      - { name: leadingTeamStats_season, path: "/statspro/leadingTeamStats/season/{seasonProviderId}", path_params: [seasonProviderId], summary: "Season-leader team rankings (per stat)." }
+      - { name: playersStats_seasons, path: "/statspro/playersStats/seasons/{seasonProviderId}", path_params: [seasonProviderId], query_params: [includeBenchmarks, playerNameLike, playerPosition, teamId], summary: "Bulk player-season stats with filters." }
+      - { name: playersStats_rounds, path: "/statspro/playersStats/rounds/{roundProviderId}", path_params: [roundProviderId], query_params: [teamId], summary: "Per-round player stats with team filter (one or two CD_T* ids)." }
+      - { name: teamStats_seasons, path: "/statspro/teamStats/seasons/{seasonProviderId}", path_params: [seasonProviderId], summary: "Bulk per-season team stats." }
+      - { name: playerCareerSeasonStats, path: "/statspro/playerCareerSeasonStats/{playerProviderId}", path_params: [playerProviderId], query_params: [competitionType], summary: "Per-season totals across a player's career (competitionType=AFLW for AFLW)." }
+      - { name: playerCareerSeasonStats_benchmarked, path: "/statspro/playerCareerSeasonStats/{playerProviderId}/benchmarked", path_params: [playerProviderId], summary: "Career season stats augmented with AFL-average benchmark columns." }

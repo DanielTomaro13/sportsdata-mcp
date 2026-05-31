@@ -1,0 +1,61 @@
+[project]
+name = "sportsdata-mcp"
+version = "0.1.0"
+description = "MCP server for sports-data APIs (bookmakers, league data, aggregators). Capability-tag system enables cross-provider composition."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Daniel Tomaro"}]
+keywords = ["mcp", "sports", "betting", "afl", "sportsbet", "ladbrokes", "entain"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+  "fastmcp>=0.4",
+  "httpx[http2]>=0.27",
+  "pydantic>=2.5",
+  "pyyaml>=6.0",
+  "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "respx>=0.21",
+  "ruff>=0.4",
+]
+
+[project.scripts]
+sportsdata-mcp = "sportsdata_mcp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sportsdata_mcp"]
+
+# Specs live inside the package and MUST ship in the wheel — the server loads them
+# via importlib.resources, never from a cwd-relative ./specs/.
+[tool.hatch.build]
+include = [
+  "src/sportsdata_mcp/**/*.py",
+  "src/sportsdata_mcp/specs/*.yaml",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+  "live: integration tests that hit real third-party endpoints",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"

@@ -1,0 +1,12 @@
+{
+  "_comment": "Register sportsdata-mcp with Claude Code. Easiest: `claude mcp add sportsdata -- uvx sportsdata-mcp` (add `-e SPORTSDATA_MCP_GROUPS=...` to pick groups). Or merge the block below into .mcp.json at your project root (project-scoped) — it runs the server via uvx with no install and enables a cross-bookie set. Run `sportsdata-mcp list-groups` for all groups; point SPORTSDATA_MCP_CONFIG at a YAML file for per-provider rate limits, secrets, and premium auth (see examples/sportsdata-mcp.yaml).",
+  "mcpServers": {
+    "sportsdata": {
+      "command": "uvx",
+      "args": ["sportsdata-mcp"],
+      "env": {
+        "SPORTSDATA_MCP_GROUPS": "afl.public.core,sportsbet.racing,sportsbet.sports,entain.graphql"
+      }
+    }
+  }
+}

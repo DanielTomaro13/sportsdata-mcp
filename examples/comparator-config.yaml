@@ -1,0 +1,38 @@
+# Cross-bookie odds comparator config.
+#
+# Enables Sportsbet + Entain (Ladbrokes) so a model can answer "compare the odds
+# for X across my bookies". Because both providers tag the same capabilities
+# (sport.event_markets, sport.prices, racing.race_card, sport.same_game_multi, …),
+# `list_tools_by_capability("sport.event_markets")` returns one tool per bookie —
+# that's the discovery hook the comparator prompt relies on.
+#
+# Resolution order: --config flag > $SPORTSDATA_MCP_CONFIG > ./sportsdata-mcp.yaml
+#   > ~/.config/sportsdata-mcp/config.yaml > built-in defaults.
+# Run with: sportsdata-mcp --config examples/comparator-config.yaml serve
+
+enabled_groups:
+  # ── Sportsbet ──
+  - sportsbet.racing
+  - sportsbet.sports
+  - sportsbet.results
+  - sportsbet.cross
+  - sportsbet.graphql
+  # ── Entain (Ladbrokes) ──
+  - entain.rest
+  - entain.cdn
+  - entain.graphql
+
+# Both providers are anonymous (no secrets needed). Entain's GraphQL hashes drift
+# on every front-end deploy — if a call returns PERSISTED_QUERY_NOT_FOUND, run
+# `sportsdata-mcp refresh-hashes entain`.
+providers:
+  sportsbet:
+    request_timeout_seconds: 30
+    rate_limit_rps: 10
+    max_response_bytes: 512000
+  entain:
+    request_timeout_seconds: 30
+    rate_limit_rps: 10
+    max_response_bytes: 512000
+
+secrets: {}

@@ -1,0 +1,125 @@
+# Canonical capability catalogue.
+#
+# A capability is a provider-agnostic slug naming *the question an endpoint answers*.
+# The same tag on two providers' tools tells the model they are interchangeable for
+# that question — this is the unit of cross-provider comparison.
+#
+# Rules enforced by `sportsdata-mcp lint`:
+#   1. Every `capabilities:` entry on any endpoint must exist here.
+#   2. No two capabilities may share a description (typo guard).
+#   3. (warning) A capability exposed by only one provider should be marked
+#      `single_provider: true`, or another provider should be added.
+#
+# IDs are `{domain}.{slug}`, lowercase, dot-separated.
+
+capabilities:
+  # ─── Racing ──────────────────────────────────────────────────────────
+  - id: racing.meetings_by_date
+    description: "List all race meetings (track + races) for a given date."
+  - id: racing.race_card
+    description: "Full racecard for one race: runners, prices, jockeys, scratchings."
+  - id: racing.race_results
+    description: "Final placings + dividends for a resulted race."
+  - id: racing.next_to_jump
+    description: "Next races about to start, sorted by start time."
+  - id: racing.futures
+    description: "Long-running futures markets (Cup outrights, season-long props)."
+  - id: racing.same_race_multi
+    description: "Same Race Multi (SRM) suggestions or popular combinations."
+
+  # ─── Sport (cross-code) ──────────────────────────────────────────────
+  - id: sport.competitions_list
+    description: "List sport competitions / leagues / tours."
+  - id: sport.competition_screen
+    description: "Competition page: leagues, events, optional futures."
+  - id: sport.match_detail
+    description: "Single sport event/match including teams, venue, start time."
+  - id: sport.match_score
+    description: "Current scoreboard / period state for a match."
+  - id: sport.event_markets
+    description: "All markets + selections + prices for one event."
+  - id: sport.prices
+    description: "Live or last prices for selections."
+  - id: sport.same_game_multi
+    description: "Same Game Multi (SGM) suggestions or popular combinations."
+  - id: sport.in_play
+    description: "Events currently in-play / live."
+  - id: sport.live_video
+    description: "Live video stream URLs."
+  - id: sport.live_audio
+    description: "Live audio stream URLs."
+  - id: sport.commentary
+    description: "Text or play-by-play commentary for a match."
+
+  # ─── Stats — basic ───────────────────────────────────────────────────
+  - id: stats.player_match
+    description: "Per-player stats for a single match / game / fixture."
+  - id: stats.player_season
+    description: "Per-player stats over a season."
+  - id: stats.player_game_log
+    description: "Game-by-game stat line for one player across a date range or season."
+  - id: stats.player_career
+    description: "Per-season totals across a player's career."
+  - id: stats.player_profile
+    description: "Biographical + career-summary view of one player (height, weight, debut, draft)."
+  - id: stats.team_match
+    description: "Per-team aggregate stats for a single match."
+  - id: stats.team_season
+    description: "Per-team aggregate stats over a season."
+  - id: stats.team_game_log
+    description: "Game-by-game results / form for one team."
+  - id: stats.leaders_season
+    description: "Season leaders per stat (Coleman, Brownlow, top scorers, MVP, etc.)."
+  - id: stats.ladder
+    description: "Current ladder / standings / conference standings for a competition."
+  - id: stats.head_to_head
+    description: "Head-to-head history between two teams."
+
+  # ─── Stats — advanced / sport-specific ───────────────────────────────
+  - id: stats.advanced_metrics
+    description: "Advanced / synergy / tracking stats not in basic box scores (PER, true shooting, xG, etc.)."
+  - id: stats.shot_chart
+    description: "Shot location / spatial data (basketball, soccer, hockey)."
+    single_provider: true
+  - id: stats.play_by_play
+    description: "Event-level play-by-play log of a game."
+  - id: stats.fantasy_projections
+    description: "Fantasy-points projections / DFS pricing."
+    single_provider: true
+
+  # ─── Sport — fixtures (non-betting data sources) ─────────────────────
+  - id: sport.fixtures_by_date
+    description: "All scheduled fixtures / games on a given date across one league."
+  - id: sport.match_boxscore
+    description: "Detailed game box score (quarter/period scores, team totals, leaders)."
+  - id: sport.season_summary
+    description: "End-of-season / current-state league summary (champion, top scorer, awards)."
+
+  # ─── Catalogue / reference ───────────────────────────────────────────
+  - id: ref.teams
+    description: "Team catalogue (id, name, club, colours)."
+  - id: ref.players
+    description: "Player catalogue (id, name, dob, draft info)."
+  - id: ref.venues
+    description: "Venue catalogue (id, name, location, timezone)."
+  - id: ref.seasons
+    description: "Season / competition-season catalogue."
+
+  # ─── Content / editorial ─────────────────────────────────────────────
+  - id: content.news
+    description: "Text articles, news index."
+  - id: content.video
+    description: "Editorial video content (highlights, replays, press conferences)."
+  - id: content.promo
+    description: "Promo / marketing cards from CMS."
+
+  # ─── Broadcast ───────────────────────────────────────────────────────
+  - id: broadcast.schedule
+    description: "Broadcast schedule (who shows what, when, where)."
+  - id: broadcast.channels
+    description: "Broadcast channel catalogue."
+
+  # ─── Meta (used by the template/example only) ────────────────────────
+  - id: sport.example
+    description: "Placeholder capability for the template spec and tests; not a real question."
+    single_provider: true

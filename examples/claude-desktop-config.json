@@ -1,0 +1,12 @@
+{
+  "_comment": "Drop this into your Claude Desktop config (claude_desktop_config.json). It runs sportsdata-mcp via uvx (no install) and enables the AFL public tools. Set SPORTSDATA_MCP_GROUPS to a comma-separated list of groups to expose; run `sportsdata-mcp list-groups` to see them all. For richer config (per-provider rate limits, secrets, premium auth) point SPORTSDATA_MCP_CONFIG at a YAML file instead — see examples/sportsdata-mcp.yaml.",
+  "mcpServers": {
+    "sportsdata": {
+      "command": "uvx",
+      "args": ["sportsdata-mcp"],
+      "env": {
+        "SPORTSDATA_MCP_GROUPS": "afl.public.core,afl.public.broadcasting,afl.public.content"
+      }
+    }
+  }
+}

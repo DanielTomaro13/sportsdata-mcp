@@ -1,0 +1,524 @@
+spec_version: 1
+
+provider:
+  id: sportsbet
+  display_name: "Sportsbet (Australia)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Sportsbet.md"
+  base_urls:
+    default: https://www.sportsbet.com.au/apigw
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Origin: https://www.sportsbet.com.au
+    Referer: https://www.sportsbet.com.au/
+  auth:
+    default:
+      type: none
+
+endpoints:
+  # ─── sportsbet.racing (15) — sportsbook-racing service ─────────────────
+  - name: sportsbet_racing_allracing
+    group: sportsbet.racing
+    capabilities: [racing.meetings_by_date]
+    summary: "All race meetings (every code) for one date, grouped by meeting."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/AllRacing/{eventDate}
+    auth: default
+    params:
+      - { name: eventDate, in: path, type: string, description: "Race date, YYYY-MM-DD." }
+    response_hint: "{meetings:[{competitionId, name, raceType, events:[{eventId, raceNumber, advertisedStartTime}]}]}"
+    examples:
+      - description: "All racing for a given day"
+        params: {eventDate: "2026-05-25"}
+
+  - name: sportsbet_racing_event_meeting
+    group: sportsbet.racing
+    summary: "Meeting context for one racing event (parent meeting + sibling races)."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Events/{eventId}/Meeting
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Racing event id." }
+    response_hint: "{meeting:{competitionId, name}, races:[{eventId, raceNumber}]}"
+
+  - name: sportsbet_racecard
+    group: sportsbet.racing
+    capabilities: [racing.race_card]
+    summary: "Racecard for one race: runners, prices, scratchings."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Events/{eventId}/Racecard
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Racing event id." }
+      - { name: selectionNames, in: query, type: boolean, description: "Include full selection (runner) names." }
+    response_hint: "{event:{eventId, raceNumber}, markets:[{marketId, name, selections:[{name, price:{winPrice, winPriceNum, winPriceDen}}]}]}"
+
+  - name: sportsbet_racecard_with_context
+    group: sportsbet.racing
+    capabilities: [racing.race_card]
+    summary: "Racecard plus surrounding context (meeting, results, related markets) for one race."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Events/{eventId}/RacecardWithContext
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Racing event id." }
+      - { name: classId, in: query, type: integer, required: true, description: "Racing class id (race type/class), required by upstream." }
+    response_hint: "{event:{}, markets:[], meeting:{}, context:{}}"
+    examples:
+      - description: "Racecard with context for one race"
+        params: {eventId: 10513900, classId: 1}
+
+  - name: sportsbet_multiple_racecards
+    group: sportsbet.racing
+    capabilities: [racing.race_card]
+    summary: "Racecards for several races in one call (batch by event ids)."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Events/MultipleRacecards
+    auth: default
+    params:
+      - { name: eventIds, in: query, type: string_csv, required: true, description: "Comma-separated racing event ids." }
+    response_hint: "{racecards:[{event:{}, markets:[]}]}"
+
+  - name: sportsbet_racing_competition
+    group: sportsbet.racing
+    summary: "Racing competition (meeting) detail by competition id."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Competitions/{competitionId}
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Racing competition (meeting) id." }
+    response_hint: "{competition:{competitionId, name, raceType}, events:[{eventId, raceNumber}]}"
+
+  - name: sportsbet_racing_resulted_events
+    group: sportsbet.racing
+    capabilities: [racing.race_results]
+    summary: "Resulted races (placings + dividends) for a racing competition + class + date."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Competitions/{competitionId}/ResultedEvents
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Racing competition (meeting) id." }
+      - { name: classId, in: query, type: integer, required: true, description: "Racing class id." }
+      - { name: date, in: query, type: string, required: true, description: "Result date, YYYY-MM-DD." }
+    response_hint: "{events:[{eventId, raceNumber, results:[{place, selectionName}], dividends:[]}]}"
+
+  - name: sportsbet_racing_futures
+    group: sportsbet.racing
+    capabilities: [racing.futures]
+    summary: "Racing futures markets (Cup outrights and other long-running racing markets)."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Futures
+    auth: default
+    response_hint: "{futures:[{marketId, name, selections:[{name, price:{winPrice}}]}]}"
+
+  - name: sportsbet_racing_best_bets
+    group: sportsbet.racing
+    summary: "Editorially-selected best bets across racing."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/BestBets
+    auth: default
+    response_hint: "{bestBets:[{eventId, selectionName, price:{winPrice}}]}"
+
+  - name: sportsbet_racing_best_bets_with_events
+    group: sportsbet.racing
+    summary: "Best bets with their full parent event objects inlined."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/BestBetsWithEvents
+    auth: default
+    response_hint: "{bestBets:[{event:{eventId, raceNumber}, selectionName, price:{winPrice}}]}"
+
+  - name: sportsbet_racing_top_jockeys
+    group: sportsbet.racing
+    summary: "Top jockeys hub (leading jockeys and their rides today)."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/JockeyHub/TopJockeys
+    auth: default
+    response_hint: "{jockeys:[{name, rides:[{eventId, selectionName}]}]}"
+
+  - name: sportsbet_racing_challenges
+    group: sportsbet.racing
+    summary: "All racing challenges / promotions feed."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Challenges/All
+    auth: default
+    response_hint: "{challenges:[{id, name, status}]}"
+
+  - name: sportsbet_racing_megabets
+    group: sportsbet.racing
+    summary: "Racing Megabets (large multi suggestions across races)."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/Megabets
+    auth: default
+    response_hint: "{megabets:[{id, legs:[{eventId, selectionName}], price:{winPrice}}]}"
+
+  - name: sportsbet_racing_multis_events
+    group: sportsbet.racing
+    capabilities: [racing.next_to_jump]
+    summary: "Events available for racing multis, ordered by start (next-to-jump style feed)."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/RacingMultisEvents
+    auth: default
+    response_hint: "{events:[{eventId, raceNumber, advertisedStartTime, meetingName}]}"
+
+  - name: sportsbet_racing_popular_srms
+    group: sportsbet.racing
+    capabilities: [racing.same_race_multi]
+    summary: "Popular Same Race Multi (SRM) combinations for races / meetings."
+    base: default
+    path: /sportsbook-racing/Sportsbook/Racing/PopularSrms
+    auth: default
+    params:
+      - { name: hierarchyLevel, in: query, type: string, required: true, enum: [event, competition, class], description: "Level the ids refer to: event, competition or class." }
+      - { name: ids, in: query, type: string_csv, required: true, description: "Comma-separated ids at the chosen hierarchyLevel." }
+      - { name: maxItems, in: query, type: integer, description: "Max SRM combinations to return." }
+      - { name: minUniqueCount, in: query, type: integer, description: "Minimum distinct legs per SRM." }
+      - { name: sortBy, in: query, type: string, description: "Sort order for returned SRMs." }
+      - { name: popularsrms, in: query, type: boolean, description: "Restrict to popular SRMs only." }
+    response_hint: "{srms:[{eventId, legs:[{selectionName}], price:{winPrice}}]}"
+
+  # ─── sportsbet.sports (14) — sportsbook-sports service ─────────────────
+  - name: sportsbet_upcoming_events
+    group: sportsbet.sports
+    summary: "Upcoming sport events across all codes (homepage upcoming feed)."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/UpComingEvents
+    auth: default
+    params:
+      - { name: includePrimaryMarket, in: query, type: boolean, description: "Inline each event's primary market + prices." }
+      - { name: maxEvents, in: query, type: integer, description: "Cap the number of events returned." }
+    response_hint: "{events:[{eventId, name, classId, competitionId, startTime}]}"
+
+  - name: sportsbet_sports_classes
+    group: sportsbet.sports
+    capabilities: [sport.competitions_list]
+    summary: "Sport classes (sports) with their competitions for a date window."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Classes
+    auth: default
+    params:
+      - { name: fromDate, in: query, type: string, required: true, description: "Window start, YYYY-MM-DD." }
+      - { name: toDate, in: query, type: string, required: true, description: "Window end, YYYY-MM-DD." }
+      - { name: includeLiveEvents, in: query, type: boolean, description: "Include events currently in-play." }
+      - { name: excludeNonLiveEvents, in: query, type: boolean, description: "Return only in-play events." }
+    response_hint: "{classes:[{classId, name, competitions:[{competitionId, name}]}]}"
+
+  - name: sportsbet_nav_hierarchy
+    group: sportsbet.sports
+    summary: "Sports navigation hierarchy (class → competition tree for menus)."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/NavHierarchy
+    auth: default
+    response_hint: "{nav:[{classId, name, competitions:[{competitionId, name}]}]}"
+
+  - name: sportsbet_bet_live
+    group: sportsbet.sports
+    capabilities: [sport.in_play]
+    summary: "BetLive feed — events currently in-play and bettable live."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/BetLive
+    auth: default
+    params:
+      - { name: birType, in: query, type: string, enum: [BETLIVE], description: "Bet-in-running type filter." }
+      - { name: excludeNonLiveEvents, in: query, type: boolean, description: "Return only live events." }
+      - { name: includePrimaryMarket, in: query, type: boolean, description: "Inline each event's primary market + prices." }
+    response_hint: "{events:[{eventId, name, classId, score, startTime}]}"
+
+  - name: sportsbet_event_commentary
+    group: sportsbet.sports
+    capabilities: [sport.match_score, sport.commentary]
+    summary: "Live score + text commentary for one or more sport events."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Events/Commentary
+    auth: default
+    params:
+      - { name: eventIds, in: query, type: string_csv, required: true, description: "Comma-separated sport event ids." }
+    response_hint: "{events:[{eventId, score, commentary:[{time, text}]}]}"
+
+  - name: sportsbet_sports_card
+    group: sportsbet.sports
+    capabilities: [sport.event_markets, sport.match_detail]
+    summary: "Full sport event card (all markets + selections) or the resulted event if finished."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Events/{eventId}/SportsCardOrResultedEvent
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Sport event id." }
+      - { name: includeCommentary, in: query, type: boolean, description: "Inline text commentary." }
+      - { name: includeIncidents, in: query, type: boolean, description: "Inline match incidents (goals, cards)." }
+      - { name: includeScoreboard, in: query, type: boolean, description: "Inline the live scoreboard." }
+      - { name: includeTopMarkets, in: query, type: boolean, description: "Inline highlighted top markets." }
+      - { name: includeAllMarkets, in: query, type: boolean, description: "Inline every market for the event." }
+    response_hint: "{event:{eventId, name, startTime}, markets:[{marketId, name, selections:[{name, price:{winPrice}}]}]}"
+
+  - name: sportsbet_sport_card_legacy
+    group: sportsbet.sports
+    capabilities: [sport.match_detail]
+    summary: "Legacy single sport event card (event + primary markets)."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Events/{eventId}/SportCard
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Sport event id." }
+    response_hint: "{event:{eventId, name, startTime}, markets:[]}"
+
+  - name: sportsbet_event_markets
+    group: sportsbet.sports
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "All markets + selections + live prices for one sport event."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Events/{eventId}/Markets
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Sport event id." }
+    response_hint: "{markets:[{marketId, name, selections:[{selectionId, name, price:{winPrice, winPriceNum, winPriceDen}}]}]}"
+
+  - name: sportsbet_event_results
+    group: sportsbet.sports
+    summary: "Results for a finished sport event (final score + settled markets)."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Events/{eventId}/Results
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Sport event id." }
+    response_hint: "{event:{eventId, finalScore}, markets:[{marketId, winningSelections:[]}]}"
+
+  - name: sportsbet_sport_competition
+    group: sportsbet.sports
+    capabilities: [sport.competition_screen]
+    summary: "Sport competition page: matches, outrights and optional top markets."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Sport competition id." }
+      - { name: displayType, in: query, type: string, description: "Upstream display variant." }
+      - { name: eventFilter, in: query, type: string, enum: [matches, outrights], description: "Restrict to matches or outrights." }
+      - { name: includeTopMarkets, in: query, type: boolean, description: "Inline highlighted top markets per event." }
+      - { name: includeAllEvents, in: query, type: boolean, description: "Include all events, not just upcoming." }
+      - { name: numMarkets, in: query, type: integer, description: "Markets to inline per event." }
+    response_hint: "{competition:{competitionId, name}, events:[{eventId, name, startTime, markets:[]}]}"
+
+  - name: sportsbet_competition_matches
+    group: sportsbet.sports
+    summary: "Match-type events for a sport competition."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}/Events/Matches
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Sport competition id." }
+    response_hint: "{events:[{eventId, name, startTime, score}]}"
+
+  - name: sportsbet_competition_outrights
+    group: sportsbet.sports
+    summary: "Outright (futures) events for a sport competition."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}/Events/Outrights
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Sport competition id." }
+    response_hint: "{events:[{eventId, name, markets:[{name, selections:[{name, price:{winPrice}}]}]}]}"
+
+  - name: sportsbet_sport_resulted_events
+    group: sportsbet.sports
+    summary: "Resulted (finished) events for a sport competition + class + date."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}/ResultedEvents
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Sport competition id." }
+      - { name: classId, in: query, type: integer, required: true, description: "Sport class id." }
+      - { name: date, in: query, type: string, required: true, description: "Result date, YYYY-MM-DD." }
+    response_hint: "{events:[{eventId, name, finalScore}]}"
+
+  - name: sportsbet_class_coupon
+    group: sportsbet.sports
+    summary: "Coupon (grouped markets) for a whole sport class."
+    base: default
+    path: /sportsbook-sports/Sportsbook/Sports/Class/{classId}/Coupon
+    auth: default
+    params:
+      - { name: classId, in: path, type: integer, description: "Sport class id." }
+    response_hint: "{class:{classId, name}, competitions:[{competitionId, events:[{eventId, markets:[]}]}]}"
+
+  # ─── sportsbet.results (2) — sportsbook-results service ────────────────
+  - name: sportsbet_results_classes
+    group: sportsbet.results
+    summary: "Sport classes that have results available for a date."
+    base: default
+    path: /sportsbook-results/Sportsbook/Results/Classes
+    auth: default
+    params:
+      - { name: date, in: query, type: string, required: true, description: 'Result date, YYYY-MM-DD, or the literal "today".' }
+    response_hint: "{classes:[{classId, name}]}"
+    examples:
+      - description: "Classes with results today"
+        params: {date: "today"}
+
+  - name: sportsbet_results_competitions
+    group: sportsbet.results
+    summary: "Competitions with results for a sport class on a date."
+    base: default
+    path: /sportsbook-results/Sportsbook/Results/Sports/Classes/{classId}/Competitions
+    auth: default
+    params:
+      - { name: classId, in: path, type: integer, description: "Sport class id." }
+      - { name: date, in: query, type: string, required: true, description: 'Result date, YYYY-MM-DD, or the literal "today".' }
+    response_hint: "{competitions:[{competitionId, name, events:[{eventId, finalScore}]}]}"
+
+  # ─── sportsbet.cross (12) — sports-form / media / cms / misc services ──
+  - name: sportsbet_event_status
+    group: sportsbet.cross
+    summary: "Live status flags for a sport event (suspended, in-play, settled)."
+    base: default
+    path: /sports-form/event-status/{eventId}
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Sport event id." }
+    response_hint: "{eventId, status, inPlay, suspended}"
+
+  - name: sportsbet_league_ladder
+    group: sportsbet.cross
+    capabilities: [stats.ladder]
+    summary: "League ladder / standings for a sport competition."
+    base: default
+    path: /sports-form/league-ladder-status/{competitionId}
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, description: "Sport competition id." }
+    response_hint: "{ladder:[{position, teamName, played, won, lost, points}]}"
+
+  - name: sportsbet_track_report
+    group: sportsbet.cross
+    summary: "Track report (going, rail, weather) for a racing meeting on a date."
+    base: default
+    path: /media/nomad/trackreport
+    auth: default
+    params:
+      - { name: eventDate, in: query, type: string, required: true, description: "Meeting date, YYYY-MM-DD." }
+      - { name: raceType, in: query, type: string, description: "Racing code (e.g. Thoroughbred, Greyhound, Harness)." }
+      - { name: trackName, in: query, type: string, description: "Track / venue name." }
+    response_hint: "{track:{name, going, railPosition, weather}}"
+
+  - name: sportsbet_race_preview
+    group: sportsbet.cross
+    capabilities: [content.video]
+    summary: "Editorial race preview (text + video) for one race."
+    base: default
+    path: /media/nomad/racePreview
+    auth: default
+    params:
+      - { name: raceType, in: query, type: string, required: true, description: "Racing code (e.g. Thoroughbred)." }
+      - { name: trackName, in: query, type: string, required: true, description: "Track / venue name." }
+      - { name: raceNumber, in: query, type: integer, required: true, description: "Race number at the meeting." }
+      - { name: eventDate, in: query, type: string, required: true, description: "Meeting date, YYYY-MM-DD." }
+    response_hint: "{preview:{title, body, videoUrl}}"
+
+  - name: sportsbet_match_preview
+    group: sportsbet.cross
+    capabilities: [content.video]
+    summary: "Editorial match preview (text + video) for one sport event."
+    base: default
+    path: /media/nomad/matchPreview
+    auth: default
+    params:
+      - { name: sportsClass, in: query, type: string, required: true, description: "Sport class name." }
+      - { name: sportsCompetitionName, in: query, type: string, required: true, description: "Competition name." }
+      - { name: eventName, in: query, type: string, required: true, description: "Event / match name." }
+      - { name: eventDate, in: query, type: string, required: true, description: "Event date, YYYY-MM-DD." }
+    response_hint: "{preview:{title, body, videoUrl}}"
+
+  - name: sportsbet_trending_sgm
+    group: sportsbet.cross
+    capabilities: [sport.same_game_multi]
+    summary: "Trending Same Game Multi (SGM) combinations for one sport event."
+    base: default
+    path: /trendingsgm/event
+    auth: default
+    params:
+      - { name: id, in: query, type: integer, required: true, description: "Sport event id." }
+    response_hint: "{sgms:[{legs:[{selectionName}], price:{winPrice}}]}"
+
+  - name: sportsbet_popular_promotions
+    group: sportsbet.cross
+    capabilities: [content.promo]
+    summary: "Trending / popular promotions for a promo provider + client."
+    base: default
+    path: /preferred-promotions/v2/models/trending/user-ids/{provider}/client-id/{clientId}/promotions
+    auth: default
+    params:
+      - { name: provider, in: path, type: string, description: "Promotions provider key." }
+      - { name: clientId, in: path, type: string, description: "Client id for the promo model." }
+      - { name: limit, in: query, type: integer, description: "Max promotions to return." }
+      - { name: loggedIn, in: query, type: boolean, description: "Return logged-in promotions instead of anonymous." }
+    response_hint: "{promotions:[{id, title, url}]}"
+
+  - name: sportsbet_page_content
+    group: sportsbet.cross
+    summary: "Homepage tab content (sports or racing landing modules)."
+    base: default
+    path: /page-content/homepage/{tab}
+    auth: default
+    params:
+      - { name: tab, in: path, type: string, enum: [sports, racing], description: "Homepage tab: sports or racing." }
+      - { name: loggedIn, in: query, type: boolean, description: "Return the logged-in variant." }
+      - { name: popularsrms, in: query, type: boolean, description: "Include popular SRM modules." }
+    response_hint: "{modules:[{type, items:[]}]}"
+
+  - name: sportsbet_safer_gambling_message
+    group: sportsbet.cross
+    summary: "Current safer-gambling message block for the site."
+    base: default
+    path: /page-content/safer_gambling_message
+    auth: default
+    response_hint: "{message:{title, body}}"
+
+  - name: sportsbet_cms_page
+    group: sportsbet.cross
+    capabilities: [content.promo]
+    summary: "CMS page block by competition id or page path (one of the two is required)."
+    base: default
+    path: /cms/app/page
+    auth: default
+    params:
+      - { name: competitionId, in: query, type: integer, description: "Competition id (use this OR pagePath)." }
+      - { name: pagePath, in: query, type: string, description: "CMS page path (use this OR competitionId)." }
+      - { name: loggedIn, in: query, type: boolean, description: "Return the logged-in variant." }
+    response_hint: "{page:{path, blocks:[{type, content}]}}"
+
+  - name: sportsbet_cms_settings
+    group: sportsbet.cross
+    summary: "Global CMS settings / feature flags for the app."
+    base: default
+    path: /cms/app/settings
+    auth: default
+    response_hint: "{settings:{}}"
+
+  - name: sportsbet_cms_messages
+    group: sportsbet.cross
+    summary: "Sitewide CMS messages (banners, notices)."
+    base: default
+    path: /cms/app/messages
+    auth: default
+    response_hint: "{messages:[{id, type, text}]}"
+
+dispatchers:
+  # ─── sportsbet.graphql — persisted operations on /sportsbook/graph ─────
+  - name: sportsbet_graphql_call
+    group: sportsbet.graphql
+    kind: graphql_persisted
+    summary: |
+      Call any of Sportsbet's persisted GraphQL operations against
+      www.sportsbet.com.au/apigw/sportsbook/graph by name + variables. Hashes
+      are managed server-side; a PERSISTED_QUERY_NOT_FOUND error means the
+      bundle drifted. Read sportsbet://graphql/operations for the op list +
+      variable signatures.
+    method: GET
+    endpoint: /sportsbook/graph
+    auth: default
+    catalog_resource: "sportsbet://graphql/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "GraphQL operation name (see sportsbet://graphql/operations)" }
+      - { name: variables, in: dispatch, type: object, required: false, description: 'Operation variables, e.g. {openbetLinkingId: "15772756", competitionId: 6927, buildNumber: 10000000}' }
+
+graphql:
+  operations:
+    - { name: EventStats, sha256: "30ea12f65f0f7d0a67bf79555b4ad514d9b0fdef3c9848759b322ac6bf6ddd87", variables: "openbetLinkingId: String!, competitionId: Int!, buildNumber: Int", verified: true }

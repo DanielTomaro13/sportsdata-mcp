@@ -1,0 +1,22 @@
+# Example sportsdata-mcp config.
+# Resolution order: --config flag > $SPORTSDATA_MCP_CONFIG > ./sportsdata-mcp.yaml
+#   > ~/.config/sportsdata-mcp/config.yaml > built-in defaults.
+
+# Which tool groups to expose. Run `sportsdata-mcp list-groups` for the full list.
+# Meta-tools (list_available_groups, list_tools_by_capability, list_resources) are
+# always registered regardless of this list.
+enabled_groups:
+  - afl.public.core
+  - afl.public.broadcasting
+  - afl.public.content
+
+# Per-provider overrides (all optional; sensible defaults apply otherwise).
+providers:
+  afl:
+    request_timeout_seconds: 30
+    rate_limit_rps: 10          # sustained requests/sec (token bucket)
+    max_response_bytes: 512000  # responses over this → RESPONSE_TOO_LARGE
+
+# Secrets for authenticated providers (AFL premium, bookmakers, …).
+# Prefer environment variables in production; this block is for local use only.
+secrets: {}

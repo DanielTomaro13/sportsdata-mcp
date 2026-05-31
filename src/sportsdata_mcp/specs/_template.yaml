@@ -1,0 +1,40 @@
+# Starter spec for a new provider. Copy to `{provider}.yaml` and fill in.
+#
+#   cp src/sportsdata_mcp/specs/_template.yaml src/sportsdata_mcp/specs/myprovider.yaml
+#
+# Then run `sportsdata-mcp lint` until it passes. Files beginning with `_` are
+# skipped by the loader, so this template never registers tools itself.
+
+spec_version: 1
+
+provider:
+  id: example
+  display_name: "Example Provider"
+  doc_url: null
+  base_urls:
+    default: https://api.example.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+  auth:
+    default:
+      type: none
+
+endpoints:
+  - name: example_ping
+    group: example.public.core
+    capabilities: [sport.example]
+    summary: "Minimal example endpoint — replace with a real one."
+    method: GET
+    base: default
+    path: /v1/ping
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 10, description: "Items to return" }
+    response_hint: "{ok: true}"
+    examples:
+      - description: "Default ping"
+        params: {limit: 10}
+
+# dispatchers:        # for GraphQL gateways or templated REST families (see _schema.yaml)
+# graphql:            # persisted-query operation table
+# reference_resources:  # small static lookup tables exposed as MCP resources
