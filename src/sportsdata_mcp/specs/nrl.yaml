@@ -1,0 +1,103 @@
+spec_version: 1
+
+# NRL via the Champion Data "Match Centre" CDN (mc.championdata.com).
+# These are the same static JSON feeds the official nrl.com match centre consumes.
+# No auth required. The `uuid` and `_=<ms>` query params seen in browser traffic are
+# cache-busters only — the feeds resolve fine without them, so they are omitted here.
+#
+# ID chain for the model:
+#   nrl_competitions / nrl_application_settings → competitionId (e.g. 12999 = 2026 NRL Premiership)
+#   nrl_fixture(competitionId)                  → matchId       (e.g. 129990101)
+#   nrl_match(competitionId, matchId)           → full per-player / per-period stats
+
+provider:
+  id: nrl
+  display_name: "NRL (Champion Data Match Centre)"
+  doc_url: null
+  base_urls:
+    default: https://mc.championdata.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json, text/plain, */*"
+  auth:
+    default:
+      type: none
+
+endpoints:
+  # ─── nrl.public.core ──────────────────────────────────────────────────
+  - name: nrl_competitions
+    group: nrl.public.core
+    capabilities: [sport.competitions_list, ref.seasons]
+    summary: |
+      Global Champion Data competition catalogue. Returns every competition id
+      (NRL, State of Origin, plus other Champion Data sports) with its season and
+      round count. Find the NRL competitionId here (e.g. 12999 = 2026 NRL Premiership,
+      13009 = 2026 State of Origin) to pass to nrl_fixture / nrl_match.
+    base: default
+    path: /data/competitions.json
+    auth: default
+    response_hint: "{competitionDetails:{competition:[{id, name, season, rounds, regulationPeriods, regulationPeriodLength}]}}"
+    examples:
+      - description: "All Champion Data competitions (filter client-side for NRL by name/season)."
+        params: {}
+
+  - name: nrl_application_settings
+    group: nrl.public.core
+    capabilities: [sport.competitions_list]
+    summary: |
+      NRL match-centre application config: the current-season competition list
+      (competitionList), stat-grid column layouts (dataGrids), UI components and
+      team/competition image paths. Handy for discovering the active competitionIds
+      and which statistics the official site surfaces.
+    base: default
+    path: /nrl/settings/application_settings.json
+    auth: default
+    response_hint: "{applicationInfo, userInfo, competitionList, components, dataGrids, shellGroups}"
+    examples:
+      - description: "Current NRL competition list + stat-grid config."
+        params: {}
+
+  - name: nrl_fixture
+    group: nrl.public.core
+    capabilities: [sport.fixtures_by_date, sport.match_detail, sport.match_score]
+    summary: |
+      Full fixture + results for one competition. One entry per match with round,
+      status, kickoff times (local + UTC), home/away squad ids/names/scores and venue.
+      Use it to list a round's games and to resolve the matchId for nrl_match.
+    base: default
+    path: /data/{competitionId}/fixture.json
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, required: true, description: "Champion Data competition id (e.g. 12999). From nrl_competitions / nrl_application_settings." }
+    response_hint: "{fixture:{match:[{matchId, roundNumber, matchStatus, utcStartTime, localStartTime, homeSquadId, homeSquadName, homeSquadScore, awaySquadId, awaySquadName, awaySquadScore, venueId, venueName}]}}"
+    examples:
+      - description: "Every 2026 NRL Premiership match (round + result)."
+        params: {competitionId: 12999}
+
+  - name: nrl_match
+    group: nrl.public.core
+    capabilities: [sport.match_detail, sport.match_score, stats.player_match]
+    summary: |
+      Full match file: per-player match statistics (tries, tackles, runMetres,
+      lineBreaks, tryAssists, offloads, handlingErrors, metresGained, …), per-period
+      player stats, team/player rosters, period durations, sin bins and on-report
+      records. This is the per-player, per-match stat source. Decode stat codes via
+      the nrl://stats/definitions resource.
+    base: default
+    path: /data/{competitionId}/{matchId}.json
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: integer, required: true, description: "Champion Data competition id (e.g. 12999)." }
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id from nrl_fixture (e.g. 129990101)." }
+    response_hint: "{matchStats:{matchInfo, teamInfo:{team[]}, playerInfo:{player[]}, periodInfo:{qtr[]}, playerStats:{player[]}, playerPeriodStats:{player[]}, sinBins:{binned[]}, reports:{onReport[]}, created}, jobId}"
+    examples:
+      - description: "Knights v Cowboys, round 1 2026 — full player stat lines."
+        params: {competitionId: 12999, matchId: 129990101}
+
+reference_resources:
+  - uri: "nrl://stats/definitions"
+    summary: "Dictionary of every NRL statistic code (dataName, code, shortName, longName, dataType, and compound/calculated formulas). Use it to interpret the stat fields returned by nrl_match."
+    base: default
+    path: /global/settings/nrl_statistic_definitions.json
+    auth: default
+    mime_type: application/json

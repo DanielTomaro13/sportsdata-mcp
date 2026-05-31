@@ -120,6 +120,14 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `entain.graphql` | 1 | 127 persisted GraphQL ops (`gql/router`) |
 | `entain.cdn` | 1 | Contentful CMS entries (promotions, major-event nav) |
 
+### NRL — `mc.championdata.com`
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `nrl.public.core` | 4 | Champion Data match centre: competitions, fixture, per-match player stats, app settings |
+
+Plus the `nrl://stats/definitions` resource (dictionary of every NRL stat code).
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.
@@ -145,6 +153,12 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
 - **AFL** — `afl.public.*` is anonymous. `afl.premium.*` mints an anonymous
   `x-media-mis-token` automatically; some premium endpoints still return 401 for
   anonymous callers.
+- **NRL** — the anonymous Champion Data match-centre CDN (`mc.championdata.com`),
+  the same static JSON the official nrl.com match centre reads. No secrets, no
+  cache-buster params needed. Resolve a `competitionId` from `nrl_competitions`
+  (e.g. 12999 = 2026 NRL Premiership), a `matchId` from `nrl_fixture`, then pull
+  per-player match stats from `nrl_match`; decode stat codes via
+  `nrl://stats/definitions`.
 
 ## CLI reference
 
