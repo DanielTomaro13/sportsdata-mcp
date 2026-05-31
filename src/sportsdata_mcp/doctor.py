@@ -89,16 +89,18 @@ async def _probe_endpoint(http: HTTPClient, provider, ep: Endpoint, args: dict, 
     if r.status_code >= 400:
         echo(f"  {_RED}→ FAIL: HTTP {r.status_code} ({size} bytes){_RESET}")
         return "fail"
-    ctype = r.headers.get("content-type", "")
-    if "json" not in ctype:
-        echo(f"  {_RED}→ FAIL: non-JSON ({ctype or 'unknown'}) — likely a bot challenge{_RESET}")
-        return "fail"
+    # Parse regardless of content-type (some APIs serve JSON as text/plain); a parse
+    # failure on a non-JSON type is the real bot-challenge signal.
     try:
-        shape = _payload_shape(r.json())
+        body = r.json()
     except ValueError:
-        echo(f"  {_RED}→ FAIL: JSON content-type but body did not parse{_RESET}")
+        ctype = r.headers.get("content-type", "")
+        if "json" not in ctype:
+            echo(f"  {_RED}→ FAIL: non-JSON ({ctype or 'unknown'}) — likely a bot challenge{_RESET}")
+        else:
+            echo(f"  {_RED}→ FAIL: JSON content-type but body did not parse{_RESET}")
         return "fail"
-    echo(f"  {_GREEN}→ {r.status_code} OK ({shape}, {size // 1024 or 1} KB){_RESET}")
+    echo(f"  {_GREEN}→ {r.status_code} OK ({_payload_shape(body)}, {size // 1024 or 1} KB){_RESET}")
     return "ok"
 
 

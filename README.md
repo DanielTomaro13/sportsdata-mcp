@@ -7,10 +7,11 @@ different providers interchangeable wherever they answer the same question — s
 the model can compare odds across bookies or stats across data sources with one
 discovery call.
 
-Three providers ship today — **AFL** (`api.afl.com.au`), **Sportsbet**, and
-**Entain / Ladbrokes** — exposing **101 provider tools** across 14 groups, plus
-3 always-on meta-tools. New providers are added by dropping a YAML spec into
-`src/sportsdata_mcp/specs/`; the engine needs no code changes.
+Five providers ship today — **AFL** (`api.afl.com.au`), **Sportsbet**,
+**Entain / Ladbrokes**, **NRL** (`mc.championdata.com`) and **NBA**
+(`cdn.nba.com` + `stats.nba.com`) — exposing **112 provider tools** across 17
+groups, plus 3 always-on meta-tools. New providers are added by dropping a YAML
+spec into `src/sportsdata_mcp/specs/`; the engine needs no code changes.
 
 > Design notes and roadmap live in [`PLAN.md`](./PLAN.md).
 
@@ -128,6 +129,18 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 
 Plus the `nrl://stats/definitions` resource (dictionary of every NRL stat code).
 
+### NBA — `cdn.nba.com` + `stats.nba.com`
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `nba.public.cdn` | 5 | Open CDN JSON: today's scoreboard, full schedule, live box score + play-by-play, odds |
+| `nba.stats` | 2 | `nba_daily_lineups` + `nba_stats_call`, the dispatcher over the 137-endpoint `/stats/` API |
+
+`nba_stats_call` fronts the whole stats.nba.com `/stats/` analytics surface (player/team
+dashboards, box scores v2+v3, shot charts, play-by-play, leaders, standings, draft, hustle,
+tracking, …). Browse every operation, its required params and its defaults in the
+`nba://stats/operations` resource.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.
@@ -159,6 +172,17 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   (e.g. 12999 = 2026 NRL Premiership), a `matchId` from `nrl_fixture`, then pull
   per-player match stats from `nrl_match`; decode stat codes via
   `nrl://stats/definitions`.
+- **NBA** — two surfaces, no secrets. `cdn.nba.com` is wide open (it even serves
+  JSON as `text/plain`, which the client accepts). `stats.nba.com` sits behind
+  Akamai, which black-holes any request missing a full browser header bundle — the
+  spec ships that bundle in `provider.default_headers`, so it just works. Akamai also
+  rate-limits hard, so the spec's `defaults` block throttles NBA to ~1 req/2.5 s,
+  sets a 45 s timeout, and retries transient `429/5xx` with exponential backoff (all
+  overridable via `providers.nba.*`). The `/stats/` family is one dispatcher
+  (`nba_stats_call`): pick an `operation` (the path segment, e.g.
+  `leaguedashplayerstats`) and pass `query_params` — each operation already carries
+  NBA's full default param set, so you override only what matters. Most responses are
+  column-oriented (`resultSets:[{name, headers, rowSet}]}`); v3 box scores are nested.
 
 ## CLI reference
 

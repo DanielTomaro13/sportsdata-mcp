@@ -42,6 +42,27 @@ class HashRefresh(BaseModel):
     bundle_url_pattern: str
 
 
+class ProviderDefaults(BaseModel):
+    """Spec-declared request-tuning defaults for a provider.
+
+    These let a provider ship sane throttle/timeout/retry settings without the
+    operator having to configure them. Precedence at request time:
+    ``providers.<id>.<key>`` (user config) > this block > engine defaults.
+    A ``None`` here means "no spec opinion — fall through to the engine default".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rate_limit_rps: float | None = None
+    request_timeout_seconds: float | None = None
+    burst: int | None = None
+    # Transient statuses to retry (in addition to the always-on single 401 auth-refetch).
+    # Empty list (the default) preserves the historical "no status retries" behaviour.
+    retry_statuses: list[int] = Field(default_factory=list)
+    max_retries: int = 0
+    retry_backoff_seconds: float = 0.5
+
+
 class Provider(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -52,6 +73,7 @@ class Provider(BaseModel):
     default_headers: dict[str, str] = Field(default_factory=dict)
     auth: dict[str, AuthSpec] = Field(default_factory=lambda: {"default": AuthNone()})
     hash_refresh: HashRefresh | None = None
+    defaults: ProviderDefaults = Field(default_factory=ProviderDefaults)
 
 
 # ─── Endpoint params ───────────────────────────────────────────────────
@@ -123,6 +145,10 @@ class TemplatedOperation(BaseModel):
     path: str
     path_params: list[str] = Field(default_factory=list)
     query_params: list[str] = Field(default_factory=list)
+    # Default query values merged under any caller-supplied query_params. Many
+    # stats.nba.com endpoints 400 unless the full (mostly-empty) param set is sent,
+    # so the spec carries those defaults and the caller overrides only what matters.
+    query_defaults: dict[str, str] = Field(default_factory=dict)
     summary: str = ""
 
 

@@ -1,0 +1,805 @@
+spec_version: 1
+
+# NBA — two public surfaces behind one provider:
+#
+#   cdn.nba.com   — open JSON CDN (no headers/throttle needed): today's scoreboard,
+#                   the full season schedule, live box scores + play-by-play, odds.
+#   stats.nba.com — the /stats/ analytics API. Fronted by Akamai, which black-holes
+#                   requests that don't carry a full browser header bundle. The bundle
+#                   lives in provider.default_headers below, so every request carries it.
+#                   Akamai also rate-limits aggressively, so provider.defaults throttles
+#                   to ~1 req / 2.5s and retries transient 429/5xx with backoff.
+#
+# The 137 /stats/ endpoints are exposed through one dispatcher (nba_stats_call) rather
+# than 137 tools. The model picks an `operation` (the /stats/ path segment, e.g.
+# "leaguedashplayerstats") and supplies query_params; each operation carries the full
+# (mostly-empty) default param set NBA requires, so the model overrides only what matters.
+# Browse the catalogue at the nba://stats/operations resource.
+#
+# Response shapes:
+#   classic /stats/  → {resource, parameters, resultSets:[{name, headers:[...], rowSet:[[...]]}]}
+#                      (column-oriented: zip each resultSet's headers with each row).
+#   v3 box scores    → {meta, boxScore<Type>:{gameId, homeTeam:{...}, awayTeam:{...}}} (nested).
+#   cdn liveData     → already-nested JSON objects.
+#
+# Common params: Season "2025-26"; SeasonType "Regular Season"|"Playoffs"|"Pre Season"|
+#   "Play In"; PerMode "Totals"|"PerGame"|"Per100Possessions"; MeasureType "Base"|
+#   "Advanced"|"Misc"|"Four Factors"|"Scoring"|"Opponent"|"Usage"|"Defense"; LeagueID "00".
+# Team ids are 1610612737–1610612766 (resolve names via the commonteamyears / franchisehistory
+# operations); player ids via playerindex / commonallplayers.
+
+provider:
+  id: nba
+  display_name: "NBA (cdn.nba.com + stats.nba.com)"
+  doc_url: null
+  base_urls:
+    default: https://stats.nba.com
+    cdn: https://cdn.nba.com
+  # Full browser header bundle — without this Akamai black-holes stats.nba.com.
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json, text/plain, */*"
+    Accept-Language: "en-US,en;q=0.9"
+    Referer: "https://www.nba.com/"
+    Origin: "https://www.nba.com"
+    Connection: "keep-alive"
+    x-nba-stats-origin: "stats"
+    x-nba-stats-token: "true"
+    Sec-Fetch-Dest: "empty"
+    Sec-Fetch-Mode: "cors"
+    Sec-Fetch-Site: "same-site"
+    Cache-Control: "no-cache"
+    Pragma: "no-cache"
+  auth:
+    default:
+      type: none
+  # Akamai-friendly throttle + transient-error retry. Operators can override any of
+  # these via providers.nba.* in their config.
+  defaults:
+    rate_limit_rps: 0.4          # ~1 request / 2.5s sustained
+    request_timeout_seconds: 45
+    burst: 1
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 3
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  # ─── nba.public.cdn — open CDN JSON, no throttle/headers required ──────
+  - name: nba_scoreboard_today
+    group: nba.public.cdn
+    capabilities: [sport.fixtures_by_date, sport.match_score, sport.in_play]
+    summary: |
+      Today's games from the live CDN scoreboard: matchups, period/clock state, live
+      scores and game ids. The fastest way to get today's gameId values for nba_boxscore
+      / nba_playbyplay.
+    base: cdn
+    path: /static/json/liveData/scoreboard/todaysScoreboard_00.json
+    response_hint: "{scoreboard:{gameDate, games:[{gameId, gameStatus, gameStatusText, period, gameClock, homeTeam, awayTeam}]}}"
+    examples:
+      - description: "Today's NBA scoreboard."
+        params: {}
+
+  - name: nba_schedule
+    group: nba.public.cdn
+    capabilities: [sport.fixtures_by_date, sport.season_summary, ref.seasons]
+    summary: |
+      Full league schedule for the current season (every game, date, broadcasters,
+      arena). Large payload (~8 MB) — prefer nba_scoreboard_today for just today.
+    base: cdn
+    path: /static/json/staticData/scheduleLeagueV2_1.json
+    response_hint: "{leagueSchedule:{seasonYear, gameDates:[{gameDate, games:[{gameId, homeTeam, awayTeam, ...}]}]}}"
+    examples:
+      - description: "Whole-season schedule."
+        params: {}
+
+  - name: nba_boxscore
+    group: nba.public.cdn
+    capabilities: [sport.match_boxscore, stats.player_match, sport.match_score]
+    summary: |
+      Live/final box score for one game from the CDN: per-player and per-team stat
+      lines, by period. gameId comes from nba_scoreboard_today or nba_schedule.
+    base: cdn
+    path: /static/json/liveData/boxscore/boxscore_{gameId}.json
+    params:
+      - { name: gameId, in: path, type: string, required: true, description: "10-digit NBA game id, e.g. 0022300001 (from nba_scoreboard_today / nba_schedule)." }
+    response_hint: "{game:{gameId, homeTeam:{teamId, players:[{name, statistics}]}, awayTeam:{...}}}"
+    examples:
+      - description: "Box score for one game."
+        params: {gameId: "0022300001"}
+
+  - name: nba_playbyplay
+    group: nba.public.cdn
+    capabilities: [stats.play_by_play]
+    summary: |
+      Event-level play-by-play log for one game from the CDN: every action with clock,
+      score, player and description. gameId from nba_scoreboard_today / nba_schedule.
+    base: cdn
+    path: /static/json/liveData/playbyplay/playbyplay_{gameId}.json
+    params:
+      - { name: gameId, in: path, type: string, required: true, description: "10-digit NBA game id, e.g. 0022300001." }
+    response_hint: "{game:{gameId, actions:[{actionNumber, period, clock, scoreHome, scoreAway, description}]}}"
+    examples:
+      - description: "Play-by-play for one game."
+        params: {gameId: "0022300001"}
+
+  - name: nba_odds_today
+    group: nba.public.cdn
+    capabilities: [sport.prices]
+    summary: |
+      Sportsbook odds for today's games from the live CDN odds feed (spread, money
+      line, total per game and book).
+    base: cdn
+    path: /static/json/liveData/odds/odds_todaysGames.json
+    response_hint: "{games:[{gameId, markets:[{name, books:[{name, outcomes:[...]}]}]}]}"
+    examples:
+      - description: "Today's game odds."
+        params: {}
+
+  # ─── nba.stats — stats.nba.com JS data feed (full header bundle + throttle) ──
+  - name: nba_daily_lineups
+    group: nba.stats
+    capabilities: [sport.fixtures_by_date]
+    summary: |
+      Projected/confirmed starting lineups for a date's games, from the stats.nba.com
+      JS data feed. date is YYYYMMDD.
+    base: default
+    path: /js/data/leaders/00_daily_lineups_{date}.json
+    params:
+      - { name: date, in: path, type: string, required: true, description: "Date as YYYYMMDD, e.g. 20260101." }
+    response_hint: "{games:[{gameId, homeTeam, awayTeam, lineups}]} (feed shape varies)"
+    examples:
+      - description: "Daily lineups for a date."
+        params: {date: "20260101"}
+
+dispatchers:
+  # ─── nba.stats — the stats.nba.com /stats/ analytics API (137 operations) ──
+  - name: nba_stats_call
+    group: nba.stats
+    kind: templated_rest
+    base: default
+    auth: default
+    capabilities:
+      - stats.player_season
+      - stats.player_game_log
+      - stats.player_career
+      - stats.player_profile
+      - stats.team_season
+      - stats.team_game_log
+      - stats.team_match
+      - stats.leaders_season
+      - stats.ladder
+      - stats.head_to_head
+      - stats.advanced_metrics
+      - stats.shot_chart
+      - stats.play_by_play
+      - sport.match_boxscore
+      - sport.fixtures_by_date
+      - sport.season_summary
+      - ref.players
+      - ref.teams
+    summary: |
+      Gateway to the stats.nba.com /stats/ analytics API (137 operations). Supply an
+      `operation` (the /stats/ path segment, e.g. "leaguedashplayerstats",
+      "shotchartdetail", "boxscoretraditionalv3", "playercareerstats") plus a
+      `query_params` map; each operation already carries NBA's full default param set,
+      so override only the fields you need (e.g. {Season: "2024-25", PlayerID: "201939"}).
+      Browse every operation, its required params and its defaults in the
+      nba://stats/operations resource. Most responses are column-oriented
+      ({resultSets:[{name, headers, rowSet}]}); zip headers with each row.
+    catalog_resource: "nba://stats/operations"
+    operations:
+      - name: alltimeleadersgrids
+        path: /stats/alltimeleadersgrids
+        query_defaults: {LeagueID: '00', PerMode: Totals, SeasonType: Regular Season, TopX: '10'}
+        summary: 'AllTimeLeadersGrids. resultSets: ASTLeaders, BLKLeaders, DREBLeaders, FG3ALeaders, FG3MLeaders, FG3_PCTLeaders ….'
+      - name: assistleaders
+        path: /stats/assistleaders
+        query_defaults: {LeagueID: '00', PerMode: Totals, PlayerOrTeam: Team, Season: 2025-26, SeasonType: Regular Season}
+        summary: 'AssistLeaders. resultSets: AssistLeaders.'
+      - name: assisttracker
+        path: /stats/assisttracker
+        query_defaults: {College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameScope: '', Height: '', LastNGames: '', LeagueID: '00', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', PerMode: '', PlayerExperience: '', PlayerPosition: '', Season: '', SeasonSegment: '', SeasonType: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'AssistTracker. resultSets: AssistTracker.'
+      - name: boxscoreadvancedv2
+        path: /stats/boxscoreadvancedv2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreAdvancedV2. resultSets: PlayerStats, TeamStats. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscoreadvancedv3
+        path: /stats/boxscoreadvancedv3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreAdvancedV3. resultSets: PlayerStats, TeamStats.'
+      - name: boxscoredefensivev2
+        path: /stats/boxscoredefensivev2
+        query_params: [GameID]
+        summary: 'BoxScoreDefensiveV2. resultSets: PlayerStats, TeamStats.'
+      - name: boxscorefourfactorsv2
+        path: /stats/boxscorefourfactorsv2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreFourFactorsV2. resultSets: sqlPlayersFourFactors, sqlTeamsFourFactors. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscorefourfactorsv3
+        path: /stats/boxscorefourfactorsv3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreFourFactorsV3. resultSets: PlayerStats, TeamStats.'
+      - name: boxscorehustlev2
+        path: /stats/boxscorehustlev2
+        query_params: [GameID]
+        summary: 'BoxScoreHustleV2. resultSets: PlayerStats, TeamStats.'
+      - name: boxscorematchupsv3
+        path: /stats/boxscorematchupsv3
+        query_params: [GameID]
+        summary: 'BoxScoreMatchupsV3. resultSets: PlayerStats.'
+      - name: boxscoremiscv2
+        path: /stats/boxscoremiscv2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreMiscV2. resultSets: sqlPlayersMisc, sqlTeamsMisc. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscoremiscv3
+        path: /stats/boxscoremiscv3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreMiscV3. resultSets: PlayerStats, TeamStats.'
+      - name: boxscoreplayertrackv3
+        path: /stats/boxscoreplayertrackv3
+        query_params: [GameID]
+        summary: 'BoxScorePlayerTrackV3. resultSets: PlayerStats, TeamStats.'
+      - name: boxscorescoringv2
+        path: /stats/boxscorescoringv2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreScoringV2. resultSets: sqlPlayersScoring, sqlTeamsScoring. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscorescoringv3
+        path: /stats/boxscorescoringv3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreScoringV3. resultSets: PlayerStats, TeamStats.'
+      - name: boxscoresummaryv2
+        path: /stats/boxscoresummaryv2
+        query_params: [GameID]
+        summary: 'BoxScoreSummaryV2. resultSets: AvailableVideo, GameInfo, GameSummary, InactivePlayers, LastMeeting, LineScore …. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscoresummaryv3
+        path: /stats/boxscoresummaryv3
+        query_params: [GameID]
+        summary: 'BoxScoreSummaryV3. resultSets: GameSummary, GameInfo, ArenaInfo, Officials, LineScore, InactivePlayers ….'
+      - name: boxscoretraditionalv2
+        path: /stats/boxscoretraditionalv2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreTraditionalV2. resultSets: PlayerStats, TeamStarterBenchStats, TeamStats. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscoretraditionalv3
+        path: /stats/boxscoretraditionalv3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreTraditionalV3. resultSets: PlayerStats, TeamStarterBenchStats, TeamStats.'
+      - name: boxscoreusagev2
+        path: /stats/boxscoreusagev2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreUsageV2. resultSets: sqlPlayersUsage, sqlTeamsUsage. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: boxscoreusagev3
+        path: /stats/boxscoreusagev3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
+        summary: 'BoxScoreUsageV3. resultSets: PlayerStats, TeamStats.'
+      - name: commonallplayers
+        path: /stats/commonallplayers
+        query_defaults: {IsOnlyCurrentSeason: '0', LeagueID: '00', Season: 2025-26}
+        summary: 'CommonAllPlayers. resultSets: CommonAllPlayers.'
+      - name: commonplayerinfo
+        path: /stats/commonplayerinfo
+        query_params: [PlayerID]
+        query_defaults: {LeagueID: '00'}
+        summary: 'CommonPlayerInfo. resultSets: AvailableSeasons, CommonPlayerInfo, PlayerHeadlineStats.'
+      - name: commonplayoffseries
+        path: /stats/commonplayoffseries
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeriesID: ''}
+        summary: 'CommonPlayoffSeries. resultSets: PlayoffSeries.'
+      - name: commonteamroster
+        path: /stats/commonteamroster
+        query_params: [TeamID]
+        query_defaults: {Season: 2025-26, LeagueID: '00'}
+        summary: 'CommonTeamRoster. resultSets: Coaches, CommonTeamRoster.'
+      - name: commonteamyears
+        path: /stats/commonteamyears
+        query_defaults: {LeagueID: '00'}
+        summary: 'CommonTeamYears. resultSets: TeamYears.'
+      - name: cumestatsplayer
+        path: /stats/cumestatsplayer
+        query_params: [PlayerID, GameIDs]
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season}
+        summary: 'CumeStatsPlayer. resultSets: GameByGameStats, TotalPlayerStats.'
+      - name: cumestatsplayergames
+        path: /stats/cumestatsplayergames
+        query_params: [PlayerID]
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season, Location: '', Outcome: '', VsConference: '', VsDivision: '', VsTeamID: ''}
+        summary: 'CumeStatsPlayerGames. resultSets: CumeStatsPlayerGames.'
+      - name: cumestatsteam
+        path: /stats/cumestatsteam
+        query_params: [TeamID, GameIDs]
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season}
+        summary: 'CumeStatsTeam. resultSets: GameByGameStats, TotalTeamStats.'
+      - name: cumestatsteamgames
+        path: /stats/cumestatsteamgames
+        query_params: [TeamID]
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season, Location: '', Outcome: '', SeasonID: '', VsConference: '', VsDivision: '', VsTeamID: ''}
+        summary: 'CumeStatsTeamGames. resultSets: CumeStatsTeamGames.'
+      - name: defensehub
+        path: /stats/defensehub
+        query_defaults: {GameScope: Season, LeagueID: '00', PlayerOrTeam: Team, PlayerScope: All Players, Season: 2025-26, SeasonType: Regular Season}
+        summary: 'DefenseHub. resultSets: DefenseHubStat1, DefenseHubStat10, DefenseHubStat2, DefenseHubStat3, DefenseHubStat4, DefenseHubStat5 ….'
+      - name: draftboard
+        path: /stats/draftboard
+        query_defaults: {LeagueID: '00', Season: '2025', College: '', OverallPick: '', RoundNum: '', RoundPick: '', TeamID: '', TopX: ''}
+        summary: 'DraftBoard. resultSets: DraftBoard.'
+      - name: draftcombinedrillresults
+        path: /stats/draftcombinedrillresults
+        query_defaults: {LeagueID: '00', SeasonYear: '2025'}
+        summary: 'DraftCombineDrillResults. resultSets: Results.'
+      - name: draftcombinenonstationaryshooting
+        path: /stats/draftcombinenonstationaryshooting
+        query_defaults: {LeagueID: '00', SeasonYear: '2025'}
+        summary: 'DraftCombineNonStationaryShooting. resultSets: Results.'
+      - name: draftcombineplayeranthro
+        path: /stats/draftcombineplayeranthro
+        query_defaults: {LeagueID: '00', SeasonYear: '2025'}
+        summary: 'DraftCombinePlayerAnthro. resultSets: Results.'
+      - name: draftcombinespotshooting
+        path: /stats/draftcombinespotshooting
+        query_defaults: {LeagueID: '00', SeasonYear: '2025'}
+        summary: 'DraftCombineSpotShooting. resultSets: Results.'
+      - name: draftcombinestats
+        path: /stats/draftcombinestats
+        query_defaults: {LeagueID: '00', SeasonYear: 2025-26}
+        summary: 'DraftCombineStats. resultSets: DraftCombineStats.'
+      - name: drafthistory
+        path: /stats/drafthistory
+        query_defaults: {LeagueID: '00', College: '', OverallPick: '', RoundNum: '', RoundPick: '', Season: '', TeamID: '', TopX: ''}
+        summary: 'DraftHistory. resultSets: DraftHistory.'
+      - name: dunkscoreleaders
+        path: /stats/dunkscoreleaders
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season, PlayerID: '', TeamID: '', GameID: ''}
+        summary: 'DunkScoreLeaders. resultSets: Dunks.'
+      - name: fantasywidget
+        path: /stats/fantasywidget
+        query_defaults: {ActivePlayers: N, LastNGames: '0', LeagueID: '00', Season: 2025-26, SeasonType: Regular Season, TodaysOpponent: '0', TodaysPlayers: N, DateFrom: '', DateTo: '', Location: '', Month: '', OpponentTeamID: '', PORound: '', PlayerID: '', Position: '', SeasonSegment: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'FantasyWidget. resultSets: FantasyWidgetResult.'
+      - name: franchisehistory
+        path: /stats/franchisehistory
+        query_defaults: {LeagueID: '00'}
+        summary: 'FranchiseHistory. resultSets: DefunctTeams, FranchiseHistory.'
+      - name: franchiseleaders
+        path: /stats/franchiseleaders
+        query_params: [TeamID]
+        query_defaults: {LeagueID: '00'}
+        summary: 'FranchiseLeaders. resultSets: FranchiseLeaders.'
+      - name: franchiseplayers
+        path: /stats/franchiseplayers
+        query_params: [TeamID]
+        query_defaults: {LeagueID: '00', PerMode: Totals, SeasonType: Regular Season}
+        summary: 'FranchisePlayers. resultSets: FranchisePlayers.'
+      - name: gamerotation
+        path: /stats/gamerotation
+        query_params: [GameID]
+        query_defaults: {LeagueID: '00'}
+        summary: 'GameRotation. resultSets: AwayTeam, HomeTeam.'
+      - name: glalumboxscoresimilarityscore
+        path: /stats/glalumboxscoresimilarityscore
+        query_params: [Person2Id, Person1Id]
+        query_defaults: {Person1LeagueId: '00', Person1Season: '2025', Person1SeasonType: Regular Season, Person2LeagueId: '00', Person2Season: '2025', Person2SeasonType: Regular Season}
+        summary: 'GLAlumBoxScoreSimilarityScore. resultSets: GLeagueAlumBoxScoreSimilarityScores.'
+      - name: gravityleaders
+        path: /stats/gravityleaders
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season}
+        summary: 'GravityLeaders. resultSets: leaders.'
+      - name: homepageleaders
+        path: /stats/homepageleaders
+        query_defaults: {GameScope: Season, LeagueID: '00', PlayerOrTeam: Team, PlayerScope: All Players, Season: 2025-26, SeasonType: Regular Season, StatCategory: Points}
+        summary: 'HomePageLeaders. resultSets: HomePageLeaders, LeagueAverage, LeagueMax.'
+      - name: homepagev2
+        path: /stats/homepagev2
+        query_defaults: {GameScope: Season, LeagueID: '00', PlayerOrTeam: Team, PlayerScope: All Players, Season: 2025-26, SeasonType: Regular Season, StatType: Traditional}
+        summary: 'HomePageV2. resultSets: HomePageStat1, HomePageStat2, HomePageStat3, HomePageStat4, HomePageStat5, HomePageStat6 ….'
+      - name: hustlestatsboxscore
+        path: /stats/hustlestatsboxscore
+        query_params: [GameID]
+        summary: 'HustleStatsBoxScore. resultSets: HustleStatsAvailable, PlayerStats, TeamStats.'
+      - name: infographicfanduelplayer
+        path: /stats/infographicfanduelplayer
+        query_params: [GameID]
+        summary: 'InfographicFanDuelPlayer. resultSets: FanDuelPlayer.'
+      - name: iststandings
+        path: /stats/iststandings
+        query_defaults: {LeagueID: '00', Season: 2025-26, Section: group}
+        summary: 'ISTStandings. resultSets: Standings.'
+      - name: leaderstiles
+        path: /stats/leaderstiles
+        query_defaults: {GameScope: Season, LeagueID: '00', PlayerOrTeam: Team, PlayerScope: All Players, Season: 2025-26, SeasonType: Regular Season, Stat: PTS}
+        summary: 'LeadersTiles. resultSets: AllTimeSeasonHigh, LastSeasonHigh, LeadersTiles, LowSeasonHigh.'
+      - name: leaguedashlineups
+        path: /stats/leaguedashlineups
+        query_defaults: {GroupQuantity: '5', LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashLineups. resultSets: Lineups.'
+      - name: leaguedashoppptshot
+        path: /stats/leaguedashoppptshot
+        query_defaults: {LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, CloseDefDistRange: '', Conference: '', DateFrom: '', DateTo: '', Division: '', DribbleRange: '', GameSegment: '', GeneralRange: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', Period: '', SeasonSegment: '', ShotClockRange: '', ShotDistRange: '', TeamID: '', TouchTimeRange: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashOppPtShot. resultSets: LeagueDashPTShots.'
+      - name: leaguedashplayerbiostats
+        path: /stats/leaguedashplayerbiostats
+        query_defaults: {LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameScope: '', GameSegment: '', Height: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', Period: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPlayerBioStats. resultSets: LeagueDashPlayerBioStats.'
+      - name: leaguedashplayerclutch
+        path: /stats/leaguedashplayerclutch
+        query_defaults: {AheadBehind: Ahead or Behind, ClutchTime: Last 5 Minutes, LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, PointDiff: '5', Rank: N, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameScope: '', GameSegment: '', Height: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPlayerClutch. resultSets: LeagueDashPlayerClutch.'
+      - name: leaguedashplayerptshot
+        path: /stats/leaguedashplayerptshot
+        query_defaults: {LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, CloseDefDistRange: '', College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', DribbleRange: '', GameSegment: '', GeneralRange: '', Height: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', Period: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', ShotDistRange: '', StarterBench: '', TeamID: '', TouchTimeRange: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPlayerPtShot. resultSets: LeagueDashPTShots.'
+      - name: leaguedashplayershotlocations
+        path: /stats/leaguedashplayershotlocations
+        query_defaults: {DistanceRange: By Zone, LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameScope: '', GameSegment: '', Height: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPlayerShotLocations. resultSets: ShotLocations.'
+      - name: leaguedashplayerstats
+        path: /stats/leaguedashplayerstats
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameScope: '', GameSegment: '', Height: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', TwoWay: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPlayerStats. resultSets: LeagueDashPlayerStats.'
+      - name: leaguedashptdefend
+        path: /stats/leaguedashptdefend
+        query_defaults: {DefenseCategory: Overall, LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameSegment: '', Height: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', Period: '', PlayerExperience: '', PlayerID: '', PlayerPosition: '', SeasonSegment: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPtDefend. resultSets: LeagueDashPTDefend.'
+      - name: leaguedashptstats
+        path: /stats/leaguedashptstats
+        query_defaults: {LastNGames: '0', Month: '0', OpponentTeamID: '0', PerMode: Totals, PlayerOrTeam: Team, PtMeasureType: SpeedDistance, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', GameScope: '', Height: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueDashPtStats. resultSets: LeagueDashPtStats.'
+      - name: leaguedashptteamdefend
+        path: /stats/leaguedashptteamdefend
+        query_defaults: {DefenseCategory: Overall, LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameSegment: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', Period: '', SeasonSegment: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashPtTeamDefend. resultSets: LeagueDashPtTeamDefend.'
+      - name: leaguedashteamclutch
+        path: /stats/leaguedashteamclutch
+        query_defaults: {AheadBehind: Ahead or Behind, ClutchTime: Last 5 Minutes, LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, PointDiff: '5', Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameScope: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashTeamClutch. resultSets: LeagueDashTeamClutch.'
+      - name: leaguedashteamptshot
+        path: /stats/leaguedashteamptshot
+        query_defaults: {LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, CloseDefDistRange: '', Conference: '', DateFrom: '', DateTo: '', Division: '', DribbleRange: '', GameSegment: '', GeneralRange: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', Period: '', SeasonSegment: '', ShotClockRange: '', ShotDistRange: '', TeamID: '', TouchTimeRange: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashTeamPtShot. resultSets: LeagueDashPTShots.'
+      - name: leaguedashteamshotlocations
+        path: /stats/leaguedashteamshotlocations
+        query_defaults: {DistanceRange: By Zone, LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameScope: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashTeamShotLocations. resultSets: ShotLocations.'
+      - name: leaguedashteamstats
+        path: /stats/leaguedashteamstats
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameScope: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', ShotClockRange: '', StarterBench: '', TeamID: '', TwoWay: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueDashTeamStats. resultSets: LeagueDashTeamStats.'
+      - name: leaguegamefinder
+        path: /stats/leaguegamefinder
+        query_defaults: {PlayerOrTeam: T, Conference: '', DateFrom: '', DateTo: '', Division: '', DraftNumber: '', DraftRound: '', DraftTeamID: '', DraftYear: '', EqAST: '', EqBLK: '', EqDD: '', EqDREB: '', EqFG3A: '', EqFG3M: '', EqFG3_PCT: '', EqFGA: '', EqFGM: '', EqFG_PCT: '', EqFTA: '', EqFTM: '', EqFT_PCT: '', EqMINUTES: '', EqOREB: '', EqPF: '', EqPTS: '', EqREB: '', EqSTL: '', EqTD: '', EqTOV: '', GameID: '', GtAST: '', GtBLK: '', GtDD: '', GtDREB: '', GtFG3A: '', GtFG3M: '', GtFG3_PCT: '', GtFGA: '', GtFGM: '', GtFG_PCT: '', GtFTA: '', GtFTM: '', GtFT_PCT: '', GtMINUTES: '', GtOREB: '', GtPF: '', GtPTS: '', GtREB: '', GtSTL: '', GtTD: '', GtTOV: '', LeagueID: '00', Location: '', LtAST: '', LtBLK: '', LtDD: '', LtDREB: '', LtFG3A: '', LtFG3M: '', LtFG3_PCT: '', LtFGA: '', LtFGM: '', LtFG_PCT: '', LtFTA: '', LtFTM: '', LtFT_PCT: '', LtMINUTES: '', LtOREB: '', LtPF: '', LtPTS: '', LtREB: '', LtSTL: '', LtTD: '', LtTOV: '', Outcome: '', PORound: '', PlayerID: '', RookieYear: '', Season: '', SeasonSegment: '', SeasonType: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', VsTeamID: '', YearsExperience: ''}
+        summary: 'LeagueGameFinder. resultSets: LeagueGameFinderResults.'
+      - name: leaguegamelog
+        path: /stats/leaguegamelog
+        query_defaults: {Counter: '0', Direction: ASC, LeagueID: '00', PlayerOrTeam: T, Season: 2025-26, SeasonType: Regular Season, Sorter: DATE, DateFrom: '', DateTo: ''}
+        summary: 'LeagueGameLog. resultSets: LeagueGameLog.'
+      - name: leaguehustlestatsplayer
+        path: /stats/leaguehustlestatsplayer
+        query_defaults: {PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', Height: '', LeagueID: '00', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueHustleStatsPlayer. resultSets: HustleStatsPlayer.'
+      - name: leaguehustlestatsteam
+        path: /stats/leaguehustlestatsteam
+        query_defaults: {PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, College: '', Conference: '', Country: '', DateFrom: '', DateTo: '', Division: '', DraftPick: '', DraftYear: '', Height: '', LeagueID: '00', Location: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', PlayerExperience: '', PlayerPosition: '', SeasonSegment: '', TeamID: '', VsConference: '', VsDivision: '', Weight: ''}
+        summary: 'LeagueHustleStatsTeam. resultSets: HustleStatsTeam.'
+      - name: leagueleaders
+        path: /stats/leagueleaders
+        query_defaults: {LeagueID: '00', PerMode: Totals, Scope: S, Season: 2025-26, SeasonType: Regular Season, StatCategory: PTS, ActiveFlag: ''}
+        summary: 'LeagueLeaders. resultSets: LeagueLeaders.'
+      - name: leaguelineupviz
+        path: /stats/leaguelineupviz
+        query_params: [MinutesMin]
+        query_defaults: {GroupQuantity: '5', LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'LeagueLineupViz. resultSets: LeagueLineupViz.'
+      - name: leagueplayerondetails
+        path: /stats/leagueplayerondetails
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'LeaguePlayerOnDetails. resultSets: PlayersOnCourtLeaguePlayerDetails.'
+      - name: leagueseasonmatchups
+        path: /stats/leagueseasonmatchups
+        query_defaults: {LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, DefPlayerID: '', DefTeamID: '', OffPlayerID: '', OffTeamID: ''}
+        summary: 'LeagueSeasonMatchups. resultSets: SeasonMatchups.'
+      - name: leaguestandings
+        path: /stats/leaguestandings
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season, SeasonYear: ''}
+        summary: 'LeagueStandings. resultSets: Standings.'
+      - name: leaguestandingsv3
+        path: /stats/leaguestandingsv3
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season, SeasonYear: ''}
+        summary: 'LeagueStandingsV3. resultSets: Standings.'
+      - name: matchupsrollup
+        path: /stats/matchupsrollup
+        query_defaults: {LeagueID: '00', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, DefPlayerID: '', DefTeamID: '', OffPlayerID: '', OffTeamID: ''}
+        summary: 'MatchupsRollup. resultSets: MatchupsRollup.'
+      - name: playbyplay
+        path: /stats/playbyplay
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', StartPeriod: '0'}
+        summary: 'PlayByPlay. resultSets: AvailableVideo, PlayByPlay.'
+      - name: playbyplayv2
+        path: /stats/playbyplayv2
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', StartPeriod: '0'}
+        summary: 'PlayByPlayV2. resultSets: AvailableVideo, PlayByPlay. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: playbyplayv3
+        path: /stats/playbyplayv3
+        query_params: [GameID]
+        query_defaults: {EndPeriod: '0', StartPeriod: '0'}
+        summary: 'PlayByPlayV3. resultSets: AvailableVideo, PlayByPlay.'
+      - name: playerawards
+        path: /stats/playerawards
+        query_params: [PlayerID]
+        summary: 'PlayerAwards. resultSets: PlayerAwards.'
+      - name: playercareerbycollege
+        path: /stats/playercareerbycollege
+        query_params: [College]
+        query_defaults: {LeagueID: '00', PerMode: Totals, SeasonType: Regular Season, Season: ''}
+        summary: 'PlayerCareerByCollege. resultSets: PlayerCareerByCollege.'
+      - name: playercareerbycollegerollup
+        path: /stats/playercareerbycollegerollup
+        query_defaults: {LeagueID: '00', PerMode: Totals, SeasonType: Regular Season, Season: ''}
+        summary: 'PlayerCareerByCollegeRollup. resultSets: East, Midwest, South, West.'
+      - name: playercareerstats
+        path: /stats/playercareerstats
+        query_params: [PlayerID]
+        query_defaults: {PerMode: Totals, LeagueID: '00'}
+        summary: 'PlayerCareerStats. resultSets: CareerTotalsAllStarSeason, CareerTotalsCollegeSeason, CareerTotalsPostSeason, CareerTotalsRegularSeason, SeasonRankingsPostSeason, SeasonRankingsRegularSeason ….'
+      - name: playercompare
+        path: /stats/playercompare
+        query_params: [VsPlayerIDList, PlayerIDList]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerCompare. resultSets: Individual, OverallCompare.'
+      - name: playerdashboardbyclutch
+        path: /stats/playerdashboardbyclutch
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByClutch. resultSets: Last10Sec3Point2PlayerDashboard, Last10Sec3PointPlayerDashboard, Last1Min5PointPlayerDashboard, Last1MinPlusMinus5PointPlayerDashboard, Last30Sec3Point2PlayerDashboard, Last30Sec3PointPlayerDashboard ….'
+      - name: playerdashboardbygamesplits
+        path: /stats/playerdashboardbygamesplits
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByGameSplits. resultSets: ByActualMarginPlayerDashboard, ByHalfPlayerDashboard, ByPeriodPlayerDashboard, ByScoreMarginPlayerDashboard, OverallPlayerDashboard.'
+      - name: playerdashboardbygeneralsplits
+        path: /stats/playerdashboardbygeneralsplits
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByGeneralSplits. resultSets: DaysRestPlayerDashboard, LocationPlayerDashboard, MonthPlayerDashboard, OverallPlayerDashboard, PrePostAllStarPlayerDashboard, StartingPosition ….'
+      - name: playerdashboardbylastngames
+        path: /stats/playerdashboardbylastngames
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByLastNGames. resultSets: GameNumberPlayerDashboard, Last10PlayerDashboard, Last15PlayerDashboard, Last20PlayerDashboard, Last5PlayerDashboard, OverallPlayerDashboard.'
+      - name: playerdashboardbyshootingsplits
+        path: /stats/playerdashboardbyshootingsplits
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByShootingSplits. resultSets: AssistedBy, AssitedShotPlayerDashboard, OverallPlayerDashboard, Shot5FTPlayerDashboard, Shot8FTPlayerDashboard, ShotAreaPlayerDashboard ….'
+      - name: playerdashboardbyteamperformance
+        path: /stats/playerdashboardbyteamperformance
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByTeamPerformance. resultSets: OverallPlayerDashboard, PointsScoredPlayerDashboard, PontsAgainstPlayerDashboard, ScoreDifferentialPlayerDashboard.'
+      - name: playerdashboardbyyearoveryear
+        path: /stats/playerdashboardbyyearoveryear
+        query_params: [PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashboardByYearOverYear. resultSets: ByYearPlayerDashboard, OverallPlayerDashboard.'
+      - name: playerdashptpass
+        path: /stats/playerdashptpass
+        query_params: [TeamID, PlayerID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashPtPass. resultSets: PassesMade, PassesReceived.'
+      - name: playerdashptreb
+        path: /stats/playerdashptreb
+        query_params: [TeamID, PlayerID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Period: '0', Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashPtReb. resultSets: NumContestedRebounding, OverallRebounding, RebDistanceRebounding, ShotDistanceRebounding, ShotTypeRebounding.'
+      - name: playerdashptshotdefend
+        path: /stats/playerdashptshotdefend
+        query_params: [TeamID, PlayerID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Period: '0', Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashPtShotDefend. resultSets: DefendingShots.'
+      - name: playerdashptshots
+        path: /stats/playerdashptshots
+        query_params: [TeamID, PlayerID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Period: '0', Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerDashPtShots. resultSets: ClosestDefender10ftPlusShooting, ClosestDefenderShooting, DribbleShooting, GeneralShooting, Overall, ShotClockShooting ….'
+      - name: playerestimatedmetrics
+        path: /stats/playerestimatedmetrics
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season}
+        summary: 'PlayerEstimatedMetrics. resultSets: PlayerEstimatedMetrics.'
+      - name: playerfantasyprofilebargraph
+        path: /stats/playerfantasyprofilebargraph
+        query_params: [PlayerID]
+        query_defaults: {Season: 2025-26, LeagueID: '00', SeasonType: ''}
+        summary: 'PlayerFantasyProfileBarGraph. resultSets: LastFiveGamesAvg, SeasonAvg.'
+      - name: playergamelog
+        path: /stats/playergamelog
+        query_params: [PlayerID]
+        query_defaults: {Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', LeagueID: '00'}
+        summary: 'PlayerGameLog. resultSets: PlayerGameLog.'
+      - name: playergamelogs
+        path: /stats/playergamelogs
+        query_defaults: {DateFrom: '', DateTo: '', GameSegment: '', LastNGames: '', LeagueID: '00', Location: '', MeasureType: '', Month: '', OpponentTeamID: '', Outcome: '', PORound: '', PerMode: '', Period: '', PlayerID: '', Season: '', SeasonSegment: '', SeasonType: '', ShotClockRange: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerGameLogs. resultSets: PlayerGameLogs.'
+      - name: playergamestreakfinder
+        path: /stats/playergamestreakfinder
+        query_defaults: {ActiveStreaksOnly: '', Conference: '', DateFrom: '', DateTo: '', Division: '', DraftNumber: '', DraftRound: '', DraftTeamID: '', DraftYear: '', EqAST: '', EqBLK: '', EqDD: '', EqDREB: '', EqFG3A: '', EqFG3M: '', EqFG3_PCT: '', EqFGA: '', EqFGM: '', EqFG_PCT: '', EqFTA: '', EqFTM: '', EqFT_PCT: '', EqMINUTES: '', EqOREB: '', EqPF: '', EqPTS: '', EqREB: '', EqSTL: '', EqTD: '', EqTOV: '', GameID: '', GtAST: '', GtBLK: '', GtDD: '', GtDREB: '', GtFG3A: '', GtFG3M: '', GtFG3_PCT: '', GtFGA: '', GtFGM: '', GtFG_PCT: '', GtFTA: '', GtFTM: '', GtFT_PCT: '', GtMINUTES: '', GtOREB: '', GtPF: '', GtPTS: '', GtREB: '', GtSTL: '', GtTD: '', GtTOV: '', LeagueID: '00', Location: '', LtAST: '', LtBLK: '', LtDD: '', LtDREB: '', LtFG3A: '', LtFG3M: '', LtFG3_PCT: '', LtFGA: '', LtFGM: '', LtFG_PCT: '', LtFTA: '', LtFTM: '', LtFT_PCT: '', LtMINUTES: '', LtOREB: '', LtPF: '', LtPTS: '', LtREB: '', LtSTL: '', LtTD: '', LtTOV: '', MinGames: '', Outcome: '', PORound: '', PlayerID: '', RookieYear: '', Season: '', SeasonSegment: '', SeasonType: '', StarterBench: '', TeamID: '', VsConference: '', VsDivision: '', VsTeamID: '', YearsExperience: ''}
+        summary: 'PlayerGameStreakFinder. resultSets: PlayerGameStreakFinderResults.'
+      - name: playerindex
+        path: /stats/playerindex
+        query_defaults: {Active: '', AllStar: '', College: '', Country: '', DraftPick: '', DraftYear: '', Height: '', PlayerPosition: '', Historical: '', LeagueID: '00', Season: 2025-26, TeamID: '', Weight: ''}
+        summary: 'PlayerIndex. resultSets: PlayerIndex.'
+      - name: playernextngames
+        path: /stats/playernextngames
+        query_params: [PlayerID]
+        query_defaults: {NumberOfGames: '2147483647', Season: 2025-26, SeasonType: Regular Season, LeagueID: '00'}
+        summary: 'PlayerNextNGames. resultSets: NextNGames.'
+      - name: playerprofilev2
+        path: /stats/playerprofilev2
+        query_params: [PlayerID]
+        query_defaults: {PerMode: Totals, LeagueID: '00'}
+        summary: 'PlayerProfileV2. resultSets: CareerHighs, CareerTotalsAllStarSeason, CareerTotalsCollegeSeason, CareerTotalsPostSeason, CareerTotalsPreseason, CareerTotalsRegularSeason ….'
+      - name: playervsplayer
+        path: /stats/playervsplayer
+        query_params: [VsPlayerID, PlayerID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'PlayerVsPlayer. resultSets: OnOffCourt, Overall, PlayerInfo, ShotAreaOffCourt, ShotAreaOnCourt, ShotAreaOverall ….'
+      - name: playoffpicture
+        path: /stats/playoffpicture
+        query_defaults: {LeagueID: '00', SeasonID: '22025'}
+        summary: 'PlayoffPicture. resultSets: EastConfPlayoffPicture, EastConfRemainingGames, EastConfStandings, WestConfPlayoffPicture, WestConfRemainingGames, WestConfStandings.'
+      - name: scheduleleaguev2
+        path: /stats/scheduleleaguev2
+        query_defaults: {LeagueID: '00', Season: 2025-26}
+        summary: 'ScheduleLeagueV2. resultSets: SeasonGames, SeasonWeeks.'
+      - name: scoreboardv2
+        path: /stats/scoreboardv2
+        query_defaults: {DayOffset: '0', GameDate: '2026-06-01', LeagueID: '00'}
+        summary: 'ScoreboardV2. resultSets: Available, EastConfStandingsByDay, GameHeader, LastMeeting, LineScore, SeriesStandings …. (Deprecated for 2025-26 — prefer the v3 sibling.)'
+      - name: scoreboardv3
+        path: /stats/scoreboardv3
+        query_params: [GameDate]
+        query_defaults: {LeagueID: '00'}
+        summary: 'ScoreboardV3. resultSets: ScoreboardInfo, GameHeader, LineScore, GameLeaders, TeamLeaders, Broadcasters.'
+      - name: shotchartdetail
+        path: /stats/shotchartdetail
+        query_params: [TeamID, PlayerID]
+        query_defaults: {ContextMeasure: PTS, LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', Period: '0', SeasonType: Regular Season, AheadBehind: '', ClutchTime: '', ContextFilter: '', DateFrom: '', DateTo: '', EndPeriod: '', EndRange: '', GameID: '', GameSegment: '', Location: '', Outcome: '', PlayerPosition: '', PointDiff: '', Position: '', RangeType: '', RookieYear: '', Season: '', SeasonSegment: '', StartPeriod: '', StartRange: '', VsConference: '', VsDivision: ''}
+        summary: 'ShotChartDetail. resultSets: LeagueAverages, Shot_Chart_Detail.'
+      - name: shotchartleaguewide
+        path: /stats/shotchartleaguewide
+        query_defaults: {LeagueID: '00', Season: 2025-26}
+        summary: 'ShotChartLeagueWide. resultSets: League_Wide.'
+      - name: shotchartlineupdetail
+        path: /stats/shotchartlineupdetail
+        query_defaults: {ContextMeasure: PTS, GROUP_ID: '0', LeagueID: '00', Period: '0', Season: 2025-26, SeasonType: Regular Season, ContextFilter: '', DateFrom: '', DateTo: '', GameID: '', GameSegment: '', LastNGames: '', Location: '', Month: '', OpponentTeamID: '', Outcome: '', SeasonSegment: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'ShotChartLineupDetail. resultSets: ShotChartLineupDetail, ShotChartLineupLeagueAverage.'
+      - name: synergyplaytypes
+        path: /stats/synergyplaytypes
+        query_defaults: {LeagueID: '00', PerMode: Totals, PlayerOrTeam: T, SeasonType: Regular Season, SeasonYear: 2025-26, PlayType: '', TypeGrouping: ''}
+        summary: 'SynergyPlayTypes. resultSets: SynergyPlayType.'
+      - name: teamandplayersvsplayers
+        path: /stats/teamandplayersvsplayers
+        query_params: [VsTeamID, VsPlayerID5, VsPlayerID4, VsPlayerID3, VsPlayerID2, VsPlayerID1, TeamID, PlayerID5, PlayerID4, PlayerID3, PlayerID2, PlayerID1]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, Conference: '', DateFrom: '', DateTo: '', Division: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamAndPlayersVsPlayers. resultSets: PlayersVsPlayers, TeamPlayersVsPlayersOff, TeamPlayersVsPlayersOn, TeamVsPlayers, TeamVsPlayersOff.'
+      - name: teamdashboardbygeneralsplits
+        path: /stats/teamdashboardbygeneralsplits
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamDashboardByGeneralSplits. resultSets: DaysRestTeamDashboard, LocationTeamDashboard, MonthTeamDashboard, OverallTeamDashboard, PrePostAllStarTeamDashboard, WinsLossesTeamDashboard.'
+      - name: teamdashboardbyshootingsplits
+        path: /stats/teamdashboardbyshootingsplits
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamDashboardByShootingSplits. resultSets: AssistedBy, AssitedShotTeamDashboard, OverallTeamDashboard, Shot5FTTeamDashboard, Shot8FTTeamDashboard, ShotAreaTeamDashboard ….'
+      - name: teamdashlineups
+        path: /stats/teamdashlineups
+        query_params: [TeamID]
+        query_defaults: {GroupQuantity: '5', LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameID: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamDashLineups. resultSets: Lineups, Overall.'
+      - name: teamdashptpass
+        path: /stats/teamdashptpass
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamDashPtPass. resultSets: PassesMade, PassesReceived.'
+      - name: teamdashptreb
+        path: /stats/teamdashptreb
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Period: '0', Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamDashPtReb. resultSets: NumContestedRebounding, OverallRebounding, RebDistanceRebounding, ShotDistanceRebounding, ShotTypeRebounding.'
+      - name: teamdashptshots
+        path: /stats/teamdashptshots
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', LeagueID: '00', Month: '0', OpponentTeamID: '0', PerMode: Totals, Period: '0', Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamDashPtShots. resultSets: ClosestDefender10ftPlusShooting, ClosestDefenderShooting, DribbleShooting, GeneralShooting, ShotClockShooting, TouchTimeShooting.'
+      - name: teamdetails
+        path: /stats/teamdetails
+        query_params: [TeamID]
+        summary: 'TeamDetails. resultSets: TeamAwardsChampionships, TeamAwardsConf, TeamAwardsDiv, TeamBackground, TeamHistory, TeamHof ….'
+      - name: teamestimatedmetrics
+        path: /stats/teamestimatedmetrics
+        query_defaults: {LeagueID: '00', Season: 2025-26, SeasonType: Regular Season}
+        summary: 'TeamEstimatedMetrics. resultSets: TeamEstimatedMetrics.'
+      - name: teamgamelog
+        path: /stats/teamgamelog
+        query_params: [TeamID]
+        query_defaults: {Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', LeagueID: '00'}
+        summary: 'TeamGameLog. resultSets: TeamGameLog.'
+      - name: teamgamelogs
+        path: /stats/teamgamelogs
+        query_defaults: {DateFrom: '', DateTo: '', GameSegment: '', LastNGames: '', LeagueID: '00', Location: '', MeasureType: '', Month: '', OppTeamID: '', Outcome: '', PORound: '', PerMode: '', Period: '', PlayerID: '', Season: '', SeasonSegment: '', SeasonType: '', ShotClockRange: '', TeamID: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamGameLogs. resultSets: TeamGameLogs.'
+      - name: teamgamestreakfinder
+        path: /stats/teamgamestreakfinder
+        query_defaults: {ActiveStreaksOnly: '', ActiveTeamsOnly: '', BtrOPPAST: '', BtrOPPBLK: '', BtrOPPDREB: '', BtrOPPFG3A: '', BtrOPPFG3M: '', BtrOPPFG3PCT: '', BtrOPPFGA: '', BtrOPPFGM: '', BtrOPPFG_PCT: '', BtrOPPFTA: '', BtrOPPFTM: '', BtrOPPFT_PCT: '', BtrOPPOREB: '', BtrOPPPF: '', BtrOPPPTS: '', BtrOPPPTS2NDCHANCE: '', BtrOPPPTSFB: '', BtrOPPPTSOFFTOV: '', BtrOPPPTSPAINT: '', BtrOPPREB: '', BtrOPPSTL: '', BtrOPPTOV: '', Conference: '', DateFrom: '', DateTo: '', Division: '', EqAST: '', EqBLK: '', EqDD: '', EqDREB: '', EqFG3A: '', EqFG3M: '', EqFG3_PCT: '', EqFGA: '', EqFGM: '', EqFG_PCT: '', EqFTA: '', EqFTM: '', EqFT_PCT: '', EqMINUTES: '', EqOPPPTS2NDCHANCE: '', EqOPPPTSFB: '', EqOPPPTSOFFTOV: '', EqOPPPTSPAINT: '', EqOREB: '', EqPF: '', EqPTS: '', EqPTS2NDCHANCE: '', EqPTSFB: '', EqPTSOFFTOV: '', EqPTSPAINT: '', EqREB: '', EqSTL: '', EqTD: '', EqTOV: '', GameID: '', GtAST: '', GtBLK: '', GtDD: '', GtDREB: '', GtFG3A: '', GtFG3M: '', GtFG3_PCT: '', GtFGA: '', GtFGM: '', GtFG_PCT: '', GtFTA: '', GtFTM: '', GtFT_PCT: '', GtMINUTES: '', GtOPPAST: '', GtOPPBLK: '', GtOPPDREB: '', GtOPPFG3A: '', GtOPPFG3M: '', GtOPPFG3PCT: '', GtOPPFGA: '', GtOPPFGM: '', GtOPPFG_PCT: '', GtOPPFTA: '', GtOPPFTM: '', GtOPPFT_PCT: '', GtOPPOREB: '', GtOPPPF: '', GtOPPPTS: '', GtOPPPTS2NDCHANCE: '', GtOPPPTSFB: '', GtOPPPTSOFFTOV: '', GtOPPPTSPAINT: '', GtOPPREB: '', GtOPPSTL: '', GtOPPTOV: '', GtOREB: '', GtPF: '', GtPTS: '', GtPTS2NDCHANCE: '', GtPTSFB: '', GtPTSOFFTOV: '', GtPTSPAINT: '', GtREB: '', GtSTL: '', GtTD: '', GtTOV: '', LStreak: '', LeagueID: '00', Location: '', LtAST: '', LtBLK: '', LtDD: '', LtDREB: '', LtFG3A: '', LtFG3M: '', LtFG3_PCT: '', LtFGA: '', LtFGM: '', LtFG_PCT: '', LtFTA: '', LtFTM: '', LtFT_PCT: '', LtMINUTES: '', LtOPPAST: '', LtOPPBLK: '', LtOPPDREB: '', LtOPPFG3A: '', LtOPPFG3M: '', LtOPPFG3PCT: '', LtOPPFGA: '', LtOPPFGM: '', LtOPPFG_PCT: '', LtOPPFTA: '', LtOPPFTM: '', LtOPPFT_PCT: '', LtOPPOREB: '', LtOPPPF: '', LtOPPPTS: '', LtOPPPTS2NDCHANCE: '', LtOPPPTSFB: '', LtOPPPTSOFFTOV: '', LtOPPPTSPAINT: '', LtOPPREB: '', LtOPPSTL: '', LtOPPTOV: '', LtOREB: '', LtPF: '', LtPTS: '', LtPTS2NDCHANCE: '', LtPTSFB: '', LtPTSOFFTOV: '', LtPTSPAINT: '', LtREB: '', LtSTL: '', LtTD: '', LtTOV: '', MinGames: '', Outcome: '', PORound: '', Season: '', SeasonSegment: '', SeasonType: '', TeamID: '', VsConference: '', VsDivision: '', VsTeamID: '', WStreak: '', WrsOPPAST: '', WrsOPPBLK: '', WrsOPPDREB: '', WrsOPPFG3A: '', WrsOPPFG3M: '', WrsOPPFG3PCT: '', WrsOPPFGA: '', WrsOPPFGM: '', WrsOPPFG_PCT: '', WrsOPPFTA: '', WrsOPPFTM: '', WrsOPPFT_PCT: '', WrsOPPOREB: '', WrsOPPPF: '', WrsOPPPTS: '', WrsOPPPTS2NDCHANCE: '', WrsOPPPTSFB: '', WrsOPPPTSOFFTOV: '', WrsOPPPTSPAINT: '', WrsOPPREB: '', WrsOPPSTL: '', WrsOPPTOV: ''}
+        summary: 'TeamGameStreakFinder. resultSets: TeamGameStreakFinderParametersResults.'
+      - name: teamhistoricalleaders
+        path: /stats/teamhistoricalleaders
+        query_params: [TeamID]
+        query_defaults: {LeagueID: '00', SeasonID: '22025'}
+        summary: 'TeamHistoricalLeaders. resultSets: CareerLeadersByTeam.'
+      - name: teaminfocommon
+        path: /stats/teaminfocommon
+        query_params: [TeamID]
+        query_defaults: {LeagueID: '00', Season: '', SeasonType: ''}
+        summary: 'TeamInfoCommon. resultSets: AvailableSeasons, TeamInfoCommon, TeamSeasonRanks.'
+      - name: teamplayerdashboard
+        path: /stats/teamplayerdashboard
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PORound: '', SeasonSegment: '', ShotClockRange: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamPlayerDashboard. resultSets: PlayersSeasonTotals, TeamOverall.'
+      - name: teamplayeronoffdetails
+        path: /stats/teamplayeronoffdetails
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamPlayerOnOffDetails. resultSets: OverallTeamPlayerOnOffDetails, PlayersOffCourtTeamPlayerOnOffDetails, PlayersOnCourtTeamPlayerOnOffDetails.'
+      - name: teamplayeronoffsummary
+        path: /stats/teamplayeronoffsummary
+        query_params: [TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamPlayerOnOffSummary. resultSets: OverallTeamPlayerOnOffSummary, PlayersOffCourtTeamPlayerOnOffSummary, PlayersOnCourtTeamPlayerOnOffSummary.'
+      - name: teamvsplayer
+        path: /stats/teamvsplayer
+        query_params: [VsPlayerID, TeamID]
+        query_defaults: {LastNGames: '0', MeasureType: Base, Month: '0', OpponentTeamID: '0', PaceAdjust: N, PerMode: Totals, Period: '0', PlusMinus: N, Rank: N, Season: 2025-26, SeasonType: Regular Season, DateFrom: '', DateTo: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PlayerID: '', SeasonSegment: '', VsConference: '', VsDivision: ''}
+        summary: 'TeamVsPlayer. resultSets: OnOffCourt, Overall, ShotAreaOffCourt, ShotAreaOnCourt, ShotAreaOverall, ShotDistanceOffCourt ….'
+      - name: teamyearbyyearstats
+        path: /stats/teamyearbyyearstats
+        query_params: [TeamID]
+        query_defaults: {LeagueID: '00', PerMode: Totals, SeasonType: Regular Season}
+        summary: 'TeamYearByYearStats. resultSets: TeamStats.'
+      - name: videodetails
+        path: /stats/videodetails
+        query_params: [TeamID, PlayerID]
+        query_defaults: {ContextMeasure: PTS, LastNGames: '0', Month: '0', OpponentTeamID: '0', Period: '0', Season: 2025-26, SeasonType: Regular Season, AheadBehind: '', ClutchTime: '', ContextFilter: '', DateFrom: '', DateTo: '', EndPeriod: '', EndRange: '', GameID: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PointDiff: '', Position: '', RangeType: '', RookieYear: '', SeasonSegment: '', StartPeriod: '', StartRange: '', VsConference: '', VsDivision: ''}
+        summary: VideoDetails.
+      - name: videodetailsasset
+        path: /stats/videodetailsasset
+        query_params: [TeamID, PlayerID]
+        query_defaults: {ContextMeasure: PTS, LastNGames: '0', Month: '0', OpponentTeamID: '0', Period: '0', Season: 2025-26, SeasonType: Regular Season, AheadBehind: '', ClutchTime: '', ContextFilter: '', DateFrom: '', DateTo: '', EndPeriod: '', EndRange: '', GameID: '', GameSegment: '', LeagueID: '00', Location: '', Outcome: '', PointDiff: '', Position: '', RangeType: '', RookieYear: '', SeasonSegment: '', StartPeriod: '', StartRange: '', VsConference: '', VsDivision: ''}
+        summary: VideoDetailsAsset.
+      - name: videoevents
+        path: /stats/videoevents
+        query_params: [GameID]
+        query_defaults: {GameEventID: '0'}
+        summary: VideoEvents.
+      - name: videostatus
+        path: /stats/videostatus
+        query_defaults: {GameDate: '2026-06-01', LeagueID: '00'}
+        summary: 'VideoStatus. resultSets: VideoStatus.'
+      - name: winprobabilitypbp
+        path: /stats/winprobabilitypbp
+        query_params: [GameID]
+        query_defaults: {RunType: each second}
+        summary: 'WinProbabilityPBP. resultSets: GameInfo, WinProbPBP.'

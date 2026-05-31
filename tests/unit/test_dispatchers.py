@@ -51,6 +51,12 @@ def _dispatcher() -> Dispatcher:
                 path="/cfs/afl/statsCentre/players",
                 query_params=["competitionId", "teamIds"],
             ),
+            TemplatedOperation(
+                name="leaguedashplayerstats",
+                path="/stats/leaguedashplayerstats",
+                query_params=["dummy"],
+                query_defaults={"Season": "2025-26", "PerMode": "Totals", "LeagueID": "00"},
+            ),
         ],
     )
 
@@ -86,6 +92,24 @@ async def test_templated_rest_passes_query_params():
     call = http.calls[0]
     assert call["url"] == "/cfs/afl/statsCentre/players"
     assert call["params"] == {"competitionId": "CD_S2026014", "teamIds": "CD_T130,CD_T80"}
+
+
+async def test_templated_rest_query_defaults_underlay_caller_params():
+    """Per-op query_defaults are sent, and caller query_params override matching keys."""
+    http = _RecordingHTTP()
+    handler = make_templated_rest_dispatcher(_dispatcher(), _spec(), http)
+    await handler(operation="leaguedashplayerstats", query_params={"Season": "2024-25"})
+    params = http.calls[0]["params"]
+    assert params["Season"] == "2024-25"  # caller wins
+    assert params["PerMode"] == "Totals"  # default carried through
+    assert params["LeagueID"] == "00"
+
+
+async def test_templated_rest_query_defaults_sent_when_no_caller_params():
+    http = _RecordingHTTP()
+    handler = make_templated_rest_dispatcher(_dispatcher(), _spec(), http)
+    await handler(operation="leaguedashplayerstats")
+    assert http.calls[0]["params"] == {"Season": "2025-26", "PerMode": "Totals", "LeagueID": "00"}
 
 
 async def test_unknown_operation_is_recoverable():

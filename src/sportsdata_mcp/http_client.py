@@ -54,7 +54,9 @@ class HTTPClient:
 
     def __init__(self, provider: Provider, cfg: Config) -> None:
         self._provider = provider
-        timeout = cfg.request_timeout(provider.id, default=30.0)
+        defaults = provider.defaults
+        prov_cfg = cfg.providers.get(provider.id, {})
+        timeout = cfg.request_timeout(provider.id, spec_default=defaults.request_timeout_seconds, default=30.0)
         self._max_bytes = cfg.max_response_bytes_for(provider.id)
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0),
@@ -63,10 +65,18 @@ class HTTPClient:
             follow_redirects=True,
         )
         self._auth_providers: dict[str, AuthProvider] = {}
+        burst = prov_cfg.get("burst")
+        if burst is None:
+            burst = defaults.burst if defaults.burst is not None else 10
         self._bucket = _TokenBucket(
-            rate=cfg.rate_limit_rps_for(provider.id),
-            burst=int(cfg.providers.get(provider.id, {}).get("burst", 10)),
+            rate=cfg.rate_limit_rps_for(provider.id, spec_default=defaults.rate_limit_rps),
+            burst=int(burst),
         )
+        # Transient-status retry policy (user config overrides the spec defaults).
+        statuses = prov_cfg.get("retry_statuses")
+        self._retry_statuses = set(statuses if statuses is not None else defaults.retry_statuses)
+        self._max_retries = int(prov_cfg.get("max_retries", defaults.max_retries))
+        self._retry_backoff = float(prov_cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds))
 
     def _auth_provider(self, key: str) -> AuthProvider:
         if key in self._auth_providers:
@@ -105,18 +115,31 @@ class HTTPClient:
             name, value = await ap.get()
             merged_headers[name] = value
 
-        for attempt in (0, 1):
+        auth_refetched = False
+        retries_used = 0
+        while True:
             log.info("→ %s %s (provider=%s, auth=%s)", method, full_url, self._provider.id, auth_key)
             r = await self._client.request(method, full_url, params=params, headers=merged_headers, json=json_body)
-            if r.status_code == 401 and needs_auth and attempt == 0:
+            # A stale credential surfaces as 401 — refetch once and retry immediately.
+            if r.status_code == 401 and needs_auth and not auth_refetched:
+                auth_refetched = True
                 log.warning("auth invalidated on 401 (provider=%s, auth=%s); refetching", self._provider.id, auth_key)
                 ap = self._auth_provider(auth_key)
                 ap.invalidate()
                 name, value = await ap.get()
                 merged_headers[name] = value
                 continue
+            # Transient upstream errors (e.g. NBA/Akamai 429/5xx) — exponential backoff.
+            if r.status_code in self._retry_statuses and retries_used < self._max_retries:
+                retries_used += 1
+                wait = self._retry_backoff * (2 ** (retries_used - 1))
+                log.warning(
+                    "HTTP %d (provider=%s); retry %d/%d after %.1fs",
+                    r.status_code, self._provider.id, retries_used, self._max_retries, wait,
+                )
+                await asyncio.sleep(wait)
+                continue
             return r
-        return r  # unreachable
 
     async def mint_auth(self, auth_key: str) -> tuple[str, str]:
         """Force-acquire the auth header for ``auth_key`` (used by ``doctor``)."""
@@ -168,19 +191,22 @@ class HTTPClient:
                 code=f"HTTP_{r.status_code}",
             )
 
-        # 3. Content-type / decode guard — Akamai/Cloudflare challenges return HTML, not JSON.
-        ctype = r.headers.get("content-type", "")
-        if "json" not in ctype:
-            log.error("non-JSON response (provider=%s, content-type=%s)", self._provider.id, ctype or "unknown")
-            raise ToolError(
-                f"{self._provider.id} returned non-JSON ({ctype or 'unknown'}; HTTP {r.status_code}). "
-                f"Often a bot-challenge page. Body starts: {_snippet(r)}",
-                recoverable=False,
-                code="NON_JSON_RESPONSE",
-            )
+        # 3. Decode guard — try JSON regardless of content-type. Some APIs (e.g. NBA's CDN)
+        #    serve perfectly good JSON labelled `text/plain`, so the content-type is only
+        #    consulted on a parse *failure*: a non-JSON type then points to an HTML
+        #    bot-challenge page (Akamai/Cloudflare), a JSON type to a malformed body.
         try:
             return r.json()
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
+            ctype = r.headers.get("content-type", "")
+            if "json" not in ctype:
+                log.error("non-JSON response (provider=%s, content-type=%s)", self._provider.id, ctype or "unknown")
+                raise ToolError(
+                    f"{self._provider.id} returned non-JSON ({ctype or 'unknown'}; HTTP {r.status_code}). "
+                    f"Often a bot-challenge page. Body starts: {_snippet(r)}",
+                    recoverable=False,
+                    code="NON_JSON_RESPONSE",
+                ) from e
             log.error("JSON decode failed (provider=%s): %s", self._provider.id, _snippet(r, 120))
             raise ToolError(
                 f"{self._provider.id} sent a JSON content-type but the body did not parse. "

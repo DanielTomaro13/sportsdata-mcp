@@ -17,6 +17,16 @@ providers:
     rate_limit_rps: 10          # sustained requests/sec (token bucket)
     max_response_bytes: 0       # 0 = no cap (the default); set a positive byte count to guard context
 
+  # NBA ships its own spec-level defaults (Akamai-friendly throttle + 429/5xx retry).
+  # Everything below is optional — uncomment to override the shipped defaults.
+  # nba:
+  #   rate_limit_rps: 0.4         # ~1 request / 2.5s (raise at your own risk; Akamai is strict)
+  #   request_timeout_seconds: 45
+  #   burst: 1
+  #   max_retries: 3
+  #   retry_statuses: [429, 500, 502, 503, 504]
+  #   retry_backoff_seconds: 1.0
+
 # There is no response-size cap by default. To opt in to one, set a positive value
 # either per-provider (above) or globally via SPORTSDATA_MCP_MAX_BYTES.
 # Precedence: providers.<id>.max_response_bytes > SPORTSDATA_MCP_MAX_BYTES env > 0 (unlimited).

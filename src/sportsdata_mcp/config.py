@@ -26,8 +26,14 @@ class Config:
     # 0 (or negative) disables the cap entirely. None = fall back to MAX_RESPONSE_BYTES_DEFAULT.
     max_bytes_override: int | None = None
 
-    def request_timeout(self, provider_id: str, default: float = 30.0) -> float:
-        return float(self.providers.get(provider_id, {}).get("request_timeout_seconds", default))
+    def request_timeout(self, provider_id: str, spec_default: float | None = None, default: float = 30.0) -> float:
+        """Read-timeout (seconds). User config wins, then the spec default, then ``default``."""
+        prov = self.providers.get(provider_id, {})
+        if prov.get("request_timeout_seconds") is not None:
+            return float(prov["request_timeout_seconds"])
+        if spec_default is not None:
+            return float(spec_default)
+        return float(default)
 
     def max_response_bytes_for(self, provider_id: str) -> int:
         """Per-provider response size cap (bytes); 0 or negative means no cap.
@@ -42,11 +48,19 @@ class Config:
             return int(self.max_bytes_override)
         return MAX_RESPONSE_BYTES_DEFAULT
 
-    def rate_limit_rps_for(self, provider_id: str) -> float:
-        """Per-provider token-bucket sustained rate (requests/sec)."""
+    def rate_limit_rps_for(self, provider_id: str, spec_default: float | None = None) -> float:
+        """Per-provider token-bucket sustained rate (requests/sec).
+
+        User config wins, then the spec default, then the engine default.
+        """
         prov = self.providers.get(provider_id, {})
         # Accept the documented `rate_limit_rps`, falling back to the legacy `rate_per_sec`.
-        return float(prov.get("rate_limit_rps", prov.get("rate_per_sec", RATE_LIMIT_RPS_DEFAULT)))
+        val = prov.get("rate_limit_rps", prov.get("rate_per_sec"))
+        if val is not None:
+            return float(val)
+        if spec_default is not None:
+            return float(spec_default)
+        return RATE_LIMIT_RPS_DEFAULT
 
 
 def _candidate_paths(explicit: Path | None) -> list[Path]:

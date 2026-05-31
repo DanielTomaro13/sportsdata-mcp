@@ -36,11 +36,14 @@ def make_templated_rest_dispatcher(disp: Dispatcher, spec: Spec, http: HTTPClien
                     code="MISSING_PATH_PARAM",
                 )
         url = op.path.format(**path_params)
+        # Per-op defaults underlay the caller's query_params: the model overrides
+        # only the fields it cares about, the rest go up as their (often empty) default.
+        merged_query = {**op.query_defaults, **(query_params or {})}
         return await http.request_json(
             method=disp.method,
             base=disp.base or "default",
             url=url,
-            params=query_params or {},
+            params=merged_query,
             headers=disp.default_headers,
             auth_key=disp.auth,
         )

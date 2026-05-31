@@ -60,6 +60,19 @@ def test_legacy_rate_per_sec_key():
     assert cfg.rate_limit_rps_for("x") == 7.0
 
 
+def test_spec_default_used_when_no_user_config():
+    """A spec-declared default applies when the operator hasn't overridden it."""
+    cfg = Config()
+    assert cfg.rate_limit_rps_for("nba", spec_default=0.4) == 0.4
+    assert cfg.request_timeout("nba", spec_default=45.0) == 45.0
+
+
+def test_user_config_overrides_spec_default():
+    cfg = Config(providers={"nba": {"rate_limit_rps": 2, "request_timeout_seconds": 10}})
+    assert cfg.rate_limit_rps_for("nba", spec_default=0.4) == 2.0
+    assert cfg.request_timeout("nba", spec_default=45.0) == 10.0
+
+
 def test_env_max_bytes_sets_global_override(tmp_path, monkeypatch):
     monkeypatch.delenv("SPORTSDATA_MCP_CONFIG", raising=False)
     monkeypatch.delenv("SPORTSDATA_MCP_GROUPS", raising=False)
