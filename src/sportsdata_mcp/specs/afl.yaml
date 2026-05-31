@@ -588,7 +588,7 @@ dispatchers:
       - { name: mediaAuth, path: "/cfs/afl/mediaAuth", summary: "Media-auth descriptor (used internally for video URL signing)." }
       - { name: commentaryFeed, path: "/cfs/commentaryFeed/{matchProviderId}", path_params: [matchProviderId], summary: "Live text commentary feed (one line per game event)." }
 
-  # ─── afl.premium.statspro (9 ops) ──────────────────────────────────────
+  # ─── afl.premium.statspro (11 ops) ─────────────────────────────────────
   - name: afl_statspro_call
     group: afl.premium.statspro
     capabilities:
@@ -616,3 +616,5 @@ dispatchers:
       - { name: teamStats_seasons, path: "/statspro/teamStats/seasons/{seasonProviderId}", path_params: [seasonProviderId], summary: "Bulk per-season team stats." }
       - { name: playerCareerSeasonStats, path: "/statspro/playerCareerSeasonStats/{playerProviderId}", path_params: [playerProviderId], query_params: [competitionType], summary: "Per-season totals across a player's career (competitionType=AFLW for AFLW)." }
       - { name: playerCareerSeasonStats_benchmarked, path: "/statspro/playerCareerSeasonStats/{playerProviderId}/benchmarked", path_params: [playerProviderId], summary: "Career season stats augmented with AFL-average benchmark columns." }
+      - { name: playerProfile, path: "/statspro/playerProfile/{playerProviderId}", path_params: [playerProviderId], query_params: [competitionCode], summary: "StatsPro player profile (career summary + headline stats). competitionCode is a CD_C* competition id." }
+      - { name: playerSeasonRoundStats, path: "/statspro/playerSeasonRoundStats/{playerProviderId}", path_params: [playerProviderId], query_params: [seasonId], summary: "Per-player, per-round stats for a whole season (disposals/kicks/marks/tackles/… every match). seasonId is a CD_S* comp-season id." }

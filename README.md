@@ -62,14 +62,30 @@ providers:                      # all optional; sensible defaults apply
   sportsbet:
     request_timeout_seconds: 30
     rate_limit_rps: 10          # sustained requests/sec (token bucket)
-    max_response_bytes: 512000  # responses over this → RESPONSE_TOO_LARGE
+    max_response_bytes: 0       # 0 = no cap (default); set a positive byte count to guard context
 
 secrets: {}                     # for authenticated providers; prefer env vars in prod
 ```
 
-`SPORTSDATA_MCP_GROUPS` (comma-separated) overrides `enabled_groups`. Meta-tools
+### Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `SPORTSDATA_MCP_GROUPS` | Comma-separated group list; overrides `enabled_groups`. |
+| `SPORTSDATA_MCP_CONFIG` | Path to a config file (see resolution order above). |
+| `SPORTSDATA_MCP_MAX_BYTES` | Global response-size cap in bytes for every provider that doesn't set its own `max_response_bytes`. `0` (the default) means no cap. |
+
+Meta-tools (`list_available_groups`, `list_tools_by_capability`, `list_resources`)
 are always registered regardless of what is enabled, so a fresh install can still
 guide the model to turn groups on.
+
+**On the response-size cap.** There is **no cap by default** — every tool returns
+whatever the upstream API sends. If you want to guard the model's context window you
+can opt in to a cap: precedence is `providers.<id>.max_response_bytes` >
+`SPORTSDATA_MCP_MAX_BYTES` > the default (`0`, unlimited). Be aware that very large
+payloads (e.g. Sportsbet's full `*_event_markets` firehose, ~2 MB) won't fit in
+Claude's ~200 K-token context regardless — for those, prefer a narrower tool such as
+`sportsbet_sports_card` with `includeTopMarkets: true`.
 
 ## Tool groups
 

@@ -129,8 +129,9 @@ class HTTPClient:
 
     def _decode(self, r: httpx.Response) -> dict | list:
         # 1. Size guard — refuse to dump megabytes into the model's context.
+        #    A non-positive cap (max_response_bytes <= 0) disables the guard entirely.
         body = r.content
-        if len(body) > self._max_bytes:
+        if self._max_bytes > 0 and len(body) > self._max_bytes:
             log.warning(
                 "oversize response (provider=%s, %d bytes > limit %d)", self._provider.id, len(body), self._max_bytes
             )

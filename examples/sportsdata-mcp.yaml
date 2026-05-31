@@ -15,7 +15,11 @@ providers:
   afl:
     request_timeout_seconds: 30
     rate_limit_rps: 10          # sustained requests/sec (token bucket)
-    max_response_bytes: 512000  # responses over this → RESPONSE_TOO_LARGE
+    max_response_bytes: 0       # 0 = no cap (the default); set a positive byte count to guard context
+
+# There is no response-size cap by default. To opt in to one, set a positive value
+# either per-provider (above) or globally via SPORTSDATA_MCP_MAX_BYTES.
+# Precedence: providers.<id>.max_response_bytes > SPORTSDATA_MCP_MAX_BYTES env > 0 (unlimited).
 
 # Secrets for authenticated providers (AFL premium, bookmakers, …).
 # Prefer environment variables in production; this block is for local use only.

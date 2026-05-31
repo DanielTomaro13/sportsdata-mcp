@@ -58,3 +58,22 @@ def test_accessor_defaults_for_unknown_provider():
 def test_legacy_rate_per_sec_key():
     cfg = Config(providers={"x": {"rate_per_sec": 7}})
     assert cfg.rate_limit_rps_for("x") == 7.0
+
+
+def test_env_max_bytes_sets_global_override(tmp_path, monkeypatch):
+    monkeypatch.delenv("SPORTSDATA_MCP_CONFIG", raising=False)
+    monkeypatch.delenv("SPORTSDATA_MCP_GROUPS", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SPORTSDATA_MCP_MAX_BYTES", "0")
+    cfg = load_config()
+    assert cfg.max_bytes_override == 0
+    assert cfg.max_response_bytes_for("sportsbet") == 0  # 0 → no cap
+
+
+def test_env_max_bytes_malformed_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.delenv("SPORTSDATA_MCP_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SPORTSDATA_MCP_MAX_BYTES", "lots")
+    cfg = load_config()
+    assert cfg.max_bytes_override is None
+    assert cfg.max_response_bytes_for("sportsbet") == MAX_RESPONSE_BYTES_DEFAULT

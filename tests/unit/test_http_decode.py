@@ -43,6 +43,36 @@ def test_oversize_raises_recoverable():
     assert ei.value.recoverable is True
 
 
+def _client_with_cap(cap: int) -> HTTPClient:
+    """A client whose provider sets an explicit cap (including 0 = unlimited)."""
+    cfg = Config(providers={"demo": {"max_response_bytes": cap}})
+    provider = Provider(
+        id="demo",
+        display_name="Demo",
+        base_urls={"default": "https://api.demo.test"},
+        auth={"default": AuthNone()},
+    )
+    return HTTPClient(provider, cfg)
+
+
+def test_zero_cap_disables_size_guard():
+    c = _client_with_cap(0)
+    big = b'{"data": "' + b"x" * 5_000_000 + b'"}'
+    out = c._decode(_resp(200, big, JSON))  # would raise RESPONSE_TOO_LARGE under any positive cap
+    assert out["data"].startswith("x")
+
+
+def test_global_override_applies_when_provider_unset():
+    cfg = Config(max_bytes_override=0)
+    assert cfg.max_response_bytes_for("anything") == 0  # 0 → unlimited, for every provider
+
+
+def test_provider_cap_beats_global_override():
+    cfg = Config(providers={"demo": {"max_response_bytes": 1234}}, max_bytes_override=0)
+    assert cfg.max_response_bytes_for("demo") == 1234
+    assert cfg.max_response_bytes_for("other") == 0
+
+
 def test_429_rate_limited():
     c = _client()
     with pytest.raises(ToolError) as ei:
