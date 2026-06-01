@@ -7,14 +7,13 @@ different providers interchangeable wherever they answer the same question — s
 the model can compare odds across bookies or stats across data sources with one
 discovery call.
 
-Six providers ship today — **AFL** (`api.afl.com.au`), **Sportsbet**,
-**Entain / Ladbrokes**, **NRL** (`mc.championdata.com`), **NBA**
-(`cdn.nba.com` + `stats.nba.com`) and **ESPN** (the `espn.com` JSON feeds) —
-exposing **121 provider tools** across 22 groups, plus 3 always-on meta-tools.
-New providers are added by dropping a YAML spec into
-`src/sportsdata_mcp/specs/`; the engine needs no code changes.
-
-> Design notes and roadmap live in [`PLAN.md`](./PLAN.md).
+The catalogue spans bookmakers, league/governing-body feeds, and stats
+aggregators, and it keeps growing. New providers are added by dropping a YAML
+spec into `src/sportsdata_mcp/specs/` — the engine needs no code changes — so
+the exact provider and tool counts move over time. Run `sportsdata-mcp
+list-groups` for the live inventory, and three meta-tools (group discovery,
+capability lookup, resource listing) are always on regardless of what you
+enable.
 
 ## Install
 

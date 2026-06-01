@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Daniel Tomaro"}]
-keywords = ["mcp", "sports", "betting", "afl", "sportsbet", "ladbrokes", "entain"]
+keywords = ["mcp", "model-context-protocol", "sports", "sports-data", "betting", "odds", "statistics"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: MIT License",
