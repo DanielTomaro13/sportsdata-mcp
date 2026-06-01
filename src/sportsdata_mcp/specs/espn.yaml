@@ -1,0 +1,521 @@
+spec_version: 1
+
+# ESPN — the family of public, unauthenticated JSON feeds that power espn.com.
+# Four hosts, one provider:
+#
+#   site.api.espn.com       — the "site" API: scoreboards, teams, rosters,
+#                             standings, news, rankings, athlete game-logs/bios.
+#                             Both /apis/site/v2/... and /apis/site/v3/... live here.
+#   sports.core.api.espn.com — the "core" API: the canonical, deeply-linked data
+#                             model (athletes, statistics, odds, win-probabilities,
+#                             plays, broadcasts, venues, coaches, drafts, futures).
+#                             Note the path uses `leagues/{league}` (plural).
+#   site.web.api.espn.com   — the "web" API: site-wide search + the common/v3
+#                             athlete overview/stats/gamelog/splits views.
+#   cdn.espn.com            — the CDN "core" live feed (scoreboard/game/boxscore/
+#                             playbyplay). Every request needs ?xhr=1.
+#
+# No auth, no API key. ESPN serves JSON as text/plain on some hosts; the HTTP
+# client tolerates that. Hosts occasionally throttle bursts, so the provider
+# ships a modest rate limit + transient-error retry.
+#
+# Coverage is *parametric*: nearly every ESPN URL is
+# `.../sports/{sport}/{league}/{resource}`, so the discrete endpoints and the
+# dispatcher operations take `sport` + `league` as path params. That single shape
+# spans every league ESPN covers — football(nfl, college-football, cfl, ufl),
+# basketball(nba, wnba, mens-college-basketball, womens-college-basketball, nbl),
+# baseball(mlb, college-baseball), hockey(nhl), soccer(eng.1, esp.1, ger.1, ita.1,
+# fra.1, usa.1, uefa.champions, fifa.world, …), golf(pga, lpga), racing(f1, nascar),
+# tennis(atp, wta), mma(ufc), and more — without enumerating a tool per league.
+#
+# Discovery flow:
+#   espn_scoreboard(sport, league)  → event ids
+#   espn_game_summary(sport, league, event=…) → boxscore + plays for one game
+#   espn_teams / espn_standings / espn_news for league-wide context
+#   espn_site_call / espn_core_call / espn_web_call / espn_cdn_call for the
+#     deeper resource families (browse each dispatcher's catalogue resource).
+
+provider:
+  id: espn
+  display_name: "ESPN (site.api + core.api + web.api + cdn)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/ESPN.md"
+  base_urls:
+    site: https://site.api.espn.com
+    core: https://sports.core.api.espn.com
+    web: https://site.web.api.espn.com
+    cdn: https://cdn.espn.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json, text/plain, */*"
+  auth:
+    default:
+      type: none
+  # ESPN's hosts are public but rate-limit aggressive bursts; throttle modestly
+  # and retry transient 429/5xx. Operators can override via providers.espn.* config.
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    burst: 5
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 3
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── espn.scores — discrete convenience endpoints over the site API ────
+  - name: espn_scoreboard
+    group: espn.scores
+    capabilities: [sport.fixtures_by_date, sport.match_score, sport.in_play]
+    summary: |
+      Scoreboard for one league: today's (or a given date's) games with status,
+      clock, live scores and event ids. The fastest way to get the `event` ids that
+      espn_game_summary / espn_core_call (event_*) need. sport+league are slugs, e.g.
+      football/nfl, basketball/nba, soccer/eng.1.
+    base: site
+    auth: default
+    path: /apis/site/v2/sports/{sport}/{league}/scoreboard
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "Sport slug, e.g. football, basketball, baseball, hockey, soccer." }
+      - { name: league, in: path, type: string, required: true, description: "League slug, e.g. nfl, nba, mlb, nhl, eng.1." }
+      - { name: dates, in: query, type: string, description: "Date filter YYYYMMDD (or a range YYYYMMDD-YYYYMMDD); omit for today." }
+      - { name: week, in: query, type: integer, description: "Week number (NFL/college football)." }
+      - { name: seasontype, in: query, type: integer, description: "Season phase: 1=pre, 2=regular, 3=post, 4=off." }
+    response_hint: "{leagues:[...], events:[{id, name, status, competitions:[{competitors:[{team, score}]}]}]}"
+    examples:
+      - description: "Today's NFL scoreboard."
+        params: {sport: football, league: nfl}
+
+  - name: espn_teams
+    group: espn.scores
+    capabilities: [ref.teams]
+    summary: |
+      Team catalogue for one league: every team with id, name, abbreviation, colours
+      and logos. Use the team ids with espn_site_call (team_roster, team_schedule, …).
+    base: site
+    auth: default
+    path: /apis/site/v2/sports/{sport}/{league}/teams
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "Sport slug, e.g. football, basketball." }
+      - { name: league, in: path, type: string, required: true, description: "League slug, e.g. nfl, nba." }
+    response_hint: "{sports:[{leagues:[{teams:[{team:{id, displayName, abbreviation}}]}]}]}"
+    examples:
+      - description: "All 32 NFL teams."
+        params: {sport: football, league: nfl}
+
+  - name: espn_standings
+    group: espn.scores
+    capabilities: [stats.ladder]
+    summary: |
+      League standings / ladder: per-team wins, losses, win %, conference/division
+      groupings for the current (or a given) season.
+    base: site
+    auth: default
+    path: /apis/v2/sports/{sport}/{league}/standings
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "Sport slug, e.g. football, basketball." }
+      - { name: league, in: path, type: string, required: true, description: "League slug, e.g. nfl, nba." }
+      - { name: season, in: query, type: integer, description: "Season year, e.g. 2025; omit for current." }
+      - { name: seasontype, in: query, type: integer, description: "Season phase: 1=pre, 2=regular, 3=post." }
+    response_hint: "{name, children:[{standings:{entries:[{team, stats:[{name, value}]}]}}]} (children = conferences/divisions)"
+    examples:
+      - description: "Current NBA standings."
+        params: {sport: basketball, league: nba}
+
+  - name: espn_game_summary
+    group: espn.scores
+    capabilities: [sport.match_detail, sport.match_boxscore, stats.play_by_play]
+    summary: |
+      Full summary for one game: box score, scoring plays, drives/play-by-play,
+      leaders, win-probability and odds. `event` is an id from espn_scoreboard. No
+      example here on purpose — it needs a live event id, so the doctor probes
+      espn_scoreboard instead.
+    base: site
+    auth: default
+    path: /apis/site/v2/sports/{sport}/{league}/summary
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "Sport slug, e.g. football, basketball." }
+      - { name: league, in: path, type: string, required: true, description: "League slug, e.g. nfl, nba." }
+      - { name: event, in: query, type: string, required: true, description: "Event/game id from espn_scoreboard, e.g. 401547439." }
+    response_hint: "{boxscore:{teams, players}, plays:[...], scoringPlays:[...], leaders:[...], winprobability:[...]}"
+
+  - name: espn_news
+    group: espn.scores
+    capabilities: [content.news]
+    summary: |
+      League news feed: recent articles (headline, description, links, images,
+      related athletes/teams) for one league.
+    base: site
+    auth: default
+    path: /apis/site/v2/sports/{sport}/{league}/news
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "Sport slug, e.g. football, basketball." }
+      - { name: league, in: path, type: string, required: true, description: "League slug, e.g. nfl, nba." }
+      - { name: limit, in: query, type: integer, default: 50, description: "Max articles to return." }
+    response_hint: "{header, articles:[{headline, description, published, links, categories}]}"
+    examples:
+      - description: "Latest NFL news."
+        params: {sport: football, league: nfl}
+
+dispatchers:
+  # ─── espn.site — the site API resource families (site.api.espn.com) ────
+  - name: espn_site_call
+    group: espn.site
+    kind: templated_rest
+    base: site
+    auth: default
+    capabilities:
+      - ref.teams
+      - ref.players
+      - stats.team_game_log
+      - stats.player_game_log
+      - stats.player_profile
+      - sport.injuries
+      - sport.depth_chart
+      - sport.transactions
+      - sport.rankings
+    summary: |
+      Gateway to the ESPN site API resource families (site.api.espn.com). Supply an
+      `operation` plus a `path_params` map containing at least `sport` + `league`
+      (slugs like football/nfl, basketball/nba) and any id the op needs (teamId,
+      athleteId), then optional `query_params`. Covers team rosters/schedules/
+      injuries/depth-charts/transactions/history, athlete game-logs/splits/bios,
+      groups, rankings and the v3 scoreboard/summary. Browse every operation in the
+      espn://site/operations resource.
+    catalog_resource: "espn://site/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Site-API operation name, e.g. team_roster (see espn://site/operations)." }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Path values, e.g. {sport: 'football', league: 'nfl', teamId: '12'}." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Optional query overrides, e.g. {season: 2025, seasontype: 2}." }
+    operations:
+      - name: team_detail
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}
+        path_params: [sport, league, teamId]
+        summary: "Single team: record, standing, next event, links."
+      - name: team_roster
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}/roster
+        path_params: [sport, league, teamId]
+        query_params: [enable]
+        summary: "Team roster: athletes with position, jersey, age, height/weight."
+      - name: team_schedule
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}/schedule
+        path_params: [sport, league, teamId]
+        query_params: [season, seasontype]
+        summary: "Team schedule + results for a season (game-by-game form)."
+      - name: team_injuries
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}/injuries
+        path_params: [sport, league, teamId]
+        summary: "Team injury report: athlete, status, type, return estimate."
+      - name: team_depthchart
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}/depthcharts
+        path_params: [sport, league, teamId]
+        summary: "Team depth chart: positional ordering of the roster."
+      - name: team_transactions
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}/transactions
+        path_params: [sport, league, teamId]
+        summary: "Team transactions log: signings, trades, waivers, call-ups."
+      - name: team_history
+        path: /apis/site/v2/sports/{sport}/{league}/teams/{teamId}/history
+        path_params: [sport, league, teamId]
+        summary: "Team season-by-season history (records, finishes)."
+      - name: athlete
+        path: /apis/site/v2/sports/{sport}/{league}/athletes/{athleteId}
+        path_params: [sport, league, athleteId]
+        summary: "Athlete profile: position, team, physicals, status."
+      - name: athlete_gamelog
+        path: /apis/site/v2/sports/{sport}/{league}/athletes/{athleteId}/gamelog
+        path_params: [sport, league, athleteId]
+        summary: "Athlete game-by-game log for the season."
+      - name: athlete_splits
+        path: /apis/site/v2/sports/{sport}/{league}/athletes/{athleteId}/splits
+        path_params: [sport, league, athleteId]
+        summary: "Athlete statistical splits (home/away, by month, etc.)."
+      - name: athlete_news
+        path: /apis/site/v2/sports/{sport}/{league}/athletes/{athleteId}/news
+        path_params: [sport, league, athleteId]
+        summary: "News articles related to one athlete."
+      - name: athlete_bio
+        path: /apis/site/v2/sports/{sport}/{league}/athletes/{athleteId}/bio
+        path_params: [sport, league, athleteId]
+        summary: "Athlete biography: birthplace, draft, college, experience."
+      - name: groups
+        path: /apis/site/v2/sports/{sport}/{league}/groups
+        path_params: [sport, league]
+        query_params: [group, season]
+        summary: "Conference/division groups for a league (group ids for standings)."
+      - name: rankings
+        path: /apis/site/v2/sports/{sport}/{league}/rankings
+        path_params: [sport, league]
+        summary: "Poll rankings (AP, coaches, committee) — mainly college sports."
+      - name: calendar
+        path: /apis/site/v2/sports/{sport}/{league}/calendar
+        path_params: [sport, league]
+        summary: "Season calendar: dates/weeks with games (for the scoreboard's dates)."
+      - name: scoreboard_v3
+        path: /apis/site/v3/sports/{sport}/{league}/scoreboard
+        path_params: [sport, league]
+        query_params: [dates, week, seasontype]
+        summary: "v3 scoreboard variant (richer event objects than v2)."
+      - name: summary_v3
+        path: /apis/site/v3/sports/{sport}/{league}/summary
+        path_params: [sport, league]
+        query_params: [event]
+        summary: "v3 game summary variant (event= an id from espn_scoreboard)."
+
+  # ─── espn.core — the canonical core data model (sports.core.api.espn.com) ──
+  - name: espn_core_call
+    group: espn.core
+    kind: templated_rest
+    base: core
+    auth: default
+    capabilities:
+      - ref.teams
+      - ref.players
+      - ref.seasons
+      - ref.venues
+      - ref.coaches
+      - stats.player_season
+      - stats.player_career
+      - stats.leaders_season
+      - stats.advanced_metrics
+      - stats.win_probability
+      - stats.play_by_play
+      - sport.prices
+      - sport.event_markets
+      - sport.draft
+      - sport.rankings
+      - broadcast.schedule
+    summary: |
+      Gateway to the ESPN core data model (sports.core.api.espn.com). The deepest,
+      most canonical surface: athletes + statistics + career logs, per-event odds /
+      win-probabilities / plays / situation / broadcasts / predictor / power-index,
+      per-competitor line-scores + statistics, season teams/coaches/draft/futures,
+      venues, leaders, rankings, franchises and coaches. NOTE the path uses
+      `leagues/{league}` (plural). Supply `operation` + `path_params` (sport, league,
+      plus eventId/competitionId/athleteId/year as needed). Most responses use ESPN's
+      $ref-linked envelope ({count, items:[{$ref}]}); follow the refs for detail.
+      Browse every operation in the espn://core/operations resource.
+    catalog_resource: "espn://core/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Core-API operation name, e.g. event_odds (see espn://core/operations)." }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Path values, e.g. {sport: 'football', league: 'nfl', eventId: '401547439', competitionId: '401547439'}." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Optional query overrides, e.g. {limit: 100, page: 1}." }
+    operations:
+      - name: athletes
+        path: /v2/sports/{sport}/leagues/{league}/athletes
+        path_params: [sport, league]
+        query_params: [limit, page, active]
+        summary: "Athlete index for a league ({count, items:[{$ref}]})."
+      - name: athlete
+        path: /v2/sports/{sport}/leagues/{league}/athletes/{athleteId}
+        path_params: [sport, league, athleteId]
+        summary: "Single athlete (core model: position, team $ref, links)."
+      - name: athlete_statistics
+        path: /v2/sports/{sport}/leagues/{league}/athletes/{athleteId}/statistics
+        path_params: [sport, league, athleteId]
+        summary: "Athlete season statistics (categorised stat splits)."
+      - name: athlete_statisticslog
+        path: /v2/sports/{sport}/leagues/{league}/athletes/{athleteId}/statisticslog
+        path_params: [sport, league, athleteId]
+        summary: "Athlete per-season statistics log across their career."
+      - name: athlete_eventlog
+        path: /v2/sports/{sport}/leagues/{league}/athletes/{athleteId}/eventlog
+        path_params: [sport, league, athleteId]
+        query_params: [season]
+        summary: "Athlete event log (games played, with per-game stat $refs)."
+      - name: event_odds
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/odds
+        path_params: [sport, league, eventId, competitionId]
+        summary: "Per-book odds for one competition (spread, money line, total)."
+      - name: event_probabilities
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/probabilities
+        path_params: [sport, league, eventId, competitionId]
+        query_params: [limit, page]
+        summary: "Win-probability time series across the competition."
+      - name: event_plays
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/plays
+        path_params: [sport, league, eventId, competitionId]
+        query_params: [limit, page]
+        summary: "Event-level play-by-play for one competition."
+      - name: event_situation
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/situation
+        path_params: [sport, league, eventId, competitionId]
+        summary: "Current situation (down/distance, base state, etc.) for a live game."
+      - name: event_broadcasts
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/broadcasts
+        path_params: [sport, league, eventId, competitionId]
+        summary: "Broadcast listings (networks/markets) for one competition."
+      - name: event_predictor
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/predictor
+        path_params: [sport, league, eventId, competitionId]
+        summary: "ESPN matchup predictor (projected scores / win %)."
+      - name: event_powerindex
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/powerindex
+        path_params: [sport, league, eventId, competitionId]
+        summary: "Game power-index metrics per competitor."
+      - name: competitor_linescores
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/competitors/{competitorId}/linescores
+        path_params: [sport, league, eventId, competitionId, competitorId]
+        summary: "Per-period line score for one competitor."
+      - name: competitor_statistics
+        path: /v2/sports/{sport}/leagues/{league}/events/{eventId}/competitions/{competitionId}/competitors/{competitorId}/statistics
+        path_params: [sport, league, eventId, competitionId, competitorId]
+        summary: "Per-game team statistics for one competitor."
+      - name: seasons
+        path: /v2/sports/{sport}/leagues/{league}/seasons
+        path_params: [sport, league]
+        query_params: [limit, page]
+        summary: "Season catalogue for a league ({count, items:[{$ref}]})."
+      - name: season_teams
+        path: /v2/sports/{sport}/leagues/{league}/seasons/{year}/teams
+        path_params: [sport, league, year]
+        query_params: [limit, page]
+        summary: "Teams active in a given season."
+      - name: season_coaches
+        path: /v2/sports/{sport}/leagues/{league}/seasons/{year}/coaches
+        path_params: [sport, league, year]
+        query_params: [limit, page]
+        summary: "Coaches for a given season."
+      - name: season_draft
+        path: /v2/sports/{sport}/leagues/{league}/seasons/{year}/draft
+        path_params: [sport, league, year]
+        summary: "Draft results / picks for a given season."
+      - name: season_futures
+        path: /v2/sports/{sport}/leagues/{league}/seasons/{year}/futures
+        path_params: [sport, league, year]
+        summary: "Season-long futures markets (championship, awards)."
+      - name: standings
+        path: /v2/sports/{sport}/leagues/{league}/standings
+        path_params: [sport, league]
+        query_params: [season, seasontype]
+        summary: "Core standings ({count, items:[{$ref}]} to group standings)."
+      - name: teams
+        path: /v2/sports/{sport}/leagues/{league}/teams
+        path_params: [sport, league]
+        query_params: [limit, page]
+        summary: "Team index for a league (core model)."
+      - name: venues
+        path: /v2/sports/{sport}/leagues/{league}/venues
+        path_params: [sport, league]
+        query_params: [limit, page]
+        summary: "Venue catalogue: stadium id, name, city, capacity."
+      - name: leaders
+        path: /v2/sports/{sport}/leagues/{league}/leaders
+        path_params: [sport, league]
+        query_params: [season, seasontype]
+        summary: "Season statistical leaders per category."
+      - name: rankings
+        path: /v2/sports/{sport}/leagues/{league}/rankings
+        path_params: [sport, league]
+        summary: "Poll rankings (core model; college sports)."
+      - name: franchises
+        path: /v2/sports/{sport}/leagues/{league}/franchises
+        path_params: [sport, league]
+        query_params: [limit, page]
+        summary: "Franchise catalogue (stable identity across relocations)."
+      - name: coach
+        path: /v2/sports/{sport}/leagues/{league}/coaches/{coachId}
+        path_params: [sport, league, coachId]
+        summary: "Single coach: record, team, experience."
+
+  # ─── espn.web — site-wide search + common/v3 athlete views (site.web.api.espn.com) ──
+  - name: espn_web_call
+    group: espn.web
+    kind: templated_rest
+    base: web
+    auth: default
+    capabilities:
+      - ref.players
+      - stats.player_profile
+      - stats.player_game_log
+      - stats.player_season
+    summary: |
+      Gateway to the ESPN web API (site.web.api.espn.com): site-wide search across
+      teams/athletes/leagues, plus the common/v3 athlete views (overview, stats,
+      gamelog, splits) that power player profile pages, and statistics-by-athlete.
+      `search` needs only query_params {query, limit}; the athlete_* ops need
+      path_params {sport, league, athleteId}. Browse the espn://web/operations resource.
+    catalog_resource: "espn://web/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Web-API operation name, e.g. search (see espn://web/operations)." }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Path values for athlete_* ops, e.g. {sport: 'basketball', league: 'nba', athleteId: '1966'}." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Query values, e.g. {query: 'lebron', limit: 10} for search." }
+    operations:
+      - name: search
+        path: /apis/search/v2
+        query_params: [query, limit, sport, region, lang, mode]
+        summary: "Site-wide search: teams, athletes, leagues, articles by text query."
+      - name: scoreboard_header
+        path: /apis/v2/scoreboard/header
+        query_params: [sport, league, dates]
+        summary: "Compact scoreboard header (multi-sport top-bar feed)."
+      - name: athlete_overview
+        path: /apis/common/v3/sports/{sport}/{league}/athletes/{athleteId}/overview
+        path_params: [sport, league, athleteId]
+        summary: "Athlete profile overview: headline stats, recent games, news."
+      - name: athlete_stats
+        path: /apis/common/v3/sports/{sport}/{league}/athletes/{athleteId}/stats
+        path_params: [sport, league, athleteId]
+        summary: "Athlete season + career statistics tables."
+      - name: athlete_gamelog
+        path: /apis/common/v3/sports/{sport}/{league}/athletes/{athleteId}/gamelog
+        path_params: [sport, league, athleteId]
+        query_params: [season, seasontype]
+        summary: "Athlete game-by-game log (web/v3 shape)."
+      - name: athlete_splits
+        path: /apis/common/v3/sports/{sport}/{league}/athletes/{athleteId}/splits
+        path_params: [sport, league, athleteId]
+        query_params: [season, seasontype, category]
+        summary: "Athlete statistical splits (web/v3 shape)."
+      - name: stats_byathlete
+        path: /apis/common/v3/sports/{sport}/{league}/statistics/byathlete
+        path_params: [sport, league]
+        query_params: [season, seasontype, page, limit, sort]
+        summary: "League statistics ranked by athlete (leaderboard table)."
+
+  # ─── espn.cdn — the CDN live core feed (cdn.espn.com, needs ?xhr=1) ────
+  - name: espn_cdn_call
+    group: espn.cdn
+    kind: templated_rest
+    base: cdn
+    auth: default
+    capabilities:
+      - sport.fixtures_by_date
+      - sport.match_score
+      - sport.match_detail
+      - sport.match_boxscore
+      - stats.play_by_play
+    summary: |
+      Gateway to the ESPN CDN core live feed (cdn.espn.com). Fast, lightly-cached
+      scoreboard/game/boxscore/playbyplay JSON. The path slug is the league
+      (`nfl`, `nba`, `mlb`, `nhl`) — or `soccer` with a `league` query for the
+      competition (e.g. league=eng.1). gameId comes from the scoreboard op. Every
+      request carries ?xhr=1 (added by default). Browse espn://cdn/operations.
+    catalog_resource: "espn://cdn/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "CDN operation: scoreboard, game, boxscore or playbyplay." }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Path slug, e.g. {sport: 'nfl'} (use {sport: 'soccer'} + query league=eng.1 for soccer)." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Query overrides, e.g. {gameId: '401547439'} or {dates: '20251101', league: 'eng.1'}." }
+    operations:
+      - name: scoreboard
+        path: /core/{sport}/scoreboard
+        path_params: [sport]
+        query_params: [dates, league, xhr]
+        query_defaults: {xhr: '1'}
+        summary: "CDN scoreboard for a league slug (e.g. sport=nfl); events + ids."
+      - name: game
+        path: /core/{sport}/game
+        path_params: [sport]
+        query_params: [gameId, league, xhr]
+        query_defaults: {xhr: '1'}
+        summary: "CDN single-game feed (gameId from scoreboard)."
+      - name: boxscore
+        path: /core/{sport}/boxscore
+        path_params: [sport]
+        query_params: [gameId, league, xhr]
+        query_defaults: {xhr: '1'}
+        summary: "CDN box score for one game (gameId from scoreboard)."
+      - name: playbyplay
+        path: /core/{sport}/playbyplay
+        path_params: [sport]
+        query_params: [gameId, league, xhr]
+        query_defaults: {xhr: '1'}
+        summary: "CDN play-by-play for one game (gameId from scoreboard)."

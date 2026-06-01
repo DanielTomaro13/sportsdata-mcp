@@ -7,11 +7,12 @@ different providers interchangeable wherever they answer the same question — s
 the model can compare odds across bookies or stats across data sources with one
 discovery call.
 
-Five providers ship today — **AFL** (`api.afl.com.au`), **Sportsbet**,
-**Entain / Ladbrokes**, **NRL** (`mc.championdata.com`) and **NBA**
-(`cdn.nba.com` + `stats.nba.com`) — exposing **112 provider tools** across 17
-groups, plus 3 always-on meta-tools. New providers are added by dropping a YAML
-spec into `src/sportsdata_mcp/specs/`; the engine needs no code changes.
+Six providers ship today — **AFL** (`api.afl.com.au`), **Sportsbet**,
+**Entain / Ladbrokes**, **NRL** (`mc.championdata.com`), **NBA**
+(`cdn.nba.com` + `stats.nba.com`) and **ESPN** (the `espn.com` JSON feeds) —
+exposing **121 provider tools** across 22 groups, plus 3 always-on meta-tools.
+New providers are added by dropping a YAML spec into
+`src/sportsdata_mcp/specs/`; the engine needs no code changes.
 
 > Design notes and roadmap live in [`PLAN.md`](./PLAN.md).
 
@@ -147,6 +148,21 @@ dashboards, box scores v2+v3, shot charts, play-by-play, leaders, standings, dra
 tracking, …). Browse every operation, its required params and its defaults in the
 `nba://stats/operations` resource.
 
+### ESPN — `espn.com` JSON feeds
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `espn.scores` | 5 | Site API convenience endpoints: scoreboard, teams, standings, game summary, news |
+| `espn.site` | 1 | `espn_site_call` — rosters, schedules, injuries, depth charts, transactions, athlete logs (17 ops) |
+| `espn.core` | 1 | `espn_core_call` — the canonical `$ref`-linked model: odds, win-probability, plays, venues, drafts, coaches (26 ops) |
+| `espn.web` | 1 | `espn_web_call` — site-wide search + `common/v3` athlete views (7 ops) |
+| `espn.cdn` | 1 | `espn_cdn_call` — the CDN live core feed: scoreboard/game/boxscore/playbyplay (4 ops) |
+
+All ESPN tools are parametric over `sport` + `league` slugs (e.g. `football`/`nfl`,
+`basketball`/`nba`, `soccer`/`eng.1`), so the five groups cover **every** league ESPN
+carries. Browse each dispatcher's operations in its `espn://{site,core,web,cdn}/operations`
+resource.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.
@@ -189,6 +205,18 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   `leaguedashplayerstats`) and pass `query_params` — each operation already carries
   NBA's full default param set, so you override only what matters. Most responses are
   column-oriented (`resultSets:[{name, headers, rowSet}]}`); v3 box scores are nested.
+- **ESPN** — four public hosts, **no auth, no API key**: `site.api.espn.com` (scores,
+  teams, standings, news, summaries), `sports.core.api.espn.com` (the canonical
+  `$ref`-linked model — odds, win-probability, plays, venues, drafts, coaches),
+  `site.web.api.espn.com` (search + athlete views) and `cdn.espn.com` (the live core
+  feed, needs `?xhr=1`). Nearly every URL is `.../sports/{sport}/{league}/{resource}`,
+  so the tools take `sport` + `league` as parameters and cover every ESPN league
+  parametrically — NFL, NBA, MLB, NHL, college, soccer (`eng.1`, `esp.1`, …), golf,
+  racing, tennis, MMA and more. Discovery: `espn_scoreboard(sport, league)` → an `event`
+  id → `espn_game_summary` or the deep `espn_core_call(event_*)` ops. The spec throttles
+  to ~5 req/s and retries transient `429/5xx` (overridable via `providers.espn.*`). Note
+  the core API path uses `leagues/{league}` (plural); core list responses are lazy
+  `{count, items:[{$ref}]}` envelopes — follow the refs for detail.
 
 ## CLI reference
 

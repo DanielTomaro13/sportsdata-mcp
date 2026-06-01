@@ -50,6 +50,21 @@ capabilities:
     description: "Live audio stream URLs."
   - id: sport.commentary
     description: "Text or play-by-play commentary for a match."
+  - id: sport.injuries
+    description: "Injury report / inactive list for a team or league."
+    single_provider: true
+  - id: sport.depth_chart
+    description: "Team depth chart (positional ordering of the roster)."
+    single_provider: true
+  - id: sport.transactions
+    description: "Roster transactions log (signings, trades, waivers, call-ups)."
+    single_provider: true
+  - id: sport.draft
+    description: "Draft results / picks for a given season."
+    single_provider: true
+  - id: sport.rankings
+    description: "Poll rankings (AP, coaches, committee) for a league."
+    single_provider: true
 
   # ─── Stats — basic ───────────────────────────────────────────────────
   - id: stats.player_match
@@ -58,7 +73,6 @@ capabilities:
     description: "Per-player stats over a season."
   - id: stats.player_game_log
     description: "Game-by-game stat line for one player across a date range or season."
-    single_provider: true
   - id: stats.player_career
     description: "Per-season totals across a player's career."
   - id: stats.player_profile
@@ -69,7 +83,6 @@ capabilities:
     description: "Per-team aggregate stats over a season."
   - id: stats.team_game_log
     description: "Game-by-game results / form for one team."
-    single_provider: true
   - id: stats.leaders_season
     description: "Season leaders per stat (Coleman, Brownlow, top scorers, MVP, etc.)."
   - id: stats.ladder
@@ -86,9 +99,11 @@ capabilities:
     single_provider: true
   - id: stats.play_by_play
     description: "Event-level play-by-play log of a game."
-    single_provider: true
   - id: stats.fantasy_projections
     description: "Fantasy-points projections / DFS pricing."
+    single_provider: true
+  - id: stats.win_probability
+    description: "In-game win-probability time series for a contest."
     single_provider: true
 
   # ─── Sport — fixtures (non-betting data sources) ─────────────────────
@@ -96,7 +111,6 @@ capabilities:
     description: "All scheduled fixtures / games on a given date across one league."
   - id: sport.match_boxscore
     description: "Detailed game box score (quarter/period scores, team totals, leaders)."
-    single_provider: true
   - id: sport.season_summary
     description: "End-of-season / current-state league summary (champion, top scorer, awards)."
     single_provider: true
@@ -110,6 +124,9 @@ capabilities:
     description: "Venue catalogue (id, name, location, timezone)."
   - id: ref.seasons
     description: "Season / competition-season catalogue."
+  - id: ref.coaches
+    description: "Coach catalogue / coaching records."
+    single_provider: true
 
   # ─── Content / editorial ─────────────────────────────────────────────
   - id: content.news
