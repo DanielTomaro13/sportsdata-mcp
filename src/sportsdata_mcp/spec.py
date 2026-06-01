@@ -134,6 +134,8 @@ class Endpoint(BaseModel):
 
 
 class GraphQLOperation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     variables: str = ""
@@ -141,6 +143,10 @@ class GraphQLOperation(BaseModel):
 
 
 class TemplatedOperation(BaseModel):
+    # extra="forbid" turns a spec typo (e.g. `query_defualts:`) into a lint failure
+    # instead of a silently-dropped key that yields wrong defaults at runtime.
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     path: str
     path_params: list[str] = Field(default_factory=list)
@@ -166,7 +172,9 @@ class Dispatcher(BaseModel):
     auth: str = "default"
     default_headers: dict[str, str] = Field(default_factory=dict)
     catalog_resource: str
-    catalog_source: str | None = None
+    # `params` documents the dispatcher's own inputs (operation, variables/path_params/
+    # query_params as `in: dispatch`); server._args_required surfaces the required ones
+    # in the capability index so the model knows what a dispatcher call needs.
     params: list[Param] = Field(default_factory=list)
     operations: list[TemplatedOperation] = Field(default_factory=list)
 

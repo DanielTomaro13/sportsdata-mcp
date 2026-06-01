@@ -54,6 +54,26 @@ def test_future_spec_version_warns(write_spec, caplog):
     assert any("spec_version=99" in r.message for r in caplog.records)
 
 
+def test_templated_operation_rejects_unknown_key():
+    """extra='forbid' turns a dispatcher-op typo into a hard error, not a silent drop."""
+    from pydantic import ValidationError
+
+    from sportsdata_mcp.spec import TemplatedOperation
+
+    TemplatedOperation(name="x", path="/x", query_defaults={"a": "b"})  # valid baseline
+    with pytest.raises(ValidationError):
+        TemplatedOperation(name="x", path="/x", query_defualts={"a": "b"})  # typo'd key
+
+
+def test_graphql_operation_rejects_unknown_key():
+    from pydantic import ValidationError
+
+    from sportsdata_mcp.spec import GraphQLOperation
+
+    with pytest.raises(ValidationError):
+        GraphQLOperation(name="X", sha256="a" * 64, verfied=True)  # typo'd key
+
+
 # ── helpers / fixtures-as-text ──
 
 _DEMO = """

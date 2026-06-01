@@ -32,5 +32,7 @@ providers:
 # Precedence: providers.<id>.max_response_bytes > SPORTSDATA_MCP_MAX_BYTES env > 0 (unlimited).
 
 # Secrets for authenticated providers (AFL premium, bookmakers, …).
-# Prefer environment variables in production; this block is for local use only.
+# A static_header auth that reads `env: SOME_VAR` is satisfied by the real env var
+# first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name. Prefer
+# environment variables in production; this block is for local use only.
 secrets: {}

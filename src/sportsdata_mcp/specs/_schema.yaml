@@ -62,7 +62,6 @@ dispatchers:
     auth: "none"
     default_headers: {Content-Type: application/json}
     catalog_resource: "example://graphql/operations"
-    catalog_source: "graphql.operations"
     params:
       - { name: operation, in: dispatch, type: string, required: true }
       - { name: variables, in: dispatch, type: object, required: false }

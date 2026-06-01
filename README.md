@@ -70,6 +70,10 @@ providers:                      # all optional; sensible defaults apply
 secrets: {}                     # for authenticated providers; prefer env vars in prod
 ```
 
+A provider whose auth reads `env: SOME_VAR` is satisfied by the real environment
+variable first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name
+(a local-dev convenience — keep real secrets in the environment in production).
+
 ### Environment variables
 
 | Variable | Effect |

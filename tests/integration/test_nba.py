@@ -144,3 +144,28 @@ async def test_stats_call_standings_overrides_default_param_live(nba_server):
     data = _structured(res)
     _headers, rows = _result_set(data, "Standings")
     assert len(rows) == 30
+
+
+# ─── live: cross-tool chain (scoreboard → boxscore) ────────────────────
+
+
+@pytest.mark.live
+async def test_boxscore_chains_off_scoreboard_live(nba_server):
+    """The documented discovery flow end to end: pull today's gameId values from the
+    scoreboard, then feed the first one into nba_boxscore. Skips cleanly on an off
+    day (no games), xfails if the CDN is unreachable."""
+    try:
+        sb = await nba_server.call_tool("nba_scoreboard_today", {})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"cdn.nba.com unavailable: {e}")
+    games = _structured(sb)["scoreboard"]["games"]
+    if not games:
+        pytest.skip("no NBA games today — nothing to box-score")
+    game_id = games[0]["gameId"]
+    try:
+        box = await nba_server.call_tool("nba_boxscore", {"gameId": game_id})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"cdn.nba.com unavailable: {e}")
+    game = _structured(box)["game"]
+    assert game["gameId"] == game_id
+    assert "homeTeam" in game and "awayTeam" in game

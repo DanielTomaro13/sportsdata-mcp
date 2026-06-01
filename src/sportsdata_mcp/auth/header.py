@@ -1,4 +1,4 @@
-"""Static-header auth (literal value or env-var-sourced)."""
+"""Static-header auth (literal value, env var, or config `secrets` block)."""
 
 from __future__ import annotations
 
@@ -9,11 +9,18 @@ from ..spec import AuthStaticHeader
 
 
 class StaticHeaderAuthProvider:
-    def __init__(self, spec: AuthStaticHeader) -> None:
+    def __init__(self, spec: AuthStaticHeader, secrets: dict[str, str] | None = None) -> None:
+        secrets = secrets or {}
         if spec.env:
+            # Prefer a real env var (production); fall back to the config `secrets`
+            # block keyed by the same name (local use), per the documented precedence.
             value = os.environ.get(spec.env)
             if value is None:
-                raise AuthMissingError(f"env var {spec.env} not set; required for header {spec.header}")
+                value = secrets.get(spec.env)
+            if value is None:
+                raise AuthMissingError(
+                    f"env var {spec.env} not set (and no secrets['{spec.env}']); required for header {spec.header}"
+                )
             self._value = value
         elif spec.value is not None:
             self._value = spec.value

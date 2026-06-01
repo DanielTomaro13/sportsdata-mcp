@@ -1,4 +1,6 @@
-"""Per-provider HTTP client. One per Provider; injects auth, retries once on 401."""
+"""Per-provider HTTP client. One per Provider; injects auth, refetches a stale
+credential once on 401, and retries transient upstream statuses (e.g. NBA/Akamai
+429/5xx) with exponential backoff when the spec opts in."""
 
 from __future__ import annotations
 
@@ -58,11 +60,13 @@ class HTTPClient:
         prov_cfg = cfg.providers.get(provider.id, {})
         timeout = cfg.request_timeout(provider.id, spec_default=defaults.request_timeout_seconds, default=30.0)
         self._max_bytes = cfg.max_response_bytes_for(provider.id)
+        self._secrets = cfg.secrets
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=5),
             headers=provider.default_headers,
             follow_redirects=True,
+            http2=True,  # negotiated via ALPN; falls back to HTTP/1.1. Some CDNs (Akamai) prefer h2.
         )
         self._auth_providers: dict[str, AuthProvider] = {}
         burst = prov_cfg.get("burst")
@@ -85,7 +89,7 @@ class HTTPClient:
         if spec is None or isinstance(spec, AuthNone):
             provider: AuthProvider = NullAuthProvider()
         elif isinstance(spec, AuthStaticHeader):
-            provider = StaticHeaderAuthProvider(spec)
+            provider = StaticHeaderAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthAFLWMCTok):
             provider = AFLTokenProvider(spec, self._client)
         else:
@@ -104,7 +108,6 @@ class HTTPClient:
         json_body: dict | list | None = None,
         auth_key: str = "default",
     ) -> httpx.Response:
-        await self._bucket.acquire()
         full_url = self._provider.base_urls[base].rstrip("/") + url
         merged_headers = dict(headers or {})
         auth_spec = self._provider.auth.get(auth_key)
@@ -118,6 +121,9 @@ class HTTPClient:
         auth_refetched = False
         retries_used = 0
         while True:
+            # Spend a token on every attempt — retries (esp. NBA/Akamai 429s) must
+            # stay under the rate limit too, not just the first request.
+            await self._bucket.acquire()
             log.info("→ %s %s (provider=%s, auth=%s)", method, full_url, self._provider.id, auth_key)
             r = await self._client.request(method, full_url, params=params, headers=merged_headers, json=json_body)
             # A stale credential surfaces as 401 — refetch once and retry immediately.
@@ -151,21 +157,9 @@ class HTTPClient:
         return self._decode(r)
 
     def _decode(self, r: httpx.Response) -> dict | list:
-        # 1. Size guard — refuse to dump megabytes into the model's context.
-        #    A non-positive cap (max_response_bytes <= 0) disables the guard entirely.
-        body = r.content
-        if self._max_bytes > 0 and len(body) > self._max_bytes:
-            log.warning(
-                "oversize response (provider=%s, %d bytes > limit %d)", self._provider.id, len(body), self._max_bytes
-            )
-            raise ToolError(
-                f"Response from {self._provider.id} was {len(body):,} bytes "
-                f"(limit {self._max_bytes:,}). Narrow the query (date range, pageSize, filters) and retry.",
-                recoverable=True,
-                code="RESPONSE_TOO_LARGE",
-            )
-
-        # 2. Status guard — surface bot-blocks / rate-limits / server errors as clean ToolErrors.
+        # 1. Status guard — surface bot-blocks / rate-limits / server errors as clean
+        #    ToolErrors first, so an HTTP error reports its status (HTTP_503 etc.) rather
+        #    than masquerading as RESPONSE_TOO_LARGE when the error body happens to be big.
         if r.status_code == 429:
             log.warning("rate-limited (provider=%s, HTTP 429)", self._provider.id)
             raise ToolError(
@@ -189,6 +183,20 @@ class HTTPClient:
                 f"{self._provider.id} returned HTTP {r.status_code}. Body starts: {_snippet(r)}",
                 recoverable=r.status_code >= 500,
                 code=f"HTTP_{r.status_code}",
+            )
+
+        # 2. Size guard — for a 2xx body, refuse to dump megabytes into the model's
+        #    context. A non-positive cap (max_response_bytes <= 0) disables it entirely.
+        body = r.content
+        if self._max_bytes > 0 and len(body) > self._max_bytes:
+            log.warning(
+                "oversize response (provider=%s, %d bytes > limit %d)", self._provider.id, len(body), self._max_bytes
+            )
+            raise ToolError(
+                f"Response from {self._provider.id} was {len(body):,} bytes "
+                f"(limit {self._max_bytes:,}). Narrow the query (date range, pageSize, filters) and retry.",
+                recoverable=True,
+                code="RESPONSE_TOO_LARGE",
             )
 
         # 3. Decode guard — try JSON regardless of content-type. Some APIs (e.g. NBA's CDN)

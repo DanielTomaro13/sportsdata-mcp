@@ -187,6 +187,10 @@ dispatchers:
       nba://stats/operations resource. Most responses are column-oriented
       ({resultSets:[{name, headers, rowSet}]}); zip headers with each row.
     catalog_resource: "nba://stats/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "stats.nba.com /stats/ path segment, e.g. leaguedashplayerstats (see nba://stats/operations)" }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Map of query-string overrides, e.g. {Season: '2024-25', PlayerID: '201939'}; merged over the op's defaults" }
+      - { name: path_params, in: dispatch, type: object, required: false, description: "Map of path-parameter values (only the few path-templated ops need these)" }
     operations:
       - name: alltimeleadersgrids
         path: /stats/alltimeleadersgrids
