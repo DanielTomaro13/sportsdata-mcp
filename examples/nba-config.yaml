@@ -1,0 +1,25 @@
+# NBA worked-example config.
+#
+# Enables both NBA surfaces so a model can go from "today's games" all the way to
+# a per-player shot chart:
+#   nba.public.cdn — open JSON CDN (scoreboard, schedule, box score, play-by-play, odds)
+#   nba.stats      — the stats.nba.com /stats/ analytics API via the nba_stats_call dispatcher
+#
+# Resolution order: --config flag > $SPORTSDATA_MCP_CONFIG > ./sportsdata-mcp.yaml
+#   > ~/.config/sportsdata-mcp/config.yaml > built-in defaults.
+# Run with: sportsdata-mcp --config examples/nba-config.yaml serve
+
+enabled_groups:
+  - nba.public.cdn
+  - nba.stats
+
+# NBA ships its own spec-level defaults (Akamai-friendly throttle + 429/5xx retry):
+# ~1 req / 2.5s, 45s timeout, retry transient statuses with backoff. No secrets are
+# needed for either surface. Uncomment to override the shipped defaults — but note
+# stats.nba.com's Akamai layer is strict, so raise rate_limit_rps at your own risk.
+# providers:
+#   nba:
+#     rate_limit_rps: 0.4
+#     request_timeout_seconds: 45
+
+secrets: {}

@@ -58,6 +58,7 @@ capabilities:
     description: "Per-player stats over a season."
   - id: stats.player_game_log
     description: "Game-by-game stat line for one player across a date range or season."
+    single_provider: true
   - id: stats.player_career
     description: "Per-season totals across a player's career."
   - id: stats.player_profile
@@ -68,12 +69,14 @@ capabilities:
     description: "Per-team aggregate stats over a season."
   - id: stats.team_game_log
     description: "Game-by-game results / form for one team."
+    single_provider: true
   - id: stats.leaders_season
     description: "Season leaders per stat (Coleman, Brownlow, top scorers, MVP, etc.)."
   - id: stats.ladder
     description: "Current ladder / standings / conference standings for a competition."
   - id: stats.head_to_head
     description: "Head-to-head history between two teams."
+    single_provider: true
 
   # ─── Stats — advanced / sport-specific ───────────────────────────────
   - id: stats.advanced_metrics
@@ -83,6 +86,7 @@ capabilities:
     single_provider: true
   - id: stats.play_by_play
     description: "Event-level play-by-play log of a game."
+    single_provider: true
   - id: stats.fantasy_projections
     description: "Fantasy-points projections / DFS pricing."
     single_provider: true
@@ -92,8 +96,10 @@ capabilities:
     description: "All scheduled fixtures / games on a given date across one league."
   - id: sport.match_boxscore
     description: "Detailed game box score (quarter/period scores, team totals, leaders)."
+    single_provider: true
   - id: sport.season_summary
     description: "End-of-season / current-state league summary (champion, top scorer, awards)."
+    single_provider: true
 
   # ─── Catalogue / reference ───────────────────────────────────────────
   - id: ref.teams

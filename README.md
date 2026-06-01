@@ -39,8 +39,10 @@ Enable tool groups with a config file or the `SPORTSDATA_MCP_GROUPS` env var:
 SPORTSDATA_MCP_GROUPS="afl.public.core,sportsbet.racing,entain.graphql" sportsdata-mcp serve
 ```
 
-See [`examples/`](./examples) for Claude Desktop / Claude Code config snippets
-and a worked cross-bookie odds-comparison prompt.
+See [`examples/`](./examples) for Claude Desktop / Claude Code config snippets,
+a worked cross-bookie [odds-comparison prompt](./examples/comparator-prompt.md),
+and an [NBA shot-chart + box-score walkthrough](./examples/nba-prompt.md) that
+shows the `nba_stats_call` dispatcher pattern end to end.
 
 ## Configuration
 
