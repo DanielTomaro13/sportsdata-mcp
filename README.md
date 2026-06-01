@@ -153,8 +153,8 @@ tracking, …). Browse every operation, its required params and its defaults in 
 | Group | Tools | Notes |
 |---|---:|---|
 | `espn.scores` | 5 | Site API convenience endpoints: scoreboard, teams, standings, game summary, news |
-| `espn.site` | 1 | `espn_site_call` — rosters, schedules, injuries, depth charts, transactions, athlete logs (17 ops) |
-| `espn.core` | 1 | `espn_core_call` — the canonical `$ref`-linked model: odds, win-probability, plays, venues, drafts, coaches (26 ops) |
+| `espn.site` | 1 | `espn_site_call` — team detail, rosters, schedules, injuries, depth charts, transactions, history, athlete news, groups, rankings (10 ops) |
+| `espn.core` | 1 | `espn_core_call` — the canonical `$ref`-linked model: events/competitions, odds, win-probability, plays, venues, drafts, coaches, calendar, transactions (37 ops) |
 | `espn.web` | 1 | `espn_web_call` — site-wide search + `common/v3` athlete views (7 ops) |
 | `espn.cdn` | 1 | `espn_cdn_call` — the CDN live core feed: scoreboard/game/boxscore/playbyplay (4 ops) |
 

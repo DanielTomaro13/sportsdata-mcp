@@ -63,7 +63,10 @@ async def test_site_catalogue_lists_operations(espn_server):
     assert payload["dispatcher"] == "espn_site_call"
     names = {op["name"] for op in payload["operations"]}
     # a spread across the families the dispatcher fronts
-    assert {"team_roster", "team_injuries", "team_depthchart", "athlete_gamelog", "rankings"} <= names
+    assert {"team_roster", "team_schedule", "team_injuries", "team_depthchart", "athlete_news", "rankings"} <= names
+    # the athlete profile/gamelog/splits/bio views do NOT live on the site host
+    # (they 404 there) — they belong to espn_web_call / espn_core_call.
+    assert {"athlete", "athlete_gamelog", "athlete_splits", "athlete_bio"}.isdisjoint(names)
 
 
 async def test_core_catalogue_carries_path_params(espn_server):
@@ -79,11 +82,15 @@ async def test_core_catalogue_carries_path_params(espn_server):
 
 
 async def test_cdn_catalogue_defaults_xhr(espn_server):
-    """Every CDN op carries xhr=1 as a query default so the feed returns JSON."""
+    """Every CDN op carries xhr=1 as a query default so the feed returns JSON, and the
+    path slug is named `league` (not `sport`) — the CDN slug is the league (nfl/nba),
+    while the bare sport name (`basketball`) 404s."""
     payload = _catalogue(await espn_server.read_resource("espn://cdn/operations"))
     ops = {op["name"]: op for op in payload["operations"]}
     assert set(ops) == {"scoreboard", "game", "boxscore", "playbyplay"}
     assert ops["boxscore"]["query_defaults"]["xhr"] == "1"
+    assert ops["scoreboard"]["path_params"] == ["league"]
+    assert "/core/{league}/" in ops["scoreboard"]["path"]
 
 
 async def test_unknown_operation_is_recoverable(espn_server):
@@ -170,7 +177,7 @@ async def test_cdn_call_scoreboard_live(espn_server):
     try:
         res = await espn_server.call_tool(
             "espn_cdn_call",
-            {"operation": "scoreboard", "path_params": {"sport": "nfl"}},
+            {"operation": "scoreboard", "path_params": {"league": "nfl"}},
         )
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"cdn.espn.com unavailable: {e}")
@@ -206,3 +213,68 @@ async def test_game_summary_chains_off_scoreboard_live(espn_server):
         pytest.xfail(f"site.api.espn.com unavailable: {e}")
     data = _structured(summ)
     assert "boxscore" in data
+
+
+# ─── live: espn_site_call chain (teams → team_roster) ───────────────────
+
+
+@pytest.mark.live
+async def test_site_call_team_roster_chains_off_teams_live(espn_server):
+    """Exercises espn_site_call end to end: pull a team id from espn_teams, then fetch
+    that team's roster via the dispatcher. Schedule-independent (rosters exist year
+    round); xfails if the host is unreachable."""
+    try:
+        teams = await espn_server.call_tool("espn_teams", {"sport": "football", "league": "nfl"})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"site.api.espn.com unavailable: {e}")
+    leagues = _structured(teams).get("sports", [{}])[0].get("leagues", [{}])
+    team_list = leagues[0].get("teams", []) if leagues else []
+    if not team_list:
+        pytest.skip("no NFL teams returned — nothing to roster")
+    team_id = team_list[0]["team"]["id"]
+    try:
+        res = await espn_server.call_tool(
+            "espn_site_call",
+            {"operation": "team_roster", "path_params": {"sport": "football", "league": "nfl", "teamId": team_id}},
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"site.api.espn.com unavailable: {e}")
+    data = _structured(res)
+    assert isinstance(data, dict)
+    assert "athletes" in data
+
+
+# ─── live: espn_core_call chain (scoreboard → event_odds) ───────────────
+
+
+@pytest.mark.live
+async def test_core_call_event_odds_chains_off_scoreboard_live(espn_server):
+    """The deep-core discovery flow: take an event id from the NBA scoreboard and pull
+    its per-book odds via espn_core_call. competitionId == eventId for NBA. Skips on an
+    off day (no events) and xfails if odds aren't published for the event or the host
+    is unreachable."""
+    try:
+        sb = await espn_server.call_tool("espn_scoreboard", {"sport": "basketball", "league": "nba"})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"site.api.espn.com unavailable: {e}")
+    events = _structured(sb).get("events", [])
+    if not events:
+        pytest.skip("no NBA events today — nothing to price")
+    event_id = events[0]["id"]
+    try:
+        res = await espn_server.call_tool(
+            "espn_core_call",
+            {
+                "operation": "event_odds",
+                "path_params": {
+                    "sport": "basketball",
+                    "league": "nba",
+                    "eventId": event_id,
+                    "competitionId": event_id,
+                },
+            },
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"core odds unavailable for event {event_id}: {e}")
+    data = _structured(res)
+    assert "items" in data and isinstance(data["items"], list)

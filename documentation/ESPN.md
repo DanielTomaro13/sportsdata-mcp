@@ -2,8 +2,8 @@
 
 Unofficial reference for the public JSON feeds that power `espn.com` and the ESPN apps. There is **no API key and no auth** — every host below answers anonymous `GET` requests. Four hosts make up the surface:
 
-- **`site.api.espn.com`** — the **site API**: scoreboards, team catalogues, standings, league news, game summaries, athlete game-logs/bios, rankings. Hosts both `/apis/site/v2/...` and `/apis/site/v3/...` (plus the standalone `/apis/v2/...standings`).
-- **`sports.core.api.espn.com`** — the **core API**: the canonical, deeply `$ref`-linked data model. Athletes + statistics + career logs, per-event odds / win-probabilities / plays / situation / broadcasts / predictor, per-competitor line-scores, season teams/coaches/draft/futures, venues, leaders, franchises, coaches. **Path uses `leagues/{league}` (plural).**
+- **`site.api.espn.com`** — the **site API**: scoreboards, team catalogues + rosters/schedules/injuries/depth-charts/transactions/history, standings, league + athlete news, game summaries, conference/division groups and poll rankings. Uses `/apis/site/v2/...` (plus the standalone `/apis/v2/...standings`). Note: athlete **profile/game-log/splits/bio** views are *not* served here — they 404 on this host and live on the web/core hosts instead.
+- **`sports.core.api.espn.com`** — the **core API**: the canonical, deeply `$ref`-linked data model. Events + competitions + competitors, athletes + statistics + career logs, per-event odds / win-probabilities / plays / situation / broadcasts / predictor / power-index, per-competitor line-scores + statistics + rosters, season teams/coaches/draft/futures/types/weeks, single teams + team events, venues, leaders, franchises, coaches, the season calendar and the league transactions log. **Path uses `leagues/{league}` (plural).**
 - **`site.web.api.espn.com`** — the **web API**: site-wide search and the `common/v3` athlete overview/stats/gamelog/splits views that back player-profile pages.
 - **`cdn.espn.com`** — the **CDN core** live feed: lightly-cached scoreboard/game/boxscore/playbyplay JSON. Every request needs `?xhr=1`.
 
@@ -88,7 +88,7 @@ Almost every ESPN URL is shaped `.../sports/{sport}/{league}/{resource}`. That s
 - **Site API:** `/apis/site/v2/sports/{sport}/{league}/{resource}`
 - **Core API:** `/v2/sports/{sport}/leagues/{league}/{resource}` ← note **`leagues`** (plural)
 - **Web API:** `/apis/common/v3/sports/{sport}/{league}/athletes/{id}/{view}`
-- **CDN:** `/core/{leagueSlug}/{resource}?xhr=1` ← the path slug is the league (`nfl`), except soccer which is `/core/soccer/...&league=eng.1`
+- **CDN:** `/core/{league}/{resource}?xhr=1` ← the path slug is the **league** (`nfl`, `nba`), *not* the sport; for soccer use the competition slug directly (`/core/eng.1/...`). Covers ESPN's front-page leagues only (no `nhl`)
 
 ### Sport & league slugs
 
@@ -106,7 +106,7 @@ A non-exhaustive map (anything ESPN covers works):
 | `tennis` | `atp`, `wta` |
 | `mma` | `ufc` |
 
-For **soccer** the league is a dotted competition code (`eng.1` = Premier League, `esp.1` = La Liga). On the CDN feed, soccer uses `sport=soccer` in the path plus a `league=eng.1` query.
+For **soccer** the league is a dotted competition code (`eng.1` = Premier League, `esp.1` = La Liga). On the CDN feed, put the competition slug directly in the path (`/core/eng.1/...`); `/core/soccer/...&league=eng.1` also works.
 
 ### Identifiers
 
@@ -114,7 +114,7 @@ For **soccer** the league is a dotted competition code (`eng.1` = Premier League
 |---|---|---|
 | `event` / `eventId` | numeric string, e.g. `401547439` | `espn_scoreboard` → `events[].id` |
 | `competitionId` | usually equal to the `eventId` | the event's `competitions[].id` |
-| `competitorId` | numeric team id within a competition | the competition's `competitors[].id` |
+| `competitorId` | numeric competitor id (**not** the `teamId`) | `espn_core_call(competitors)` → the `$ref`'s trailing id |
 | `teamId` | numeric string, e.g. `12` | `espn_teams`, `espn_core_call(teams)` |
 | `athleteId` | numeric string, e.g. `1966` (LeBron) | `espn_core_call(athletes)`, `espn_web_call(search)` |
 | `year` | 4-digit season, e.g. `2025` | n/a (literal) |
@@ -272,9 +272,9 @@ GET https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news
 **`espn_site_call`** — one tool over the site API resource families (`base: site`). Supply an `operation`, a `path_params` map (at least `sport` + `league`, plus any id the op needs), and optional `query_params`. Browse live at **`espn://site/operations`**.
 
 ```jsonc
-// espn_site_call — Patrick Mahomes' game log (athleteId 3139477)
-{ "operation": "athlete_gamelog",
-  "path_params": { "sport": "football", "league": "nfl", "athleteId": "3139477" } }
+// espn_site_call — Kansas City Chiefs roster (teamId 12)
+{ "operation": "team_roster",
+  "path_params": { "sport": "football", "league": "nfl", "teamId": "12" } }
 ```
 
 | Operation | Path params (beyond sport/league) | Returns |
@@ -286,16 +286,15 @@ GET https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news
 | `team_depthchart` | `teamId` | Depth chart (positional ordering) |
 | `team_transactions` | `teamId` | Transactions (signings, trades, waivers) |
 | `team_history` | `teamId` | Season-by-season team history |
-| `athlete` | `athleteId` | Athlete profile (position, team, status) |
-| `athlete_gamelog` | `athleteId` | Game-by-game log for the season |
-| `athlete_splits` | `athleteId` | Statistical splits |
 | `athlete_news` | `athleteId` | News for one athlete |
-| `athlete_bio` | `athleteId` | Biography (birthplace, draft, college) |
 | `groups` | — | Conference/division groups (group ids) |
 | `rankings` | — | Poll rankings (mainly college) |
-| `calendar` | — | Season calendar (dates/weeks with games) |
-| `scoreboard_v3` | — | v3 scoreboard variant |
-| `summary_v3` | — | v3 game summary (query `event`) |
+
+> **Athlete profiles/game-logs/splits/bios are not on this host** (they 404). Use
+> `espn_web_call` (`athlete_overview` / `athlete_stats` / `athlete_gamelog` /
+> `athlete_splits`) for the player-page views, or `espn_core_call`
+> (`athlete` / `athlete_statistics` / `athlete_statisticslog` / `athlete_eventlog`)
+> for the canonical model. The **season calendar** moved to `espn_core_call(calendar)`.
 
 ---
 
@@ -316,25 +315,36 @@ GET https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news
 | `athlete_statistics` | `athleteId` | Season statistics (categorised) |
 | `athlete_statisticslog` | `athleteId` | Per-season career stats log |
 | `athlete_eventlog` | `athleteId` | Games played (per-game stat `$ref`s) |
+| `events` | — | Event index for the league (`{count, items:[{$ref}]}`) |
+| `event` | `eventId` | Single event (competitions, competitors, venue) |
+| `competition` | `eventId`, `competitionId` | Single competition (status + `$ref`s) |
+| `competitors` | `eventId`, `competitionId` | Competitor list (yields `competitorId`s) |
 | `event_odds` | `eventId`, `competitionId` | Per-book odds (spread, ML, total) |
-| `event_probabilities` | `eventId`, `competitionId` | Win-probability time series |
+| `event_probabilities` | `eventId`, `competitionId` | Win-probability time series **(football only)** |
 | `event_plays` | `eventId`, `competitionId` | Play-by-play |
 | `event_situation` | `eventId`, `competitionId` | Live situation (down/distance, bases) |
 | `event_broadcasts` | `eventId`, `competitionId` | Broadcast listings (networks/markets) |
 | `event_predictor` | `eventId`, `competitionId` | Matchup predictor (projected score / win %) |
 | `event_powerindex` | `eventId`, `competitionId` | Game power-index per competitor |
 | `competitor_linescores` | `eventId`, `competitionId`, `competitorId` | Per-period line score |
-| `competitor_statistics` | `eventId`, `competitionId`, `competitorId` | Per-game team stats |
+| `competitor_statistics` | `eventId`, `competitionId`, `competitorId` | Per-game team stats (not every sport) |
+| `competitor_roster` | `eventId`, `competitionId`, `competitorId` | Per-game roster/lineup (athlete `$ref`s) |
 | `seasons` | — | Season catalogue |
+| `season_types` | `year` | Season phases (1 pre / 2 reg / 3 post) |
+| `season_weeks` | `year`, `type` | Weeks within a phase (NFL/college football) |
 | `season_teams` | `year` | Teams active in a season |
 | `season_coaches` | `year` | Coaches for a season |
 | `season_draft` | `year` | Draft results / picks |
 | `season_futures` | `year` | Season-long futures markets |
 | `standings` | — | Core standings (`$ref` to group standings) |
 | `teams` | — | Team index (core model) |
+| `team` | `teamId` | Single team (record/venue/leaders `$ref`s) |
+| `team_events` | `teamId` | Events (schedule) for one team |
 | `venues` | — | Venue catalogue (id, name, city, capacity) |
 | `leaders` | — | Season statistical leaders |
 | `rankings` | — | Poll rankings (core model) |
+| `calendar` | — | Season calendar: dates with games (`/calendar/ondays`) |
+| `transactions` | — | League-wide transactions log |
 | `franchises` | — | Franchise catalogue (stable identity) |
 | `coach` | `coachId` | Single coach (record, team, experience) |
 
@@ -363,22 +373,22 @@ GET https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news
 
 ## espn.cdn: the CDN dispatcher
 
-**`espn_cdn_call`** — the CDN live core feed (`base: cdn`). The path slug is the **league** (`nfl`, `nba`, `mlb`, `nhl`); for soccer use `sport=soccer` + a `league=eng.1` query. `xhr=1` is supplied automatically. `gameId` comes from the `scoreboard` op. Browse live at **`espn://cdn/operations`**.
+**`espn_cdn_call`** — the CDN live core feed (`base: cdn`). The path slug is the **league** (`nfl`, `nba`, `mlb`, `college-football`), *not* the sport — the bare sport name (`basketball`) 404s. For soccer use the competition slug directly (`eng.1`). The CDN serves ESPN's front-page leagues only (no `nhl`). `xhr=1` is supplied automatically. `gameId` comes from the `scoreboard` op. Browse live at **`espn://cdn/operations`**.
 
 ```jsonc
 // espn_cdn_call — NFL scoreboard
-{ "operation": "scoreboard", "path_params": { "sport": "nfl" } }
+{ "operation": "scoreboard", "path_params": { "league": "nfl" } }
 
 // espn_cdn_call — one game's box score
-{ "operation": "boxscore", "path_params": { "sport": "nfl" }, "query_params": { "gameId": "401547439" } }
+{ "operation": "boxscore", "path_params": { "league": "nfl" }, "query_params": { "gameId": "401547439" } }
 ```
 
 | Operation | Path | Query params | Returns |
 |---|---|---|---|
-| `scoreboard` | `/core/{sport}/scoreboard` | `dates`, `league` | Scoreboard for a league slug; events + ids |
-| `game` | `/core/{sport}/game` | `gameId`, `league` | Single-game feed |
-| `boxscore` | `/core/{sport}/boxscore` | `gameId`, `league` | Box score for one game |
-| `playbyplay` | `/core/{sport}/playbyplay` | `gameId`, `league` | Play-by-play for one game |
+| `scoreboard` | `/core/{league}/scoreboard` | `dates` | Scoreboard for a league slug; events + ids |
+| `game` | `/core/{league}/game` | `gameId` | Single-game feed |
+| `boxscore` | `/core/{league}/boxscore` | `gameId` | Box score for one game |
+| `playbyplay` | `/core/{league}/playbyplay` | `gameId` | Play-by-play for one game |
 
 All four carry `xhr=1` as a query default so the feed returns JSON.
 
@@ -395,8 +405,8 @@ Tools exposed by this server's ESPN spec:
 | `espn_standings` | `espn.scores` | site | `/apis/v2/sports/{sport}/{league}/standings` |
 | `espn_game_summary` | `espn.scores` | site | `/apis/site/v2/sports/{sport}/{league}/summary?event=…` |
 | `espn_news` | `espn.scores` | site | `/apis/site/v2/sports/{sport}/{league}/news` |
-| `espn_site_call` | `espn.site` | site | dispatcher over 17 ops (catalogue: `espn://site/operations`) |
-| `espn_core_call` | `espn.core` | core | dispatcher over 26 ops (catalogue: `espn://core/operations`) |
+| `espn_site_call` | `espn.site` | site | dispatcher over 10 ops (catalogue: `espn://site/operations`) |
+| `espn_core_call` | `espn.core` | core | dispatcher over 37 ops (catalogue: `espn://core/operations`) |
 | `espn_web_call` | `espn.web` | web | dispatcher over 7 ops (catalogue: `espn://web/operations`) |
 | `espn_cdn_call` | `espn.cdn` | cdn | dispatcher over 4 ops (catalogue: `espn://cdn/operations`) |
 
