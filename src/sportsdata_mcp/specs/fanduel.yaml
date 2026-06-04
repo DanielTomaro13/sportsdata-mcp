@@ -19,6 +19,7 @@ provider:
   base_urls:
     racing_graphql: https://api.racing.fanduel.com
     racing_service: https://service.racing.fanduel.com
+    racing_promos: https://promos-api.racing.fanduel.com
     sportsbook_api: https://api.sportsbook.fanduel.com
     sportsbook_fdx: https://fdx-api.sportsbook.fanduel.com
   default_headers:
@@ -61,6 +62,18 @@ endpoints:
     auth: default
     response_hint: "{quickLinks:[{label, url, ...}]}"
 
+  - name: fanduel_racing_promotions
+    group: fanduel.racing
+    capabilities: [content.promo]
+    summary: "Structured racing promotions / placements (POST; empty body returns all)."
+    method: POST
+    base: racing_promos
+    path: /api/customisedPromotions/retrieveStructured
+    auth: default
+    params:
+      - { name: body, in: body, type: object, default: {}, description: "Optional filter body; {} returns the default placements." }
+    response_hint: "{success, promoPlacements:[{...}]}"
+
   # ─── fanduel.sportsbook — live score (fdx-api host) ────────────────────
   - name: fanduel_sb_live_score
     group: fanduel.sportsbook
@@ -71,7 +84,7 @@ endpoints:
     auth: default
     params:
       - { name: eventId, in: path, type: integer, description: "Sportsbook event id (from fanduel_sb_call event_page / content_page)." }
-    response_hint: "{openDate, homeTeam:{shortName, abbreviation, score}, awayTeam:{...}, period}"
+    response_hint: "{openDate, homeTeam:{shortName, abbreviation, score}, awayTeam:{...}, comp, mediaTypes}"
 
 dispatchers:
   # ─── fanduel.racing — full-query GraphQL (api.racing.fanduel.com) ───────
@@ -152,6 +165,9 @@ dispatchers:
       - name: static_config
         path: /config/static/NJ.json
         summary: "Static app config (banners, feature blocks) for NJ."
+      - name: polling_config
+        path: /config/pollingConfig/NJ.json
+        summary: "Polling intervals config for NJ (drives client refresh cadence)."
 
 graphql:
   operations:
@@ -183,6 +199,12 @@ graphql:
       variables: "wagerProfile: String!, brand: String!, product: String!, device: String!"
       default_variables: {wagerProfile: "FDR-Generic", brand: "FDR", product: "TVG5", device: "Desktop"}
       query: "query getTopPools($wagerProfile: String!, $brand: String!, $product: String!, $device: String!) {\n  carryOverPools(profile: $wagerProfile, filter: {raceStatus: [\"O\", \"IC\"]}) {\n    track: trackName\n    trackCode\n    amount\n    wagerType {\n      id\n      code\n      name\n      __typename\n    }\n    race {\n      id\n      raceNumber: number\n      postTime\n      track {\n        shortName\n        __typename\n      }\n      mtp\n      isGreyhound\n      highlighted(product: $product, device: $device, brand: $brand) {\n        description\n        style\n        pinnedOrder\n        __typename\n      }\n      location {\n        country\n        __typename\n      }\n      video {\n        onTvg\n        onTvg2\n        __typename\n      }\n      __typename\n    }\n    poolType\n    __typename\n  }\n}\n"
+
+    - name: getRace
+      verified: true
+      variables: "wagerProfile: String, trackCode: String!, raceNumber: String!"
+      default_variables: {wagerProfile: "FDR-Generic"}
+      query: "query getRace($wagerProfile: String, $trackCode: String, $raceNumber: String) {\n  race(profile: $wagerProfile, track: $trackCode, number: $raceNumber) {\n    id\n    tvgRaceId\n    raceNumber: number\n    track { code name shortName __typename }\n    mtp\n    postTime\n    isGreyhound\n    numRunners\n    raceDistance { value code __typename }\n    status { code __typename }\n    type { code __typename }\n    bettingInterests(sort: {byCurrentOdds: ASC}) {\n      biNumber\n      saddleColor\n      currentOdds { numerator denominator __typename }\n      morningLineOdds { numerator denominator __typename }\n      runners { horseName runnerId scratched trainer jockey __typename }\n      isFavorite: favorite\n      __typename\n    }\n    __typename\n  }\n}\n"
 
     - name: getGraphTalentPicks
       verified: true

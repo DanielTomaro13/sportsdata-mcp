@@ -147,7 +147,7 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `fanduel.racing` | 3 | `fanduel_racing_call` (full-query GraphQL: featured/today races + odds, tracks, pools, talent picks) + site messages/quick-links |
+| `fanduel.racing` | 4 | `fanduel_racing_call` (full-query GraphQL: featured/today races + odds, single-race card, tracks, pools, talent picks) + messages/quick-links/promotions |
 | `fanduel.sportsbook` | 2 | `fanduel_sb_call` (REST: event pages + markets, in-play, promos, configs via the `_ak` key) + live scores |
 
 ### NRL — `mc.championdata.com`

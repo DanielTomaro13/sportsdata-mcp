@@ -47,7 +47,7 @@ def _catalogue(payload_resource) -> dict:
 async def test_fanduel_tools_registered(fanduel_server):
     names = {t.name for t in await fanduel_server.list_tools()}
     assert "fanduel_racing_call" in names
-    assert {"fanduel_racing_messages", "fanduel_racing_quicklinks"} <= names
+    assert {"fanduel_racing_messages", "fanduel_racing_quicklinks", "fanduel_racing_promotions"} <= names
     # sportsbook half
     assert {"fanduel_sb_call", "fanduel_sb_live_score"} <= names
 
@@ -65,7 +65,7 @@ async def test_racing_catalogue_lists_operations(fanduel_server):
     payload = _catalogue(await fanduel_server.read_resource("fanduel://racing/operations"))
     assert payload["dispatcher"] == "fanduel_racing_call"
     names = {op["name"] for op in payload["operations"]}
-    assert {"getRaceDate", "getTracks", "getTodayRaces", "getFeaturedRaces", "getTopPools"} <= names
+    assert {"getRaceDate", "getTracks", "getTodayRaces", "getFeaturedRaces", "getTopPools", "getRace"} <= names
     # full-query provider: the note advertises query text (not hashes) server-side
     assert "query" in payload["note"].lower()
 
@@ -120,6 +120,46 @@ async def test_featured_races_carry_odds_live(fanduel_server):
     if not races:
         pytest.skip("no featured races open right now")
     assert "bettingInterests" in races[0]
+
+
+@pytest.mark.live
+async def test_get_race_chains_off_today_live(fanduel_server):
+    """The single-race card: pull an open race (trackCode + number) from getTodayRaces,
+    then fetch its full card with bettingInterests via getRace. Skips on no open races."""
+    try:
+        today = await fanduel_server.call_tool(
+            "fanduel_racing_call",
+            {"operation": "getTodayRaces", "variables": {"filterBy": {"status": ["O"], "allRaceClasses": True}}},
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"api.racing.fanduel.com unavailable: {e}")
+    races = _payload(today).get("data", {}).get("races", [])
+    if not races:
+        pytest.skip("no open races right now")
+    track_code = races[0]["track"]["code"]
+    race_number = str(races[0]["number"])
+    try:
+        res = await fanduel_server.call_tool(
+            "fanduel_racing_call",
+            {"operation": "getRace", "variables": {"trackCode": track_code, "raceNumber": race_number}},
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"getRace unavailable for {track_code} R{race_number}: {e}")
+    data = _payload(res)
+    assert not data.get("errors"), data.get("errors")
+    race = data["data"]["race"]
+    assert race and "bettingInterests" in race
+
+
+@pytest.mark.live
+async def test_racing_promotions_live(fanduel_server):
+    """The racing promotions POST returns a structured-placements envelope."""
+    try:
+        res = await fanduel_server.call_tool("fanduel_racing_promotions", {})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"promos-api.racing.fanduel.com unavailable: {e}")
+    data = _payload(res)
+    assert "promoPlacements" in data
 
 
 @pytest.mark.live

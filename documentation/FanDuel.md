@@ -50,7 +50,8 @@ filters and sorts — merged *under* whatever the caller passes. So most calls n
 | `getRaceDate` | The current race date (no variables — the simplest probe). | — |
 | `getTracks` | All tracks today (id, name, code, race count, greyhound flag, location). | `racing.meetings_by_date` |
 | `getTodayRaces` | Every race today across tracks (status, type, video, distance, post time). | `racing.next_to_jump` |
-| `getFeaturedRaces` | Top/featured races **with `bettingInterests` → `currentOdds`** (runners, silks, trainer/jockey). The race-card surface. | `racing.race_card` |
+| `getFeaturedRaces` | Top/featured races **with `bettingInterests` → `currentOdds`** (runners, silks, trainer/jockey). | `racing.race_card` |
+| `getRace` | **One race's full card** by `trackCode` + `raceNumber` — runners + `currentOdds` + morning-line, for *any* race (not just featured). | `racing.race_card` |
 | `getTopPools` | Carry-over / jackpot pools by wager type. | — |
 | `getGraphTalentPicks` | Expert talent picks (filterable by `trackCode` + `raceNumber`). | — |
 
@@ -61,17 +62,18 @@ The dispatcher's union capabilities are `racing.next_to_jump`,
 
 ```
 fanduel_racing_call(getTracks)                          → trackCode (e.g. "GP")
-fanduel_racing_call(getTodayRaces)                       → races by post time
+fanduel_racing_call(getTodayRaces)                       → trackCode + raceNumber
+fanduel_racing_call(getRace, {trackCode:"GP", raceNumber:"5"})  → one race's card + odds
 fanduel_racing_call(getFeaturedRaces, {results: 12})     → featured races + currentOdds
-fanduel_racing_call(getGraphTalentPicks, {trackCode:"GP", raceNumber:"5"})  → picks
 ```
 
-## REST aux — `service.racing.fanduel.com` (group `fanduel.racing`)
+## REST aux — racing (group `fanduel.racing`)
 
-| Tool | Path | Notes |
+| Tool | Host / Path | Notes |
 |---|---|---|
-| `fanduel_racing_messages` | `/capi/v1/messages/namespace` | Site copy / disclaimers for a namespace. |
-| `fanduel_racing_quicklinks` | `/pes/v1/homepage/quicklinks` | Homepage quick-link tiles. |
+| `fanduel_racing_messages` | `service.racing` `/capi/v1/messages/namespace` | Site copy / disclaimers for a namespace. |
+| `fanduel_racing_quicklinks` | `service.racing` `/pes/v1/homepage/quicklinks` | Homepage quick-link tiles. |
+| `fanduel_racing_promotions` | `promos-api` `/api/customisedPromotions/retrieveStructured` | Structured racing promotions (POST; `{}` body returns all). |
 
 ## Sportsbook — `api.sportsbook.fanduel.com` (group `fanduel.sportsbook`)
 
@@ -89,6 +91,7 @@ caller supplies only the variable query params. Browse `fanduel://sportsbook/ope
 | `promotions` | `/promos/api/v2/promotions` | Sportsbook promotions for a `context`. |
 | `season_data` | `/ips/seasondata` | Season metadata / rankings. |
 | `static_config` | `/config/static/NJ.json` | Static app config (banners, feature blocks). |
+| `polling_config` | `/config/pollingConfig/NJ.json` | Client refresh-cadence config. |
 
 Dispatcher capabilities: `sport.event_markets`, `sport.match_detail`,
 `sport.competition_screen`, `sport.in_play`, `content.promo`.
@@ -118,5 +121,13 @@ sources are added; the tag still makes it discoverable.
 - `smp.nj.sportsbook.fanduel.com/.../getMarketPrices` — a POST endpoint that wants
   a body of market ids; the markets + prices already come from `event_page`.
 - `boapi.sportsbook.fanduel.com/popular/events/{id}` — overlaps `event_page`.
+- `service.racing.fanduel.com/seo/v1/metainfo` — requires an `x-tvg-context` header
+  (a hyphenated name can't be a tool param) and only returns SEO meta; low value.
 - Storyblok CMS (`api.storyblok.com`) — third-party CMS, not a FanDuel host.
+- **Other racing GraphQL ops.** Introspection is enabled (`__schema`) and exposes
+  ~42 query fields. The public data ops are modelled (`raceDate`, `tracks`, `races`,
+  `race`, `carryOverPools`, `talentPicks`); the remainder are account / wager /
+  promotion-history ops that need an authenticated session, plus historical-stats
+  ops (`pastRaces`, `runnerStats`, `tracksWithMetadata`, `wagerTypes`, …) left out
+  to keep the surface focused.
 - Account / wagering surfaces — out of scope for a read-only data provider.
