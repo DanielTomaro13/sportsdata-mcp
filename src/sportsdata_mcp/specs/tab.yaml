@@ -1,0 +1,362 @@
+spec_version: 1
+
+# TAB (Tabcorp, Australia) — anonymous public wagering data API. Two surfaces:
+#   * api.beta.tab.com.au/v1 — racing + sports info-service (Akamai-fronted).
+#   * cmsapi.tab.com.au       — CMS content feeds (homepage / offers / promos).
+#
+# The info-service host sits behind Akamai, which silently RST-drops requests
+# that lack a full browser header bundle (provider.default_headers ships it) and
+# throttles bursts — hence the conservative `defaults` rate limit + retry.
+#
+# Public read data needs NO auth. The API is HATEOAS (every response carries
+# `_links`/`selfTemplate`) and name-based: paths embed sport / competition /
+# match / venue *names* with spaces (e.g. "AFL Football"). The HTTP layer
+# percent-encodes those automatically — pass raw names, not %20.
+# Account / wagering (OAuth) surfaces are intentionally out of scope.
+
+provider:
+  id: tab
+  display_name: "TAB (Australia)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/TAB.md"
+  base_urls:
+    default: https://api.beta.tab.com.au/v1
+    cms: https://cmsapi.tab.com.au
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json, text/plain, */*"
+    Accept-Language: "en-AU,en;q=0.9"
+    Origin: "https://www.tab.com.au"
+    Referer: "https://www.tab.com.au/"
+    sec-ch-ua: '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"'
+    sec-ch-ua-mobile: "?0"
+    sec-ch-ua-platform: '"macOS"'
+    sec-fetch-dest: "empty"
+    sec-fetch-mode: "cors"
+    sec-fetch-site: "same-site"
+  auth:
+    default:
+      type: none
+  # Akamai throttles bursts (RST-drops) and the engine can't retry a transport
+  # reset — so keep the sustained rate low and retry the HTTP-status transients.
+  defaults:
+    rate_limit_rps: 2.5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── tab.racing — racing info-service ──────────────────────────────────
+  - name: tab_racing_dates
+    group: tab.racing
+    summary: "Racing dates that have meetings (today, tomorrow, future), each linking to its meetings."
+    base: default
+    path: /tab-info-service/racing/dates
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction: NSW, VIC, QLD, ACT, SA, TAS or NT." }
+    response_hint: "{dates:[{meetingDate, dateName, _links:{meetings}}]}"
+
+  - name: tab_racing_meetings
+    group: tab.racing
+    capabilities: [racing.meetings_by_date]
+    summary: "All race meetings (thoroughbred/greyhound/harness) for a date, each with its races."
+    base: default
+    path: /tab-info-service/racing/dates/{date}/meetings
+    auth: default
+    params:
+      - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction (NSW, VIC, …)." }
+      - { name: returnOffers, in: query, type: boolean, description: "Inline bonus-bet offers." }
+      - { name: returnPromo, in: query, type: boolean, description: "Inline promotions." }
+    response_hint: "{meetings:[{meetingName, location, raceType, venueMnemonic, trackCondition, races:[{raceNumber, raceName, raceStartTime}], _links:{races}}]}"
+    examples:
+      - description: "All meetings for a day"
+        params: {date: "2026-06-04"}
+
+  - name: tab_racing_meeting_races
+    group: tab.racing
+    summary: "The races for one meeting (by race type + venue code), each linking to its full racecard."
+    base: default
+    path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races
+    auth: default
+    params:
+      - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
+      - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R thoroughbred, G greyhound, H harness." }
+      - { name: venueMnemonic, in: path, type: string, description: "Venue code, e.g. HAW (Hawkesbury), from the meeting object." }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{races:[{raceNumber, raceName, raceStartTime, raceStatus, hasFixedOdds, _links:{self, form}}]}"
+    examples:
+      - description: "Races at the Hawkesbury thoroughbred meeting"
+        params: {date: "2026-06-04", raceType: "R", venueMnemonic: "HAW"}
+
+  - name: tab_racing_race
+    group: tab.racing
+    capabilities: [racing.race_card, racing.race_results]
+    summary: "Full racecard for one race: runners with fixed + parimutuel odds, form ratings, pools, bet types; results + dividends once run."
+    base: default
+    path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
+      - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
+      - { name: venueMnemonic, in: path, type: string, description: "Venue code, e.g. HAW." }
+      - { name: raceNumber, in: path, type: integer, description: "Race number at the meeting." }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{raceNumber, raceName, raceDistance, raceStartTime, runners:[{runnerNumber, runnerName, fixedOdds, parimutuel, riderDriverName, barrierNumber, last5Starts}], results, pools, betTypes, multiLegApproximates}"
+
+  - name: tab_racing_race_form
+    group: tab.racing
+    summary: "Detailed form guide for one race (past performances, ratings, comments per runner)."
+    base: default
+    path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}/form
+    auth: default
+    params:
+      - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
+      - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
+      - { name: venueMnemonic, in: path, type: string, description: "Venue code." }
+      - { name: raceNumber, in: path, type: integer, description: "Race number." }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{raceNumber, formData:[{runnerNumber, runnerName, pastPerformances:[]}]}"
+
+  - name: tab_racing_next_to_go
+    group: tab.racing
+    capabilities: [racing.next_to_jump]
+    summary: "Races about to jump across all codes, ordered by start time; each links to its racecard."
+    base: default
+    path: /tab-info-service/racing/next-to-go/races
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+      - { name: includeFixedOdds, in: query, type: boolean, default: true, description: "Inline fixed-odds prices." }
+      - { name: returnPromo, in: query, type: boolean, description: "Inline promotions." }
+      - { name: returnOffers, in: query, type: boolean, description: "Inline bonus-bet offers." }
+    response_hint: "{races:[{raceName, meeting:{venueMnemonic, raceType}, raceStartTime, raceNumber, _links:{self}}]}"
+
+  - name: tab_racing_jackpots
+    group: tab.racing
+    summary: "Current racing jackpot / carryover pools across meetings."
+    base: default
+    path: /tab-info-service/racing/jackpots
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{jackpots:[{poolType, meeting, amount}]}"
+
+  - name: tab_racing_futures_meetings
+    group: tab.racing
+    capabilities: [racing.futures]
+    summary: "Futures racing meetings (ante-post / long-dated markets like Cup outrights)."
+    base: default
+    path: /tab-info-service/racing/dates/futures/meetings
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+      - { name: returnOffers, in: query, type: boolean, description: "Inline bonus-bet offers." }
+      - { name: returnPromo, in: query, type: boolean, description: "Inline promotions." }
+    response_hint: "{meetings:[{meetingName, raceType, races:[{raceName, markets:[]}]}]}"
+
+  # ─── tab.sports — sports info-service ──────────────────────────────────
+  - name: tab_sports
+    group: tab.sports
+    capabilities: [sport.competitions_list]
+    summary: "All sports offered, each linking to its competitions (HATEOAS root for the sports tree)."
+    base: default
+    path: /tab-info-service/sports
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{sports:[{id, name, displayName, _links:{self}}]}"
+
+  - name: tab_sport
+    group: tab.sports
+    capabilities: [sport.competitions_list]
+    summary: "One sport by name with its competitions. Also fronts the racing-adjacent pseudo-sports (Jockey Challenge, Racing Extras)."
+    base: default
+    path: /tab-info-service/sports/{sport}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football", "Rugby League", "Jockey Challenge". Pass raw spaces.' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{id, name, competitions:[{id, name, _links:{self}}]}"
+    examples:
+      - description: "AFL Football and its competitions"
+        params: {sport: "AFL Football"}
+
+  - name: tab_competition
+    group: tab.sports
+    capabilities: [sport.competition_screen]
+    summary: "Competition page: its matches, bet options and (optionally) top markets."
+    base: default
+    path: /tab-info-service/sports/{sport}/competitions/{competition}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football".' }
+      - { name: competition, in: path, type: string, description: 'Competition name, e.g. "AFL", "AFL Futures".' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+      - { name: numTopMarkets, in: query, type: integer, default: 5, description: "Top markets to inline per match." }
+    response_hint: "{id, name, matches:[{id, name, startTime, _links:{self}}], betOptions, sameGame}"
+    examples:
+      - description: "AFL competition page"
+        params: {sport: "AFL Football", competition: "AFL"}
+
+  - name: tab_match
+    group: tab.sports
+    capabilities: [sport.event_markets, sport.match_detail, sport.same_game_multi]
+    summary: "Full match book: all markets + bet options, Same Game Multi, contestants, live state and stats."
+    base: default
+    path: /tab-info-service/sports/{sport}/competitions/{competition}/matches/{match}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football".' }
+      - { name: competition, in: path, type: string, description: 'Competition name, e.g. "AFL".' }
+      - { name: match, in: path, type: string, description: 'Match name, e.g. "Adelaide v Geelong". Pass raw spaces.' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{id, name, startTime, markets:[{id, name, betOption, bettingStatus, closeTime}], sameGame, contestants, inPlay, stats}"
+    examples:
+      - description: "One AFL match's full markets"
+        params: {sport: "AFL Football", competition: "AFL", match: "Adelaide v Geelong"}
+
+  - name: tab_match_markets
+    group: tab.sports
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Just the markets + selections + prices for one match (leaner than the full match object)."
+    base: default
+    path: /tab-info-service/sports/{sport}/competitions/{competition}/matches/{match}/markets
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football".' }
+      - { name: competition, in: path, type: string, description: 'Competition name, e.g. "AFL".' }
+      - { name: match, in: path, type: string, description: 'Match name, e.g. "Adelaide v Geelong". Pass raw spaces.' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{markets:[{id, name, betOption, bettingStatus, propositions:[{name, returnWin}]}], betOptionPriority}"
+    examples:
+      - description: "Markets for one AFL match"
+        params: {sport: "AFL Football", competition: "AFL", match: "Adelaide v Geelong"}
+
+  - name: tab_sports_next_to_go
+    group: tab.sports
+    summary: "Sport events about to close, ordered by close time (next-to-go sports feed)."
+    base: default
+    path: /tab-info-service/sports/nextToGo
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Max events to return." }
+      - { name: next, in: query, type: string, description: 'Time window, e.g. "12h".' }
+      - { name: openOnly, in: query, type: boolean, description: "Only events open for betting." }
+      - { name: sortByCloseTime, in: query, type: boolean, description: "Sort by market close time." }
+      - { name: featuredCompetitions, in: query, type: boolean, description: "Restrict to featured competitions." }
+      - { name: futuresOnly, in: query, type: boolean, description: "Only futures markets." }
+    response_hint: "{matches:[{name, competition, startTime, _links:{self}}]}"
+
+  - name: tab_sports_results
+    group: tab.sports
+    summary: "Recently resulted sport events with final scores / settled markets."
+    base: default
+    path: /tab-info-service/sports/results
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{sports:[{name, competitions:[{matches:[{name, results}]}]}]}"
+
+  - name: tab_multi_builder
+    group: tab.sports
+    capabilities: [sport.same_game_multi]
+    summary: "Multi-builder items for one sport (suggested legs / combinations for building multis)."
+    base: default
+    path: /multi-builder/items/{sport}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, description: 'Sport code/name, e.g. "NRL", "AFL".' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{id, name, sportName, displayName, ...multi-builder markets for the sport}"
+
+  - name: tab_trending_props
+    group: tab.sports
+    summary: "Trending sports propositions / bets across the book."
+    base: default
+    path: /trending-bets-service/propositions-sports
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "[{sportName, competitionName, matchName, matchId, ...}]  (top-level array)"
+
+  # ─── tab.discovery — recommendation + CMS content ──────────────────────
+  - name: tab_featured_events
+    group: tab.discovery
+    summary: "Editorially featured events across racing + sports for the homepage carousel."
+    base: default
+    path: /recommendation-service/featured-events
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{nextToGoRaces:[{raceName, raceNumber, raceStartTime}], prioritySports:[{name, competitionName}], nextToGoMatches:[{name, startTime}]}"
+    examples:
+      - description: "Featured events for NSW"
+        params: {jurisdiction: "NSW"}
+
+  - name: tab_live_events_summary
+    group: tab.discovery
+    capabilities: [sport.in_play]
+    summary: "Summary of events currently in-play / live across sports."
+    base: default
+    path: /recommendation-service/live-events-summary
+    auth: default
+    params:
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{liveMatches:{count, sports:[{name, displayName, count}]}, _links}"
+
+  - name: tab_recommendation_featured
+    group: tab.discovery
+    summary: "Featured items for one recommendation category (e.g. Jockey Challenge, Racing Extras). 404s when the category isn't currently featured."
+    base: default
+    path: /recommendation-service/{category}/featured
+    auth: default
+    params:
+      - { name: category, in: path, type: string, description: 'Recommendation category, e.g. "Jockey Challenge", "Racing Extras". Pass raw spaces.' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{id, name, displayName, competitions:[{id, name, hasMarkets, _links}], _links}"
+    examples:
+      - description: "Featured Jockey Challenge markets"
+        params: {category: "Jockey Challenge"}
+
+dispatchers:
+  # ─── tab.discovery — CMS content feeds (cmsapi.tab.com.au) ──────────────
+  - name: tab_cms_call
+    group: tab.discovery
+    kind: templated_rest
+    capabilities: [content.promo]
+    summary: |
+      Fetch one of TAB's CMS content feeds from cmsapi.tab.com.au by operation
+      name (homepage / offers / promotions / racing). Each ships the standard
+      query defaults (platform, os, jurisdiction, authentication-status); override
+      jurisdiction via query_params if needed. Read tab://cms/operations for the list.
+    base: cms
+    auth: default
+    method: GET
+    catalog_resource: "tab://cms/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Feed to fetch (see tab://cms/operations)." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: 'Optional overrides, e.g. {jurisdiction: "vic"}.' }
+    operations:
+      - name: homepage
+        path: /content/tab-digital/api/v1/homepage.data.json
+        query_params: [platform, os, jurisdiction, authentication-status]
+        query_defaults: {platform: tabcomau, os: unknown, jurisdiction: nsw, authentication-status: logged-out}
+        summary: "Homepage tiles + nav content."
+      - name: offers
+        path: /content/tab-digital/api/v1/offers.data.json
+        query_params: [platform, os, jurisdiction, authentication-status, html]
+        query_defaults: {platform: tabcomau, os: unknown, jurisdiction: nsw, authentication-status: logged-out, html: "true"}
+        summary: "Offers / bonus-bet promo content."
+      - name: promotions
+        path: /content/tab-digital/api/v1/promotions.data.json
+        query_params: [platform, os, jurisdiction, authentication-status]
+        query_defaults: {platform: tabcomau, os: unknown, jurisdiction: nsw, authentication-status: logged-out}
+        summary: "Promotions content blocks."
+      - name: racing
+        path: /content/tab-digital/api/v1/racing.data.json
+        query_params: [platform, os, jurisdiction, authentication-status]
+        query_defaults: {platform: tabcomau, os: unknown, jurisdiction: nsw, authentication-status: logged-out}
+        summary: "Racing landing-page content (may be empty off-peak)."

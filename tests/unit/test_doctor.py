@@ -78,8 +78,22 @@ def test_pick_prefers_example():
     assert args == {"matchId": "CD_M1"}
 
 
+def test_pick_seeds_defaults_under_example():
+    """A defaulted query param (e.g. TAB's jurisdiction) is seeded into the probe even
+    when the example omits it — the example overrides, the default fills the rest."""
+    ep_def = _ep("demo_juris", "/v2/sports/{sport}", examples=[
+        Example(description="d", params={"sport": "AFL Football"})
+    ], params=[
+        {"name": "sport", "in": "path", "type": "string"},
+        {"name": "jurisdiction", "in": "query", "type": "string", "default": "NSW"},
+    ])
+    ep, args = _pick_endpoint_probe([ep_def])
+    assert args == {"sport": "AFL Football", "jurisdiction": "NSW"}
+
+
 def test_pick_falls_back_to_no_required_param():
-    """With no examples, an endpoint needing no required params is probed with {}."""
+    """With no examples, an endpoint needing no required params is probed with its
+    param defaults seeded (matching what the engine sends at call time)."""
     needs_param = _ep("needs", "/v2/matches/{matchId}", params=[
         {"name": "matchId", "in": "path", "type": "string"}
     ])
@@ -88,7 +102,7 @@ def test_pick_falls_back_to_no_required_param():
     ])
     ep, args = _pick_endpoint_probe([needs_param, free])
     assert ep.name == "free"
-    assert args == {}
+    assert args == {"detail": False}
 
 
 def test_pick_all_need_params_returns_none_args():

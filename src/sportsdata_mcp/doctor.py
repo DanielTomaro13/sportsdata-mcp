@@ -48,15 +48,23 @@ def _payload_shape(body: object) -> str:
     return type(body).__name__
 
 
+def _default_args(ep: Endpoint) -> dict:
+    """The param defaults the engine would apply at call time (FastMCP fills these
+    from the tool signature). Doctor must seed them too, or a probe omits a
+    defaulted-but-API-required param (e.g. TAB's `jurisdiction`) and 400s."""
+    return {p.name: p.default for p in ep.params if p.default is not None}
+
+
 def _pick_endpoint_probe(endpoints: list[Endpoint]) -> tuple[Endpoint | None, dict | None]:
-    """Choose a representative endpoint + args. Prefer an example, then a no-required-param call."""
+    """Choose a representative endpoint + args. Prefer an example, then a no-required-param call.
+    In both cases seed the param defaults so the probe matches a real call."""
     in_group = endpoints
     for ep in in_group:
         if ep.examples:
-            return ep, dict(ep.examples[0].params)
+            return ep, {**_default_args(ep), **ep.examples[0].params}
     for ep in in_group:
         if not any(p.required for p in ep.params):
-            return ep, {}
+            return ep, _default_args(ep)
     # All remaining endpoints need params we can't synthesise safely.
     return (in_group[0], None) if in_group else (None, None)
 

@@ -135,6 +135,14 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `pointsbet.racing` | 11 | Meetings, racecards, results, futures, SRMs, tips, form |
 | `pointsbet.content` | 3 | Promotions, promo-code splash, + `pointsbet_content_call` over the static CMS/nav assets |
 
+### TAB — `tab.com.au`
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `tab.racing` | 8 | Dates, meetings, racecards (fixed + parimutuel), form, next-to-go, jackpots, futures |
+| `tab.sports` | 9 | Sports/competitions tree, full match markets + SGM, focused match markets, next-to-go, results, multi-builder |
+| `tab.discovery` | 4 | Featured/live recommendations + `tab_cms_call` over the CMS content feeds |
+
 ### NRL — `mc.championdata.com`
 
 | Group | Tools | Notes |
@@ -230,6 +238,15 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   `pointsbet_sport_competitions(sportKey)` → a competition key → `pointsbet_event(eventKey)`
   for the full market book. Racing: `pointsbet_racing_meetings(startDate, endDate)` →
   a `raceId` → `pointsbet_racing_race`. Many feeds return a top-level JSON array.
+- **TAB (Tabcorp)** — anonymous public data, no secrets. `api.beta.tab.com.au`
+  sits behind Akamai (the spec ships a browser header bundle + ~2.5 rps throttle,
+  like NBA); `cmsapi.tab.com.au` serves CMS feeds via `tab_cms_call`. Every
+  endpoint needs a `jurisdiction` (defaults to `NSW`). The API is HATEOAS and
+  **name-based** — paths embed sport/competition/match/venue names with spaces
+  (`…/AFL Football/competitions/AFL/matches/Adelaide v Geelong`), which the HTTP
+  layer percent-encodes; pass raw names. Racing: `tab_racing_meetings(date)` →
+  `raceType`+`venueMnemonic` → `tab_racing_race`. Sports:
+  `tab_sport` → `tab_competition` → `tab_match` for the full market book.
 
 ## CLI reference
 
