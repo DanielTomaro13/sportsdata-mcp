@@ -28,6 +28,19 @@ def test_interpolate_path():
     assert _interpolate_path(ep, {"matchId": "CD_M1"}) == "/v2/matches/CD_M1"
 
 
+def test_path_param_with_suffix_is_required_and_interpolates():
+    """A placeholder carrying a suffix (e.g. Kambi's `{eventId}.json`) must still be
+    detected as a path param — marked required and interpolated — not missed by a
+    whole-segment check."""
+    ep = _ep(
+        [{"name": "eventId", "in": "path", "type": "integer"}],
+        path="/statistics/event/{eventId}.json",
+    )
+    eid = next(p for p in ep.params if p.name == "eventId")
+    assert eid.required is True
+    assert _interpolate_path(ep, {"eventId": 123}) == "/statistics/event/123.json"
+
+
 def test_build_query_skips_none_and_keeps_defaults():
     ep = _ep(
         [

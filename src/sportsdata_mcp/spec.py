@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -119,7 +120,9 @@ class Endpoint(BaseModel):
 
     @model_validator(mode="after")
     def _path_params_required(self) -> "Endpoint":
-        path_param_names = {seg.strip("{}") for seg in self.path.split("/") if seg.startswith("{") and seg.endswith("}")}
+        # Match {name} anywhere in the path — including placeholders carrying a suffix
+        # like `{eventId}.json` (Kambi), which a whole-segment check would miss.
+        path_param_names = set(re.findall(r"\{(\w+)\}", self.path))
         declared = {p.name for p in self.params if p.in_ == "path"}
         missing = path_param_names - declared
         if missing:

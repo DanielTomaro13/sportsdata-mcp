@@ -143,6 +143,13 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `tab.sports` | 9 | Sports/competitions tree, full match markets + SGM, focused match markets, next-to-go, results, multi-builder |
 | `tab.discovery` | 4 | Featured/live recommendations + `tab_cms_call` over the CMS content feeds |
 
+### Unibet — `unibet.com.au`
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `unibet.racing` | 1 | `unibet_racing_call` — persisted-GraphQL: meetings, race cards, form, futures, specials |
+| `unibet.sport` | 3 | `unibet_kambi_call` over the Kambi offering API (groups, events, bet offers, in-play, bet-builder) + live stats + odds ladder |
+
 ### FanDuel — `fanduel.com` (US)
 
 | Group | Tools | Notes |
@@ -254,6 +261,14 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   layer percent-encodes; pass raw names. Racing: `tab_racing_meetings(date)` →
   `raceType`+`venueMnemonic` → `tab_racing_race`. Sports:
   `tab_sport` → `tab_competition` → `tab_match` for the full market book.
+- **Unibet** — anonymous AU data, no secrets, two surfaces. **Racing** is
+  persisted-GraphQL (`unibet_racing_call`, the `graphql_persisted` dispatcher) at
+  `rsa.unibet.com.au` — race ids are `eventKey`s like
+  `202606040200.T.AUS.hawkesbury.1`; the endpoint enforces Apollo CSRF so a
+  `Content-Type: application/json` header is sent. **Sport** is the **Kambi**
+  offering API (`unibet_kambi_call` over `*.kambicdn.com`, market AU): group tree,
+  events, bet offers, in-play, bet-builder. Browse ops in
+  `unibet://{racing,sport}/operations`.
 - **FanDuel (US)** — anonymous US data, no secrets, two surfaces under one provider.
   **Racing** is the first **full-query GraphQL** provider: `fanduel_racing_call`
   POSTs the literal query text (the `graphql_query` dispatcher kind, sibling to the

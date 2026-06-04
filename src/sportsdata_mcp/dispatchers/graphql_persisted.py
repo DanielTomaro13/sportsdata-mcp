@@ -58,7 +58,7 @@ def make_graphql_dispatcher(disp: Dispatcher, spec: Spec, http: HTTPClient) -> C
         }
         body = await http.request_json(
             method=disp.method,
-            base="default",
+            base=disp.base or "default",
             url=disp.endpoint or "",
             params=params,
             headers=disp.default_headers,

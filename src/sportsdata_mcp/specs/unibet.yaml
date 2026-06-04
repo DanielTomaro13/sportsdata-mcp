@@ -1,0 +1,159 @@
+spec_version: 1
+
+# Unibet (Australia) — anonymous public data, two surfaces under one provider:
+#   * unibet.racing — persisted-query GraphQL at rsa.unibet.com.au/api/v1/graphql
+#     (the graphql_persisted dispatcher: the model sends an operation name +
+#     variables, the sha256 hash lives in the spec). The endpoint enforces Apollo
+#     CSRF protection, so a non-simple `Content-Type: application/json` header is
+#     required (carried in provider.default_headers).
+#   * unibet.sport — the Kambi offering API (*.kambicdn.com), the same open REST
+#     feed Unibet's web sportsbook reads. Market AU, channel_id 1.
+#
+# No auth. Persisted-query hashes can drift when the front-end bundle ships; a
+# PERSISTED_QUERY_NOT_FOUND error means a hash needs recapturing.
+
+provider:
+  id: unibet
+  display_name: "Unibet (Australia)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Unibet.md"
+  base_urls:
+    racing_graphql: https://rsa.unibet.com.au
+    kambi_offering: https://ap.offering-api.kambicdn.com/offering/v2018/ubau
+    kambi_stats: https://ap1.offering-api.kambicdn.com
+    kambi_eu: https://eu-offering-api.kambicdn.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json, text/plain, */*"
+    Accept-Language: "en-AU,en;q=0.9"
+    # Non-simple content-type clears the racing GraphQL's Apollo CSRF guard; harmless on Kambi.
+    Content-Type: "application/json"
+    Origin: "https://www.unibet.com.au"
+    Referer: "https://www.unibet.com.au/"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── unibet.sport — Kambi statistics + odds ladder (other hosts) ───────
+  - name: unibet_kambi_live_stats
+    group: unibet.sport
+    summary: "Live in-event statistics (scores, match summary) for one Kambi event."
+    base: kambi_stats
+    path: /statistics/api/ubau/liveStatistics/event/{eventId}.json
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Kambi event id (from a listView / betoffer call)." }
+      - { name: lang, in: query, type: string, default: en_AU, description: "Locale." }
+      - { name: market, in: query, type: string, default: AU, description: "Market." }
+      - { name: channel_id, in: query, type: integer, default: 1, description: "Kambi channel id." }
+    response_hint: "{eventId, summary:{...live stats}}"
+
+  - name: unibet_kambi_odds_ladder
+    group: unibet.sport
+    summary: "Kambi odds-ladder reference (the decimal-odds increments the book uses)."
+    base: kambi_eu
+    path: /offering/v2018/kambi/oddsLadder.json
+    auth: default
+    response_hint: "[{name, steps:[{odds, converted}]}]  (top-level array — fractional + decimal ladders)"
+
+dispatchers:
+  # ─── unibet.racing — persisted GraphQL (rsa.unibet.com.au) ─────────────
+  - name: unibet_racing_call
+    group: unibet.racing
+    kind: graphql_persisted
+    capabilities: [racing.meetings_by_date, racing.race_card, racing.futures]
+    summary: |
+      Call any of Unibet's persisted racing GraphQL operations against
+      rsa.unibet.com.au/api/v1/graphql by name + variables. The sha256 hash lives
+      server-side; a PERSISTED_QUERY_NOT_FOUND error means the bundle drifted. Race
+      identifiers are `eventKey`s like "202606040200.T.AUS.hawkesbury.1"
+      (date.raceType.country.track.raceNumber). Read unibet://racing/operations for
+      the op list + variable signatures.
+    method: GET
+    base: racing_graphql
+    endpoint: /api/v1/graphql
+    auth: default
+    catalog_resource: "unibet://racing/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Operation name (see unibet://racing/operations)." }
+      - { name: variables, in: dispatch, type: object, required: false, description: 'Operation variables, e.g. {eventKey: "202606040200.T.AUS.hawkesbury.1"} or a meetings date range.' }
+
+  # ─── unibet.sport — Kambi offering API (ap.offering-api.kambicdn.com) ──
+  - name: unibet_kambi_call
+    group: unibet.sport
+    kind: templated_rest
+    capabilities: [sport.competitions_list, sport.competition_screen, sport.event_markets, sport.in_play, sport.same_game_multi]
+    summary: |
+      Fetch a Unibet/Kambi sportsbook resource by operation name (market AU). The
+      lang/market/channel_id defaults are carried, so the caller supplies only the
+      variable path/query params (eventId, sport, groupId). Read
+      unibet://sport/operations for the operation list.
+    base: kambi_offering
+    method: GET
+    auth: default
+    catalog_resource: "unibet://sport/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Resource to fetch (see unibet://sport/operations)." }
+      - { name: path_params, in: dispatch, type: object, required: false, description: 'Path ids, e.g. {eventId: 1027885150} or {sport: "FOOTBALL"} or {groupId: 1000093193}.' }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Query overrides (rarely needed; lang/market/channel_id default)." }
+    operations:
+      - name: group
+        path: /group.json
+        query_params: [lang, market, channel_id, client_id, includeLive]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1", client_id: "2", includeLive: "true"}
+        summary: "Full sport → competition group tree (event counts per node)."
+      - name: highlights
+        path: /group/highlight.json
+        query_params: [lang, market, channel_id, depth]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1", depth: "0"}
+        summary: "Featured / highlighted groups (Unibet Featured, odds boosts, popular leagues)."
+      - name: group_events
+        path: /group/{groupId}.json
+        path_params: [groupId]
+        query_params: [lang, market, channel_id]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1"}
+        summary: "Events under one group id."
+      - name: sport_matches
+        path: /listView/{sport}/all/all/all/matches.json
+        path_params: [sport]
+        query_params: [lang, market, channel_id, useCombined]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1", useCombined: "true"}
+        summary: 'Match-list for one sport slug (e.g. "basketball", "football").'
+      - name: sport_category
+        path: /category/pre_match_event,selected_pre_match/sport/{sport}.json
+        path_params: [sport]
+        query_params: [lang, market, channel_id]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1"}
+        summary: 'Pre-match events for one SPORT enum (e.g. "FOOTBALL", "ICE_HOCKEY").'
+      - name: inplay
+        path: /listView/all/all/all/all/in-play.json
+        query_params: [lang, market, channel_id, useCombined]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1", useCombined: "true"}
+        summary: "All events currently in-play."
+      - name: event_betoffer
+        path: /betoffer/event/{eventId}.json
+        path_params: [eventId]
+        query_params: [lang, market, channel_id]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1"}
+        summary: "All bet offers (markets + outcomes + prices) for one event."
+      - name: event_prepack
+        path: /prepackcoupon/event/{eventId}.json
+        path_params: [eventId]
+        query_params: [lang, market, channel_id]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1"}
+        summary: "Pre-packaged Bet Builder coupons (same-game multis) for one event."
+
+graphql:
+  operations:
+    - { name: FuturesQuery, sha256: "02384778de280ffcfef9e1de4a74e088e299e78ed264013bcdc0a17f58dd3aa8", variables: "", verified: true }
+    - { name: MeetingsByDateRange, sha256: "6126ca780c4d2e5092c50a8fb0dc15b3693eca18fa896372cf28829dd9a5e533", variables: "startDateTime: String!, endDateTime: String!, countryCodes: String, clientCountryCode: String, raceTypes: [String]", verified: true }
+    - { name: EventQuery, sha256: "398826cdf61fa578855ad6e42998d2637c622adcb39ade2ab8481a7aaf5d08f1", variables: "clientCountryCode: String, eventKey: String!, fetchTRC: Boolean", verified: true }
+    - { name: FormQuery, sha256: "071b061653a4cddb6cbfc580b5ada3973ab2988afa8369a9f4b3432c3a347539", variables: "eventKey: String!", verified: true }
+    - { name: SpecialsQuery, sha256: "6b8e727b684563d3efd273ca0803328467f8e662a00e4bde51cd7f42fa956773", variables: "locationClass: String", verified: true }
+    - { name: OddsLadderQuery, sha256: "c3f78288424efcd900f09672ce34c26be20d344244eac679be23f6c17c010690", variables: "skipCodePromotion: Boolean, codeDefault: String, codePromotion: String", verified: true }
