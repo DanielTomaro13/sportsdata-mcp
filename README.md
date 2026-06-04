@@ -150,6 +150,14 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `unibet.racing` | 1 | `unibet_racing_call` — persisted-GraphQL: meetings, race cards, form, futures, specials |
 | `unibet.sport` | 3 | `unibet_kambi_call` over the Kambi offering API (groups, events, bet offers, in-play, bet-builder) + live stats + odds ladder |
 
+### BetR — `betr.com.au` (BlueBet platform)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `betr.racing` | 8 | Next-to-jump, today's/grouped racecards, race card, form, fluctuations, movers |
+| `betr.sport` | 7 | Event types, competition categories, event markets, match detail, popular SGMs |
+| `betr.content` | 4 | Promotions + featured racing + popular market links |
+
 ### FanDuel — `fanduel.com` (US)
 
 | Group | Tools | Notes |
@@ -269,6 +277,12 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   offering API (`unibet_kambi_call` over `*.kambicdn.com`, market AU): group tree,
   events, bet offers, in-play, bet-builder. Browse ops in
   `unibet://{racing,sport}/operations`.
+- **BetR** — anonymous AU data, no secrets. BetR runs on the **BlueBet** platform,
+  so the API is `web20-api.bluebet.com.au` — a flat REST surface covering racing
+  (next-to-jump, grouped racecards, race cards, form, fluctuations) and sport
+  (event types → categories → markets, SGMs). The `betr.com.au` Next.js
+  `_next/data/{buildHash}` blobs are skipped (fragile per-deploy hash; the API
+  serves the same data).
 - **FanDuel (US)** — anonymous US data, no secrets, two surfaces under one provider.
   **Racing** is the first **full-query GraphQL** provider: `fanduel_racing_call`
   POSTs the literal query text (the `graphql_query` dispatcher kind, sibling to the

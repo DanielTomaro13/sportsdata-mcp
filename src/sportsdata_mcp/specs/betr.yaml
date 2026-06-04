@@ -1,0 +1,224 @@
+spec_version: 1
+
+# BetR (Australia) — runs on the BlueBet platform; the data API is
+# web20-api.bluebet.com.au (anonymous, no key). The betr.com.au front-end also
+# exposes Next.js `_next/data/{buildHash}/…json` blobs, but those are keyed by a
+# per-deploy build hash and carry the same data, so only the stable web20-api is
+# modelled here. Racing event ids are integers (e.g. 88521917); sport surfaces are
+# keyed by EventTypeId / CategoryId / MasterEventId.
+
+provider:
+  id: betr
+  display_name: "BetR (Australia)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/BetR.md"
+  base_urls:
+    default: https://web20-api.bluebet.com.au
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json, text/plain, */*"
+    Origin: https://www.betr.com.au
+    Referer: https://www.betr.com.au/
+  auth:
+    default:
+      type: none
+
+endpoints:
+  # ─── betr.racing — web20-api.bluebet.com.au ────────────────────────────
+  - name: betr_next5_races
+    group: betr.racing
+    capabilities: [racing.next_to_jump]
+    summary: "Next races about to jump, with time-to-jump, for a race-type + country filter."
+    base: default
+    path: /Next5Races
+    auth: default
+    params:
+      - { name: EventTypeFilter, in: query, type: integer, default: 7, description: "Race-type filter (7 = all racing; 1 thoroughbred, etc.)." }
+      - { name: CountryFilter, in: query, type: integer, default: 0, description: "Country filter (0 = all)." }
+    response_hint: "{Items:[{Race:{EventId, Venue, RaceNo, AdvertisedStartTime, StateCode}, TimeToJump, SecondsToJump, EventType}]}"
+
+  - name: betr_todays_races
+    group: betr.racing
+    summary: "Today's races grouped by code (Thoroughbred / Greyhound / Harness), for the homepage."
+    base: default
+    path: /TodaysRacesForHomePageV2
+    auth: default
+    params:
+      - { name: CountryFilter, in: query, type: integer, default: 0, description: "Country filter (0 = all)." }
+    response_hint: "{Throughbred:[{VenueId, Venue, Race1:{EventId, RaceNumber, AdvertisedStartTime, SecondsToJump}}], Greyhound:[...], Harness:[...]}"
+
+  - name: betr_grouped_racecard
+    group: betr.racing
+    capabilities: [racing.meetings_by_date]
+    summary: "All meetings + their races for a day offset, grouped by code."
+    base: default
+    path: /GroupedRaceCard
+    auth: default
+    params:
+      - { name: DaysToRace, in: query, type: integer, default: 0, description: "Day offset: 0 today, 1 tomorrow, -1 yesterday, etc." }
+    response_hint: "{Thoroughbred:[[{EventId, Venue, CountryCode, RaceNumber, AdvertisedStartTime, HasFixedMarkets}]], Greyhounds:[...], Trots:[...]}"
+    examples:
+      - description: "Today's meetings"
+        params: {DaysToRace: 0}
+
+  - name: betr_race
+    group: betr.racing
+    capabilities: [racing.race_card]
+    summary: "Full racecard for one race: runners, prices, allowed bet types, results once run."
+    base: default
+    path: /Race
+    auth: default
+    params:
+      - { name: eventId, in: query, type: integer, required: true, description: "Race event id (from a races feed)." }
+    response_hint: "{EventId, EventName, AllowedWinBetTypes:[{MarketTypeCode, DividendTypeCode}], ...runners + prices}"
+
+  - name: betr_race_form
+    group: betr.racing
+    summary: "Detailed form guide for one race (runner history, comments, ratings)."
+    base: default
+    path: /RaceForm
+    auth: default
+    params:
+      - { name: EventId, in: query, type: integer, required: true, description: "Race event id." }
+      - { name: RequestingRace, in: query, type: boolean, default: false, description: "Upstream flag; leave false." }
+    response_hint: "{RaceFormV2:{RaceNo, RaceName, NumberOfRunners, Distance, Course, RaceComment, Runners:[...]}}"
+
+  - name: betr_race_flucs
+    group: betr.racing
+    summary: "Price fluctuation history per runner for one race (fixed-odds movements)."
+    base: default
+    path: /flucs
+    auth: default
+    params:
+      - { name: EventId, in: query, type: integer, required: true, description: "Race event id." }
+    response_hint: "{Items:[{OutcomeId, Flucs:[{Offset, Price}]}]}"
+
+  - name: betr_market_movers
+    group: betr.racing
+    summary: "Racing market movers — runners whose fixed prices are shortening/drifting."
+    base: default
+    path: /MarketMovers
+    auth: default
+    response_hint: "{Items:[{EventId, EventName, Venue, RaceNumber, SecondsToJump, AdvertisedStartTime}]}"
+
+  - name: betr_fav4
+    group: betr.racing
+    summary: "Featured 'Fav 4' upcoming races for a race-type filter."
+    base: default
+    path: /Fav4
+    auth: default
+    params:
+      - { name: EventTypeFilter, in: query, type: integer, default: 7, description: "Race-type filter (7 = all racing)." }
+    response_hint: "{Items:[{EventId, MasterEventId, Venue, RaceNumber, BettingCloseTimeUtc, TimeToJump}]}"
+
+  # ─── betr.sport — web20-api.bluebet.com.au ─────────────────────────────
+  - name: betr_event_types
+    group: betr.sport
+    capabilities: [sport.competitions_list]
+    summary: "All event types (sports + racing) with event counts and SGM availability."
+    base: default
+    path: /EventTypes
+    auth: default
+    response_hint: "{Items:[{EventTypeId, EventTypeDesc, EventCount, HasSameGameMulti, MasterEventTypeId}]}"
+
+  - name: betr_master_category
+    group: betr.sport
+    capabilities: [sport.competition_screen]
+    summary: "Master categories (competitions) for one event type, optionally with levelled markets."
+    base: default
+    path: /MasterCategory
+    auth: default
+    params:
+      - { name: EventTypeId, in: query, type: integer, required: true, description: "Event type id (e.g. 107 Basketball, 1 Racing)." }
+      - { name: WithLevelledMarkets, in: query, type: boolean, default: true, description: "Include levelled markets." }
+      - { name: EventClassCode, in: query, type: string, description: 'Optional class filter, e.g. "FEATURERACE" for racing.' }
+    response_hint: "{EventTypeDesc, EventTypeId, MasterCategories:[{MasterCategoryId, MasterCategory, Categories:[{CategoryId, CategoryName}]}]}"
+    examples:
+      - description: "Basketball competitions"
+        params: {EventTypeId: 107}
+
+  - name: betr_sports_category
+    group: betr.sport
+    capabilities: [sport.event_markets, sport.competition_screen]
+    summary: "Events + markets for one sport category (competition)."
+    base: default
+    path: /SportsCategory
+    auth: default
+    params:
+      - { name: CategoryId, in: query, type: integer, required: true, description: "Category (competition) id, e.g. 39251 (NBA)." }
+    response_hint: "{EventTypeDesc, EventTypeId, MasterCategories:[{Categories:[{CategoryId, CategoryName, Events:[...]}]}]}"
+
+  - name: betr_master_event
+    group: betr.sport
+    capabilities: [sport.match_detail]
+    summary: "One sport match's detail header (teams, start time, live/SGM/futures flags) by master event id."
+    base: default
+    path: /MasterEvent
+    auth: default
+    params:
+      - { name: MasterEventId, in: query, type: integer, required: true, description: "Master event (match) id, e.g. 2095084 (from a category / SGM feed)." }
+    response_hint: "{MasterEvent:{MasterEventId, MasterEventName, CategoryId, CategoryName, MinAdvertisedStartTime, IsLive, HasSameGameMulti, IsOpenForBetting}}"
+
+  - name: betr_pop_sgm_category
+    group: betr.sport
+    capabilities: [sport.same_game_multi]
+    summary: "Categories that currently have Popular Same Game Multis."
+    base: default
+    path: /PopSGMCategory
+    auth: default
+    response_hint: "{PopSGMCategoryItems:[{EventTypeId, MasterCategoryName, CategoryId, CategoryName}]}"
+
+  - name: betr_pop_sgm_bet_data
+    group: betr.sport
+    capabilities: [sport.same_game_multi]
+    summary: "Popular Same Game Multi suggestions for one master event."
+    base: default
+    path: /PopSGMBetData
+    auth: default
+    params:
+      - { name: MasterEventId, in: query, type: integer, required: true, description: "Master event id (a match)." }
+      - { name: CategoryId, in: query, type: integer, description: "Category (competition) id." }
+      - { name: SortOrder, in: query, type: integer, default: 1, description: "Sort order." }
+    response_hint: "{PopSGMBetItems:[{legs:[{selectionName, price}], price}]}"
+
+  - name: betr_statwars_events
+    group: betr.sport
+    summary: "Statwars master events (head-to-head stats promo events)."
+    base: default
+    path: /StatwarsMasterEvents
+    auth: default
+    response_hint: "{Items:[{EventTypeId, EventTypeDesc, MasterEventId, MasterEventName, MinAdvertisedStart}]}"
+
+  # ─── betr.content — promotions + featured (web20-api) ──────────────────
+  - name: betr_promotions
+    group: betr.content
+    capabilities: [content.promo]
+    summary: "Active promotions with metadata (title, end date, linked master events)."
+    base: default
+    path: /UserContentfulPromotionsWithMetaData
+    auth: default
+    response_hint: "{MetaData:[{PromotionId, Title, PromotionEndDate, MasterEventId:[...]}]}"
+
+  - name: betr_all_promotions
+    group: betr.content
+    capabilities: [content.promo]
+    summary: "All visible promotions (name, description, dates)."
+    base: default
+    path: /ContentfulVisibleAllPromotions
+    auth: default
+    response_hint: "{Promotions:[{Id, PromotionId, Name, Description, PromotionStartDate}]}"
+
+  - name: betr_featured_racing
+    group: betr.content
+    summary: "Editorially featured racing events (carousel order, promo titles)."
+    base: default
+    path: /ContentfulFeaturedEventRacing
+    auth: default
+    response_hint: "{ContentfulFeaturedEvent:[{EventOrder, EventID, EventName, PromotionTitle}]}"
+
+  - name: betr_popular_market_links
+    group: betr.content
+    summary: "Popular market quick-links (specials, featured competitions) for navigation."
+    base: default
+    path: /PopularMarketLinks
+    auth: default
+    response_hint: "{Items:[{PopularMarketName, EventTypeId, EventType, MasterEventId, CategoryId}]}"
