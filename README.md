@@ -127,6 +127,14 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `entain.graphql` | 1 | 127 persisted GraphQL ops (`gql/router`) |
 | `entain.cdn` | 1 | Contentful CMS entries (promotions, major-event nav) |
 
+### PointsBet — `pointsbet.com.au`
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `pointsbet.sports` | 10 | Sports catalogue, competition/event feeds, full event markets, in-play, search |
+| `pointsbet.racing` | 11 | Meetings, racecards, results, futures, SRMs, tips, form |
+| `pointsbet.content` | 3 | Promotions, promo-code splash, + `pointsbet_content_call` over the static CMS/nav assets |
+
 ### NRL — `mc.championdata.com`
 
 | Group | Tools | Notes |
@@ -216,6 +224,12 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   to ~5 req/s and retries transient `429/5xx` (overridable via `providers.espn.*`). Note
   the core API path uses `leagues/{league}` (plural); core list responses are lazy
   `{count, items:[{$ref}]}` envelopes — follow the refs for detail.
+- **PointsBet** — anonymous public APIs, no secrets. `api.au.pointsbet.com` serves
+  the sportsbook (sports + racing); `pointsbet.com.au` serves static CMS/nav assets
+  via the `pointsbet_content_call` dispatcher. Sports discovery:
+  `pointsbet_sport_competitions(sportKey)` → a competition key → `pointsbet_event(eventKey)`
+  for the full market book. Racing: `pointsbet_racing_meetings(startDate, endDate)` →
+  a `raceId` → `pointsbet_racing_race`. Many feeds return a top-level JSON array.
 
 ## CLI reference
 

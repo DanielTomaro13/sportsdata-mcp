@@ -1,0 +1,338 @@
+spec_version: 1
+
+# PointsBet (Australia) — anonymous public sportsbook APIs. Three surfaces, no
+# auth, no API key:
+#   * api.au.pointsbet.com  — the sportsbook (sports + racing) JSON API.
+#   * pointsbet.com.au      — static CMS/nav assets under /assets and /_manifest.
+# Event keys are numeric strings (e.g. "2754627"); racing meeting/race ids are
+# numeric strings too. Resolve ids by chaining the list/featured feeds into the
+# detail endpoints — see documentation/PointsBet.md.
+
+provider:
+  id: pointsbet
+  display_name: "PointsBet (Australia)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/PointsBet.md"
+  base_urls:
+    default: https://api.au.pointsbet.com
+    content: https://pointsbet.com.au
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Origin: https://pointsbet.com.au
+    Referer: https://pointsbet.com.au/
+  auth:
+    default:
+      type: none
+
+endpoints:
+  # ─── pointsbet.sports — sportsbook sports API (api.au.pointsbet.com) ────
+  - name: pointsbet_sports_inplay
+    group: pointsbet.sports
+    capabilities: [sport.in_play]
+    summary: "Sports currently in-play, with a live event count per sport."
+    base: default
+    path: /api/v2/sports/inplay
+    auth: default
+    response_hint: "{sports:[{key, name, numberOfInPlayEvents}], numberOfInPlayEvents}"
+
+  - name: pointsbet_inplay_streaming
+    group: pointsbet.sports
+    capabilities: [sport.in_play, sport.live_video]
+    summary: "In-play events that carry a live video stream, grouped by sport."
+    base: default
+    path: /api/v2/sports/sports-inplay-streaming
+    auth: default
+    response_hint: "{sports:[{key, name, events:[{key, name, visionData:[]}]}], numberOfInPlayEvents}"
+
+  - name: pointsbet_sports_list
+    group: pointsbet.sports
+    capabilities: [sport.competitions_list]
+    summary: "Full catalogue of sports and their competitions (every code, featured flags)."
+    base: default
+    path: /api/v2/sports/list/{date}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, description: 'Date token in ddMMMyyyy form (e.g. 02May2018). The feed returns the current catalogue regardless, so any valid token works.' }
+    response_hint: "{sports:[{key, name, competitions:[{key, name, isFeatured}]}]}"
+    examples:
+      - description: "Whole sports + competitions catalogue"
+        params: {date: "02May2018"}
+
+  - name: pointsbet_sport_competitions
+    group: pointsbet.sports
+    capabilities: [sport.competitions_list]
+    summary: "Competitions for one sport, grouped by locale (Featured / country buckets)."
+    base: default
+    path: /api/v2/sports/{sportKey}/competitions
+    auth: default
+    params:
+      - { name: sportKey, in: path, type: string, description: 'Sport slug, e.g. "aussie-rules", "basketball", "tennis".' }
+    response_hint: "{key, name, locales:[{key, name, competitions:[{key, name, numberOfEvents}]}]}"
+    examples:
+      - description: "AFL / Australian-rules competitions"
+        params: {sportKey: "aussie-rules"}
+
+  - name: pointsbet_sport_featured_events
+    group: pointsbet.sports
+    summary: "Featured (highlighted) events for one sport (event headers; call pointsbet_event for markets)."
+    base: default
+    path: /api/v2/sports/{sportKey}/events/all-featured
+    auth: default
+    params:
+      - { name: sportKey, in: path, type: string, description: 'Sport slug, e.g. "aussie-rules".' }
+    response_hint: "{key, name, events:[{key, name, competitionKey, startsAt, homeTeam, awayTeam}]}"
+
+  - name: pointsbet_competition_events
+    group: pointsbet.sports
+    capabilities: [sport.competition_screen]
+    summary: "Featured events for one competition (paged) with their insight/featured markets."
+    base: default
+    path: /api/mes/v3/events/featured/competition/{competitionKey}
+    auth: default
+    params:
+      - { name: competitionKey, in: path, type: integer, description: 'Competition key (e.g. 7523 = AFL), from pointsbet_sport_competitions.' }
+      - { name: page, in: query, type: integer, default: 1, description: "1-based page; follow nextPage in the response." }
+    response_hint: "{key, name, nextPage, events:[{key, name, insightMarkets:[], featuredMarkets:[]}]}"
+    examples:
+      - description: "AFL competition events, first page"
+        params: {competitionKey: 7523, page: 1}
+
+  - name: pointsbet_event
+    group: pointsbet.sports
+    capabilities: [sport.event_markets, sport.match_detail]
+    summary: "Full event detail: all fixed-odds markets + selections + prices, SGM, team stats, insights."
+    base: default
+    path: /api/mes/v3/events/{eventKey}
+    auth: default
+    params:
+      - { name: eventKey, in: path, type: integer, description: 'Numeric event key (e.g. 2754627), from any events feed.' }
+    response_hint: "{key, name, competitionName, startsAt, fixedOddsMarkets:[{name, outcomes:[{name, price}]}], prePricedSgm:{}, homeTeamStats:{}}"
+
+  - name: pointsbet_event_search
+    group: pointsbet.sports
+    summary: "Search sport events by class / competition, optionally with historic head-to-head stats."
+    base: default
+    path: /api/v2/sports/search
+    auth: default
+    params:
+      - { name: competitionKey, in: query, type: integer, description: "Restrict to one competition key." }
+      - { name: eventClassIds, in: query, type: string_csv, description: "Comma-separated event-class ids to include." }
+      - { name: numberOfSportEvents, in: query, type: integer, default: 100, description: "Max events to return." }
+      - { name: includeHistoricStats, in: query, type: boolean, description: "Inline historic head-to-head stats per event." }
+    response_hint: "{events:[{key, name, competitionKey, startsAt, homeTeam, awayTeam}]}"
+    examples:
+      - description: "AFL events with historic stats"
+        params: {competitionKey: 7523, numberOfSportEvents: 50, includeHistoricStats: true}
+
+  - name: pointsbet_events_nextup
+    group: pointsbet.sports
+    summary: "Next-up sport events across all codes, ordered by start time (homepage feed)."
+    base: default
+    path: /api/v2/events/nextup
+    auth: default
+    params:
+      - { name: v2Limit, in: query, type: integer, default: 10, description: "Max events to return." }
+    response_hint: "{events:[{key, name, sportKey, competitionName, startsAt, homeTeam, awayTeam, isLive}]}"
+
+  - name: pointsbet_preprice_multis
+    group: pointsbet.sports
+    capabilities: [sport.same_game_multi]
+    summary: 'Pre-priced "5 for $25" multi suggestions (one pre-built multi per featured event).'
+    base: default
+    path: /api/mes/v3/prepricedmulti/fivefor25s
+    auth: default
+    response_hint: "[{key, name, competitionName, startsAt, homeTeam, awayTeam, ...preBuilt legs}]"
+
+  # ─── pointsbet.racing — racing API (api.au.pointsbet.com) ──────────────
+  - name: pointsbet_racing_meetings
+    group: pointsbet.racing
+    capabilities: [racing.meetings_by_date]
+    summary: "All race meetings (every code) for a date window, each with its races."
+    base: default
+    path: /api/racing/v4/meetings
+    auth: default
+    params:
+      - { name: startDate, in: query, type: string, required: true, description: "Window start, ISO-8601 UTC (e.g. 2026-06-04T00:00:00.000Z)." }
+      - { name: endDate, in: query, type: string, required: true, description: "Window end, ISO-8601 UTC." }
+    response_hint: "[{groupLabel, meetings:[{meetingId, venue, racingType, races:[{raceId, raceNumber, advertisedStartTimeUtc}]}]}]"
+    examples:
+      - description: "All meetings for one day"
+        params: {startDate: "2026-06-04T00:00:00.000Z", endDate: "2026-06-04T23:59:59.000Z"}
+
+  - name: pointsbet_racing_featured
+    group: pointsbet.racing
+    summary: "Featured races across codes with a preview of their top runners."
+    base: default
+    path: /api/racing/v4/races/featured
+    auth: default
+    params:
+      - { name: raceCount, in: query, type: integer, default: 4, description: "Number of featured races to return." }
+      - { name: runnerCount, in: query, type: integer, default: 4, description: "Top runners to preview per race." }
+    response_hint: "[{raceId, racingType, name, venue, number, advertisedStartTimeUtc, runners:[]}]"
+
+  - name: pointsbet_racing_meeting
+    group: pointsbet.racing
+    summary: "One race meeting by id: venue, conditions, and the full list of its races."
+    base: default
+    path: /api/racing/v3/meetings/{meetingId}
+    auth: default
+    params:
+      - { name: meetingId, in: path, type: integer, description: 'Meeting id (e.g. 2758032), from pointsbet_racing_meetings.' }
+    response_hint: "{meetingId, venue, racingType, meetingStartDateTimeUtc, races:[{raceId, raceNumber, name}]}"
+
+  - name: pointsbet_racing_race
+    group: pointsbet.racing
+    capabilities: [racing.race_card, racing.race_results]
+    summary: "Full racecard for one race: runners, prices, track/conditions, plus results + dividends once run."
+    base: default
+    path: /api/racing/v3/races/{raceId}
+    auth: default
+    params:
+      - { name: raceId, in: path, type: integer, description: 'Race id (e.g. 109756102), from a meetings/featured feed.' }
+    response_hint: "{raceId, name, venue, number, trackCondition, runners:[{number, name, price}], results:{winners:[], straightDividends:[]}}"
+
+  - name: pointsbet_racing_races
+    group: pointsbet.racing
+    capabilities: [racing.race_card]
+    summary: "Racecards for several races in one call (batch by race ids)."
+    base: default
+    path: /api/racing/v3/races
+    auth: default
+    params:
+      - { name: raceIds, in: query, type: string_csv, required: true, description: "Comma-separated race ids." }
+    response_hint: "[{raceId, name, venue, number, runners:[{number, name, price}]}]"
+
+  - name: pointsbet_racing_srm
+    group: pointsbet.racing
+    capabilities: [racing.same_race_multi]
+    summary: "Same Race Multi (SRM) market for one race (availability + legs/prices when open)."
+    base: default
+    path: /api/srm/v3/market/race/{raceId}
+    auth: default
+    params:
+      - { name: raceId, in: path, type: integer, description: "Race id." }
+    response_hint: "{marketType, displayName, isAvailable, availabilityTimeUtc, legs:[]}"
+
+  - name: pointsbet_racing_futures
+    group: pointsbet.racing
+    capabilities: [racing.futures]
+    summary: "Racing futures markets (Cup/Carnival outrights and other long-running racing markets)."
+    base: default
+    path: /api/v2/sports/racing-futures
+    auth: default
+    response_hint: "{events:[{key, name, competitionName, startsAt}]}"
+
+  - name: pointsbet_racing_hourly_quaddie
+    group: pointsbet.racing
+    summary: "Hourly Quaddie schedule — the four-leg quaddie races grouped by hour."
+    base: default
+    path: /api/racing/hourlyquaddie/v1
+    auth: default
+    response_hint: "[{date, hour, advertisedHourUtc, races:[{raceId, venue, number, advertisedStartTimeUtc}]}]"
+
+  - name: pointsbet_racing_tips
+    group: pointsbet.racing
+    summary: "Tipster selections for a racing code + country for today, grouped by venue."
+    base: default
+    path: /api/racing-tips/v1/{racingType}/{country}/today
+    auth: default
+    params:
+      - { name: racingType, in: path, type: string, enum: [thoroughbred, harness, greyhound], description: "Racing code." }
+      - { name: country, in: path, type: string, description: 'Country code slug, e.g. "aus".' }
+    response_hint: "[{date, racingType, venue:{name, stateCode}, tips:[{tipster:{name}, links}]}]"
+    examples:
+      - description: "Australian thoroughbred tips for today"
+        params: {racingType: "thoroughbred", country: "aus"}
+
+  - name: pointsbet_racing_insights
+    group: pointsbet.racing
+    summary: "Editorial form insights for one race (may be empty / 204 before they are published)."
+    base: default
+    path: /api/racing-tips/v1/insights/{raceId}
+    auth: default
+    params:
+      - { name: raceId, in: path, type: integer, description: "Race id." }
+    response_hint: "{raceId, insights:[{heading, body}]}  (204 No Content when none yet)"
+
+  - name: pointsbet_racing_form
+    group: pointsbet.racing
+    summary: "Detailed form guide for one race: tips, predicted order and per-runner history."
+    base: default
+    path: /api/v2/racing-form/{country}/{venue}/{meetingNumber}/{date}/{raceNumber}
+    auth: default
+    params:
+      - { name: country, in: path, type: string, description: 'Country slug, e.g. "aus".' }
+      - { name: venue, in: path, type: string, description: 'Venue slug, e.g. "sandown".' }
+      - { name: meetingNumber, in: path, type: integer, description: "Meeting sequence number for that venue/day (usually 1)." }
+      - { name: date, in: path, type: string, description: 'Date + session token, "YYYY-MM-DD-am" or "-pm" (e.g. 2026-06-03-am).' }
+      - { name: raceNumber, in: path, type: string, description: 'Zero-padded race number, e.g. "01".' }
+    response_hint: "{RaceId, RaceNumber, RaceName, RacePreview:{PredictedOrder:[]}, RaceTips:[{Comment}]}"
+    examples:
+      - description: "Form for Sandown race 1"
+        params: {country: "aus", venue: "sandown", meetingNumber: 1, date: "2026-06-03-am", raceNumber: "01"}
+
+  # ─── pointsbet.content — promotions + static CMS assets ────────────────
+  - name: pointsbet_promotions
+    group: pointsbet.content
+    capabilities: [content.promo]
+    summary: "Live promotions for a display surface (carousel, etc.) from the promotions service."
+    base: default
+    path: /api/gpp/v3/client/promotions
+    auth: default
+    params:
+      - { name: displayTarget, in: query, type: string, default: carousel, description: 'Where the promo renders, e.g. "carousel".' }
+      - { name: lang, in: query, type: string, default: en, description: "Language code." }
+    response_hint: "[{id, type, title, description, ...}]"
+
+  - name: pointsbet_promo_code
+    group: pointsbet.content
+    capabilities: [content.promo]
+    summary: "Sign-up splash content (info text + hero image) for a named promo code."
+    base: content
+    path: /assets/content/au/promo-codes/{code}.json
+    auth: default
+    params:
+      - { name: code, in: path, type: string, description: 'Promo code, e.g. "WELCOME".' }
+    response_hint: "{info, image}"
+    examples:
+      - description: "Welcome promo splash"
+        params: {code: "WELCOME"}
+
+dispatchers:
+  # ─── pointsbet.content — static CMS / navigation assets ────────────────
+  - name: pointsbet_content_call
+    group: pointsbet.content
+    kind: templated_rest
+    summary: |
+      Fetch one of PointsBet's static CMS / navigation JSON assets from
+      pointsbet.com.au by operation name (no params). These drive the site's
+      menus, tiles, logo mappings, build manifest and maintenance banner. Read
+      pointsbet://content/operations for the operation list.
+    base: content
+    auth: default
+    method: GET
+    catalog_resource: "pointsbet://content/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Asset to fetch (see pointsbet://content/operations)." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: "Rarely needed; most assets take no query params." }
+    operations:
+      - name: league_menu
+        path: /assets/content/leagueMenu.json
+        summary: "Top-level league menu (name, url, sportKey, active window)."
+      - name: quick_links
+        path: /assets/content/au/quickLinks.json
+        summary: "Quick-link chips (promos, featured competitions) with domain tags."
+      - name: home_tiles
+        path: /assets/content/au/hometiles/tiles.json
+        summary: "Homepage tiles."
+      - name: sidebar_events
+        path: /assets/content/au/sidebarmenu/sidebarevents.json
+        summary: "Sidebar featured events (name, url, sportKey, window)."
+      - name: logo_mappings
+        path: /assets/content/logos/mappings_v2.json
+        summary: "Competition/team → logo + display-flag mappings."
+      - name: app_manifest
+        path: /_manifest/application.au.json
+        summary: "AU app manifest (build number, configuration, products)."
+      - name: maintenance_kill
+        path: /assets/content/au/maintenance/kill.json
+        summary: "Maintenance / kill-switch banner (endTime, message) — empty window when up."
