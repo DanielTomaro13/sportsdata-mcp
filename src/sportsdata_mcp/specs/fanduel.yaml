@@ -1,0 +1,191 @@
+spec_version: 1
+
+# FanDuel (US) — two anonymous public surfaces under one provider:
+#   * fanduel.racing    — US horse/greyhound racing (TVG). A FULL-QUERY GraphQL API
+#     (the client POSTs the whole query text, not a persisted hash) at
+#     api.racing.fanduel.com/cosmo/v1/graphql, via the `graphql_query` dispatcher.
+#   * fanduel.sportsbook — US sports betting REST (api.sportsbook.fanduel.com), keyed
+#     by the static public `_ak` web key, region NJ.
+#
+# The two halves require DIFFERENT Origin headers (racing.fanduel.com rejects the
+# sportsbook origin and vice-versa), so the provider default carries the racing
+# origin and the sportsbook dispatcher/endpoints override Origin + x-sportsbook-region
+# via their own headers. US-only data. No auth.
+
+provider:
+  id: fanduel
+  display_name: "FanDuel (US)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/FanDuel.md"
+  base_urls:
+    racing_graphql: https://api.racing.fanduel.com
+    racing_service: https://service.racing.fanduel.com
+    sportsbook_api: https://api.sportsbook.fanduel.com
+    sportsbook_fdx: https://fdx-api.sportsbook.fanduel.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json, text/plain, */*"
+    Accept-Language: "en-US,en;q=0.9"
+    Content-Type: "application/json"
+    Origin: "https://racing.fanduel.com"
+    Referer: "https://racing.fanduel.com/"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── fanduel.racing — service.racing.fanduel.com (REST aux) ────────────
+  - name: fanduel_racing_messages
+    group: fanduel.racing
+    summary: "Site message strings (disclaimers, informational copy) for a namespace."
+    base: racing_service
+    path: /capi/v1/messages/namespace
+    auth: default
+    params:
+      - { name: product, in: query, type: string, default: tvg5, description: "Product key." }
+      - { name: device, in: query, type: string, default: desktop, description: "Device key." }
+      - { name: brand, in: query, type: string, default: fdr, description: "Brand key." }
+      - { name: namespace, in: query, type: string, default: "Global", description: 'Message namespace(s), comma-separated (e.g. "Global,InformationalPages").' }
+    response_hint: "{response:{<namespace>:{<messageKey>: <text>}}}"
+
+  - name: fanduel_racing_quicklinks
+    group: fanduel.racing
+    summary: "Homepage quick-link tiles for the racing site."
+    base: racing_service
+    path: /pes/v1/homepage/quicklinks
+    auth: default
+    response_hint: "{quickLinks:[{label, url, ...}]}"
+
+  # ─── fanduel.sportsbook — live score (fdx-api host) ────────────────────
+  - name: fanduel_sb_live_score
+    group: fanduel.sportsbook
+    capabilities: [sport.match_score]
+    summary: "Live score + period state for one sportsbook event (NJ)."
+    base: sportsbook_fdx
+    path: /api/v1/live/event/{eventId}/score/NJ
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, description: "Sportsbook event id (from fanduel_sb_call event_page / content_page)." }
+    response_hint: "{openDate, homeTeam:{shortName, abbreviation, score}, awayTeam:{...}, period}"
+
+dispatchers:
+  # ─── fanduel.racing — full-query GraphQL (api.racing.fanduel.com) ───────
+  - name: fanduel_racing_call
+    group: fanduel.racing
+    kind: graphql_query
+    capabilities: [racing.next_to_jump, racing.meetings_by_date, racing.race_card]
+    summary: |
+      Call any FanDuel Racing (TVG) GraphQL operation by name + variables against
+      api.racing.fanduel.com/cosmo/v1/graphql. The full query text lives server-side
+      and the boilerplate variables (brand/product/device/profile) default
+      automatically, so most calls need no variables. Read fanduel://racing/operations
+      for the operation list + variable signatures.
+    method: POST
+    base: racing_graphql
+    endpoint: /cosmo/v1/graphql
+    auth: default
+    catalog_resource: "fanduel://racing/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Operation name (see fanduel://racing/operations)." }
+      - { name: variables, in: dispatch, type: object, required: false, description: 'Overrides merged over the op defaults, e.g. {results: 12} or {trackCode: "GP", raceNumber: "5"}.' }
+
+  # ─── fanduel.sportsbook — REST (api.sportsbook.fanduel.com) ────────────
+  - name: fanduel_sb_call
+    group: fanduel.sportsbook
+    kind: templated_rest
+    capabilities: [sport.event_markets, sport.match_detail, sport.competition_screen, sport.in_play, content.promo]
+    summary: |
+      Fetch a FanDuel Sportsbook (US, NJ) REST resource by operation name. Carries
+      the static public `_ak` web key + the sportsbook Origin/region headers, so the
+      caller supplies only the variable query params (eventId, customPageId,
+      dataEntries, eventIds, …). Read fanduel://sportsbook/operations for the list.
+    base: sportsbook_api
+    method: GET
+    auth: default
+    default_headers:
+      Origin: "https://sportsbook.fanduel.com"
+      Referer: "https://sportsbook.fanduel.com/"
+      x-sportsbook-region: "NJ"
+    catalog_resource: "fanduel://sportsbook/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true, description: "Resource to fetch (see fanduel://sportsbook/operations)." }
+      - { name: query_params, in: dispatch, type: object, required: false, description: 'Query overrides, e.g. {eventId: 35681342} or {customPageId: "mlb"} or {eventIds: "35681342,35681343"}.' }
+    operations:
+      - name: application_context
+        path: /sbapi/application-context
+        query_params: [dataEntries]
+        query_defaults: {_ak: "FhMFpcPWXMeyZxOx"}
+        summary: "Nav scaffolding: POPULAR_BETTING, QUICK_LINKS, AZ_BETTING, EVENT_TYPES, … (pick via dataEntries)."
+      - name: content_page
+        path: /sbapi/content-managed-page
+        query_params: [customPageId, page, timezone]
+        query_defaults: {_ak: "FhMFpcPWXMeyZxOx", page: "CUSTOM", timezone: "America/New_York"}
+        summary: "A managed sport/landing page (events + markets) by customPageId (e.g. mlb, nfl, nba)."
+      - name: event_page
+        path: /sbapi/event-page
+        query_params: [eventId, tab, useCombinedTouchdownsVirtualMarket, useQuickBets]
+        query_defaults: {_ak: "FhMFpcPWXMeyZxOx"}
+        summary: "Full event page: tabs of markets + selections for one eventId."
+      - name: inplay_counter
+        path: /sbapi/in-play/counter
+        query_params: [includeTabs, timezone]
+        query_defaults: {_ak: "FhMFpcPWXMeyZxOx", timezone: "America/New_York"}
+        summary: "Count of events currently in-play."
+      - name: inplay_livedata
+        path: /ips/inplayservice/v1.0/livedata
+        query_params: [eventIds, dataEntries, channel]
+        query_defaults: {_ak: "FhMFpcPWXMeyZxOx", channel: "WEB"}
+        summary: "Live data (scores, media types) for comma-separated eventIds."
+      - name: promotions
+        path: /promos/api/v2/promotions
+        query_params: [context, channel]
+        query_defaults: {context: "homePage", channel: "desktop"}
+        summary: "Sportsbook promotions for a context (needs the region header, carried by default)."
+      - name: season_data
+        path: /ips/seasondata
+        summary: "Season metadata / rankings."
+      - name: static_config
+        path: /config/static/NJ.json
+        summary: "Static app config (banners, feature blocks) for NJ."
+
+graphql:
+  operations:
+    - name: getRaceDate
+      verified: true
+      variables: ""
+      query: "query getRaceDate {\n  raceDate\n}\n"
+
+    - name: getTracks
+      verified: true
+      variables: "wagerProfile: String, sortByName: TrackListSort, trackFilters: TrackListFilter, product: String, brand: String"
+      default_variables: {wagerProfile: "FDR-Generic", sortByName: {byName: "ASC"}, trackFilters: {allTrackClasses: true}, brand: "FDR", product: "TVG5"}
+      query: "query getTracks($wagerProfile: String, $sortByName: TrackListSort, $trackFilters: TrackListFilter, $product: String, $brand: String) {\n  tracks(profile: $wagerProfile, sort: $sortByName, filter: $trackFilters) {\n    ...Track\n    __typename\n  }\n}\n\nfragment Track on Track {\n  id\n  featured\n  name\n  shortName\n  code\n  numberOfRaces\n  isGreyhound\n  isFinished\n  hasAboveTheLinePromo(product: $product, brand: $brand)\n  raceTypes\n  location {\n    country\n    state\n    __typename\n  }\n  specialCardTypes {\n    specialCardTypeName\n    specialCardTypeAbbreviation\n    __typename\n  }\n  __typename\n}\n"
+
+    - name: getTodayRaces
+      verified: true
+      variables: "wagerProfile: String!, product: String, brand: String, sortBy: RaceListSort, filterBy: RaceListFilter, isLoggedIn: Boolean = false"
+      default_variables: {isLoggedIn: false, filterBy: {status: ["MO", "O", "SK", "IC", "RO"], allRaceClasses: true}, sortBy: {byPostTime: "ASC"}, wagerProfile: "FDR-Generic", brand: "FDR", product: "TVG5"}
+      query: "query getTodayRaces($wagerProfile: String!, $product: String, $brand: String, $sortBy: RaceListSort, $filterBy: RaceListFilter, $isLoggedIn: Boolean = false) {\n  raceDate\n  races(filter: $filterBy, profile: $wagerProfile, sort: $sortBy) {\n    ...Race\n    __typename\n  }\n}\n\nfragment Race on Race {\n  id\n  tvgRaceId\n  raceNumber: number\n  number\n  track {\n    id\n    code\n    name\n    shortName\n    location {\n      country\n      state\n      __typename\n    }\n    __typename\n  }\n  mtp\n  postTime\n  isGreyhound\n  status {\n    code\n    __typename\n  }\n  type {\n    code\n    __typename\n  }\n  video {\n    liveStreaming\n    streams\n    onTvg\n    onTvg2\n    hasReplay\n    __typename\n  }\n  promos(product: $product, brand: $brand) {\n    rootParentPromoID\n    isAboveTheLine\n    isPromoTagShown\n    __typename\n  }\n  raceDistance {\n    value\n    code\n    __typename\n  }\n  numRunners\n  hasHorseFromStable @include(if: $isLoggedIn)\n  hasPreviousBetWinner @include(if: $isLoggedIn)\n  __typename\n}\n"
+
+    - name: getFeaturedRaces
+      verified: true
+      variables: "wagerProfile: String, brand: String!, product: String!, device: String!, results: Int!, isLoggedIn: Boolean = false"
+      default_variables: {isLoggedIn: false, brand: "FDR", product: "TVG5", device: "Desktop", wagerProfile: "FDR-Generic", results: 9}
+      query: "query getFeaturedRaces($wagerProfile: String, $brand: String!, $product: String!, $device: String!, $results: Int!, $isLoggedIn: Boolean = false) {\n  races(\n    filter: {status: [\"O\", \"IC\"], allRaceClasses: true, isTopRace: {product: $product, device: $device, brand: $brand}}\n    page: {current: 0, results: $results}\n    profile: $wagerProfile\n    sort: {byPinnedOrder: {product: $product, device: $device, brand: $brand, order: ASC}}\n  ) {\n    ...TopRace\n    ...Video\n    ...Track\n    promos(product: $product, brand: $brand) {\n      rootParentPromoID\n      isAboveTheLine\n      isPromoTagShown\n      __typename\n    }\n    highlighted(product: $product, device: $device, brand: $brand) {\n      description\n      style\n      pinnedOrder\n      __typename\n    }\n    bettingInterests(filter: {isWagerable: true}, sort: {byCurrentOdds: ASC}) {\n      ...TopRacesBettingInterests\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment TopRace on Race {\n  runnerNumber: numWagerableRunners\n  raceNumber: number\n  mtp\n  raceId: id\n  tvgRaceId\n  trackName\n  trackCode\n  postTime\n  status {\n    code\n    __typename\n  }\n  type {\n    code\n    __typename\n  }\n  hasHorseFromStable @include(if: $isLoggedIn)\n  hasPreviousBetWinner @include(if: $isLoggedIn)\n  __typename\n}\n\nfragment TopRacesBettingInterests on BettingInterest {\n  currentOdds {\n    numerator\n    denominator\n    __typename\n  }\n  morningLineOdds {\n    numerator\n    denominator\n    __typename\n  }\n  runners {\n    horseName\n    runnerId\n    scratched\n    masterPickNumber: raceNumber\n    trainer\n    jockey\n    timeform {\n      silkUrl\n      silkUrlSvg\n      __typename\n    }\n    isPreviousBetWinner @include(if: $isLoggedIn)\n    __typename\n  }\n  isFavorite: favorite\n  biNumber\n  numberColor\n  saddleColor\n  __typename\n}\n\nfragment Video on Race {\n  video {\n    liveStreaming\n    streams\n    onTvg\n    onTvg2\n    hasReplay\n    __typename\n  }\n  __typename\n}\n\nfragment Track on Race {\n  track {\n    id\n    trackLocation: location {\n      country\n      city\n      state\n      __typename\n    }\n    __typename\n  }\n  __typename\n}\n"
+
+    - name: getTopPools
+      verified: true
+      variables: "wagerProfile: String!, brand: String!, product: String!, device: String!"
+      default_variables: {wagerProfile: "FDR-Generic", brand: "FDR", product: "TVG5", device: "Desktop"}
+      query: "query getTopPools($wagerProfile: String!, $brand: String!, $product: String!, $device: String!) {\n  carryOverPools(profile: $wagerProfile, filter: {raceStatus: [\"O\", \"IC\"]}) {\n    track: trackName\n    trackCode\n    amount\n    wagerType {\n      id\n      code\n      name\n      __typename\n    }\n    race {\n      id\n      raceNumber: number\n      postTime\n      track {\n        shortName\n        __typename\n      }\n      mtp\n      isGreyhound\n      highlighted(product: $product, device: $device, brand: $brand) {\n        description\n        style\n        pinnedOrder\n        __typename\n      }\n      location {\n        country\n        __typename\n      }\n      video {\n        onTvg\n        onTvg2\n        __typename\n      }\n      __typename\n    }\n    poolType\n    __typename\n  }\n}\n"
+
+    - name: getGraphTalentPicks
+      verified: true
+      variables: "wagerProfile: String, product: String, device: String, brand: String, trackCode: String, raceNumber: String, isLoggedIn: Boolean = false"
+      default_variables: {isLoggedIn: false, product: "TVG5", brand: "FDR", device: "desktop", wagerProfile: "FDR-Generic"}
+      query: "query getGraphTalentPicks($wagerProfile: String, $product: String, $device: String, $brand: String, $trackCode: String, $raceNumber: String, $isLoggedIn: Boolean = false) {\n  talentPicksList: talentPicks(\n    sort: {byPostTime: ASC}\n    profile: $wagerProfile\n    trackCode: $trackCode\n    raceNumber: $raceNumber\n  ) {\n    id\n    ...Talent\n    ...Race\n    ...WagerType\n    amount\n    price\n    selections {\n      order\n      __typename\n    }\n    favorites {\n      order\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment Talent on TalentPickType {\n  talent {\n    talentId\n    name\n    pictureUrl\n    phrases\n    pickCount\n    __typename\n  }\n  __typename\n}\n\nfragment Race on TalentPickType {\n  race {\n    id\n    tvgRaceId\n    number\n    track {\n      id\n      code\n      name\n      specialCardTypes: specialCardTypes {\n        specialCardTypeAbbreviation\n        specialCardTypeName\n        __typename\n      }\n      __typename\n    }\n    mtp\n    postTime\n    isGreyhound\n    numRunners\n    status {\n      code\n      __typename\n    }\n    type {\n      code\n      __typename\n    }\n    highlighted(product: $product, device: $device, brand: $brand) {\n      description\n      style\n      __typename\n    }\n    hasHorseFromStable @include(if: $isLoggedIn)\n    hasPreviousBetWinner @include(if: $isLoggedIn)\n    promos(product: $product, brand: $brand) {\n      rootParentPromoID\n      isAboveTheLine\n      isPromoTagShown\n      promoPath\n      __typename\n    }\n    bettingInterests {\n      biNumber\n      saddleColor\n      numberColor\n      runners {\n        runnerId\n        entityRunnerId\n        scratched\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  __typename\n}\n\nfragment WagerType on TalentPickType {\n  wagerType {\n    type {\n      id\n      code\n      __typename\n    }\n    legCount\n    isBox\n    isKey\n    isWheel\n    __typename\n  }\n  __typename\n}\n"

@@ -19,6 +19,9 @@ def register_graphql_catalog(mcp, disp: Dispatcher, spec: Spec) -> None:
         {"name": op.name, "variables": op.variables, "verified": op.verified}
         for op in (spec.graphql.operations if spec.graphql else [])
     ]
+    # graphql_persisted ships sha256 hashes; graphql_query ships the literal query
+    # text. Either way the heavy part lives in the spec and the model sends only a name.
+    server_side = "Query hashes" if disp.kind == "graphql_persisted" else "Full query texts"
     payload = json.dumps(
         {
             "provider": spec.provider.id,
@@ -26,7 +29,7 @@ def register_graphql_catalog(mcp, disp: Dispatcher, spec: Spec) -> None:
             "operations": ops,
             "note": (
                 f"Call {disp.name}(operation=<name>, variables={{...}}) to invoke. "
-                f"Hashes are managed server-side."
+                f"{server_side} are managed server-side."
             ),
         },
         indent=2,

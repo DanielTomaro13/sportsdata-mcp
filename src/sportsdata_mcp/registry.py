@@ -18,6 +18,7 @@ import httpx
 
 from .config import Config
 from .dispatchers.graphql_persisted import make_graphql_dispatcher
+from .dispatchers.graphql_query import make_graphql_query_dispatcher
 from .dispatchers.templated_rest import make_templated_rest_dispatcher
 from .errors import ToolError
 from .http_client import HTTPClient
@@ -166,6 +167,8 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
 def make_dispatcher_handler(disp: Dispatcher, spec: Spec, http: HTTPClient) -> Callable:
     if disp.kind == "graphql_persisted":
         return make_graphql_dispatcher(disp, spec, http)
+    if disp.kind == "graphql_query":
+        return make_graphql_query_dispatcher(disp, spec, http)
     if disp.kind == "templated_rest":
         return make_templated_rest_dispatcher(disp, spec, http)
     raise ValueError(f"unknown dispatcher kind: {disp.kind}")
@@ -256,7 +259,7 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             handler = _guard(make_dispatcher_handler(dispatcher, spec, http), dispatcher.name)
             mcp.tool(name=dispatcher.name, description=_describe(dispatcher))(handler)
             registered.tools.append(dispatcher.name)
-            if dispatcher.kind == "graphql_persisted":
+            if dispatcher.kind in ("graphql_persisted", "graphql_query"):
                 register_graphql_catalog(mcp, dispatcher, spec)
             else:
                 register_templated_rest_catalog(mcp, dispatcher)

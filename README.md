@@ -143,6 +143,13 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `tab.sports` | 9 | Sports/competitions tree, full match markets + SGM, focused match markets, next-to-go, results, multi-builder |
 | `tab.discovery` | 4 | Featured/live recommendations + `tab_cms_call` over the CMS content feeds |
 
+### FanDuel — `fanduel.com` (US)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `fanduel.racing` | 3 | `fanduel_racing_call` (full-query GraphQL: featured/today races + odds, tracks, pools, talent picks) + site messages/quick-links |
+| `fanduel.sportsbook` | 2 | `fanduel_sb_call` (REST: event pages + markets, in-play, promos, configs via the `_ak` key) + live scores |
+
 ### NRL — `mc.championdata.com`
 
 | Group | Tools | Notes |
@@ -247,6 +254,17 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   layer percent-encodes; pass raw names. Racing: `tab_racing_meetings(date)` →
   `raceType`+`venueMnemonic` → `tab_racing_race`. Sports:
   `tab_sport` → `tab_competition` → `tab_match` for the full market book.
+- **FanDuel (US)** — anonymous US data, no secrets, two surfaces under one provider.
+  **Racing** is the first **full-query GraphQL** provider: `fanduel_racing_call`
+  POSTs the literal query text (the `graphql_query` dispatcher kind, sibling to the
+  persisted-hash `graphql_persisted`), with boilerplate variables
+  (`brand`/`product`/`device`/profile) baked as per-op `default_variables` — most
+  calls need none, override only what varies (`{results: 12}`, `{trackCode, raceNumber}`).
+  **Sportsbook** is REST (`fanduel_sb_call`) keyed by the static public `_ak` web key,
+  region NJ. The two halves need different `Origin` headers, so the sportsbook
+  dispatcher overrides `Origin` + `x-sportsbook-region` over the racing-origin
+  provider default. Browse ops in `fanduel://{racing,sportsbook}/operations`.
+  (US data — composes with other US sources via capability tags.)
 
 ## CLI reference
 

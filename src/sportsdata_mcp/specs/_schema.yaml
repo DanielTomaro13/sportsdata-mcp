@@ -65,6 +65,19 @@ dispatchers:
     params:
       - { name: operation, in: dispatch, type: string, required: true }
       - { name: variables, in: dispatch, type: object, required: false }
+  # kind: graphql_query — one tool over a full-query GraphQL API (POSTs the literal
+  #                        query text from the graphql block, not a persisted hash)
+  - name: "..._call"
+    group: "{provider}.racing"
+    kind: graphql_query
+    summary: "..."
+    base: "racing_graphql"
+    endpoint: "/cosmo/v1/graphql (path under base)"
+    method: POST
+    catalog_resource: "example://racing/operations"
+    params:
+      - { name: operation, in: dispatch, type: string, required: true }
+      - { name: variables, in: dispatch, type: object, required: false }
   # kind: templated_rest — one tool over a family of parametric REST paths
   - name: "..._call"
     group: "{provider}.premium.family"
@@ -85,10 +98,14 @@ dispatchers:
         query_params: [limit]
 
 graphql:
+  # Shared by both GraphQL dispatcher kinds. Persisted ops carry `sha256`;
+  # full-query (graphql_query) ops carry `query` (+ optional default_variables).
   operations:
     - name: "OperationName"
-      sha256: "64-hex-char persisted-query hash"
+      sha256: "64-hex persisted-query hash (graphql_persisted only)"
+      query: "literal query text, incl. fragments (graphql_query only)"
       variables: "human-readable signature, e.g. id:ID!, isLoggedIn:Boolean!"
+      default_variables: {brand: "FDR", product: "TVG5"}  # merged under caller vars (graphql_query)
       verified: false
 
 reference_resources:

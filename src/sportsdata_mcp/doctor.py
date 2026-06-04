@@ -119,10 +119,10 @@ async def _probe_graphql(http: HTTPClient, spec: Spec, disp: Dispatcher, echo: E
         echo(f"[{spec.provider.id}/{disp.group}] dispatcher registered ({n_ops} ops via {disp.catalog_resource})")
         echo(f"  {_DIM}→ SKIP: no zero-variable verified op to probe{_RESET}")
         return "skip"
-    echo(f"[{spec.provider.id}/{disp.group}] {disp.method} {_full_url(spec.provider, 'default', disp.endpoint or '')} ({op.name})")
-    from .dispatchers.graphql_persisted import make_graphql_dispatcher
+    echo(f"[{spec.provider.id}/{disp.group}] {disp.method} {_full_url(spec.provider, disp.base or 'default', disp.endpoint or '')} ({op.name})")
+    from .registry import make_dispatcher_handler
 
-    handler = make_graphql_dispatcher(disp, spec, http)
+    handler = make_dispatcher_handler(disp, spec, http)
     try:
         body = await handler(operation=op.name, variables={})
     except PersistedQueryNotFoundError as e:
@@ -176,7 +176,7 @@ async def _run_provider(spec: Spec, enabled: set[str], cfg: Config, echo: Echo, 
             else:
                 outcome = "skip"
                 for disp in disps:
-                    if disp.kind == "graphql_persisted":
+                    if disp.kind in ("graphql_persisted", "graphql_query"):
                         outcome = await _probe_graphql(http, spec, disp, echo)
                     else:
                         n = len(disp.operations)

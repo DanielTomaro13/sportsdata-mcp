@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from sportsdata_mcp.dispatchers.graphql_persisted import make_graphql_dispatcher
+from sportsdata_mcp.dispatchers.graphql_query import make_graphql_query_dispatcher
 from sportsdata_mcp.dispatchers.templated_rest import make_templated_rest_dispatcher
 from sportsdata_mcp.errors import PersistedQueryNotFoundError, ToolError
 from sportsdata_mcp.spec import (
@@ -199,3 +200,75 @@ async def test_graphql_success_passes_body_through():
     out = await handler(operation="HomeSportsScreen", variables={"includeFeaturedEvents": True})
     assert out == {"data": {"featuredEvents": {"nodes": []}}}
     assert http.calls[0]["url"] == "/gql/router"
+
+
+# ─── GraphQL full-query dispatcher (graphql_query) ─────────────────────
+
+
+def _query_dispatcher() -> Dispatcher:
+    return Dispatcher(
+        name="fanduel_racing_call",
+        group="fanduel.racing",
+        kind="graphql_query",
+        summary="FanDuel Racing GraphQL dispatcher",
+        base="racing_graphql",
+        endpoint="/cosmo/v1/graphql",
+        auth="default",
+        catalog_resource="fanduel://racing/operations",
+    )
+
+
+def _query_spec() -> Spec:
+    return Spec(
+        provider=Provider(
+            id="fanduel",
+            display_name="FanDuel",
+            base_urls={"racing_graphql": "https://api.racing.fanduel.com"},
+        ),
+        graphql=GraphQLBlock(
+            operations=[
+                GraphQLOperation(
+                    name="getTracks",
+                    query="query getTracks { tracks { id } }",
+                    default_variables={"brand": "FDR", "product": "TVG5"},
+                    verified=True,
+                ),
+            ]
+        ),
+    )
+
+
+async def test_graphql_query_posts_full_query_body():
+    """The full query text is POSTed (not a hash) at the dispatcher's base+endpoint."""
+    http = _ApolloHTTP({"data": {"tracks": []}})
+    handler = make_graphql_query_dispatcher(_query_dispatcher(), _query_spec(), http)
+    out = await handler(operation="getTracks")
+    assert out == {"data": {"tracks": []}}
+    call = http.calls[0]
+    assert call["method"] == "POST"
+    assert call["base"] == "racing_graphql"
+    assert call["url"] == "/cosmo/v1/graphql"
+    body = call["json_body"]
+    assert body["operationName"] == "getTracks"
+    assert body["query"] == "query getTracks { tracks { id } }"
+
+
+async def test_graphql_query_merges_default_variables_under_caller():
+    """default_variables fill in; caller-supplied variables override matching keys."""
+    http = _ApolloHTTP({"data": {}})
+    handler = make_graphql_query_dispatcher(_query_dispatcher(), _query_spec(), http)
+    await handler(operation="getTracks", variables={"product": "TVG4", "results": 5})
+    sent = http.calls[0]["json_body"]["variables"]
+    assert sent["brand"] == "FDR"  # default carried through
+    assert sent["product"] == "TVG4"  # caller wins
+    assert sent["results"] == 5
+
+
+async def test_graphql_query_unknown_operation_is_recoverable():
+    http = _ApolloHTTP({"data": {}})
+    handler = make_graphql_query_dispatcher(_query_dispatcher(), _query_spec(), http)
+    with pytest.raises(ToolError) as ei:
+        await handler(operation="NotARealOp")
+    assert ei.value.code == "UNKNOWN_OPERATION"
+    assert "fanduel://racing/operations" in str(ei.value)
+    assert not http.calls

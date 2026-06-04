@@ -137,8 +137,16 @@ class GraphQLOperation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    # Persisted-query providers (graphql_persisted) carry a sha256 hash; full-query
+    # providers (graphql_query) carry the literal query text instead. Exactly one is
+    # used per dispatcher kind.
+    sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    query: str | None = None
     variables: str = ""
+    # Boilerplate variables merged *under* caller-supplied ones (graphql_query only).
+    # Lets a full-query op carry constants like {brand: FDR, product: TVG5} so the
+    # model only sends what actually varies.
+    default_variables: dict[str, object] = Field(default_factory=dict)
     verified: bool = False
 
 
@@ -164,7 +172,7 @@ class Dispatcher(BaseModel):
     name: str
     group: str
     capabilities: list[str] = Field(default_factory=list)
-    kind: Literal["graphql_persisted", "templated_rest"]
+    kind: Literal["graphql_persisted", "graphql_query", "templated_rest"]
     summary: str
     method: Literal["GET", "POST"] = "GET"
     base: str | None = None
