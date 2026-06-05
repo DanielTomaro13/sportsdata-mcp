@@ -247,6 +247,19 @@ Free, no-auth public REST surface (`auth: none`). Scope feeds by `session_key` /
 `meeting_key` (both accept the literal `latest`) and `driver_number`; discover keys
 with `openf1_sessions` / `openf1_meetings` first.
 
+### Cricket Australia — `cricket.com.au` (no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `cricket.core` | 5 | Fixtures (the `/matches` feed), competitions, teams, player profiles (batch), competition ladder |
+| `cricket.match` | 3 | Full scorecard (innings batting/bowling/wickets), run-graph series, live video streams |
+| `cricket.content` | 2 | Pulselive CMS: video/text/audio content list + curated playlists |
+
+Two no-auth hosts (`apiv2.cricket.com.au/web` + the Pulselive CMS). The apiv2
+endpoints carry `jsconfig=eccn:true` by default so they return the documented
+camelCase shape; flow is `cricket_fixtures` → `cricket_scorecard?fixtureId=` →
+`cricket_players?playerIds=`.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.

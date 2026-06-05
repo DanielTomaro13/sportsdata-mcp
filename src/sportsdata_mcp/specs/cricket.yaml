@@ -1,0 +1,174 @@
+spec_version: 1
+
+# Cricket Australia (cricket.com.au) — the data feeds behind the cricket.com.au
+# website. Two public hosts, no auth:
+#   • apiv2.cricket.com.au/web  — fixtures, competitions, teams, players, ladders,
+#     scorecards, run graphs and live streams. IMPORTANT: these endpoints only
+#     return the documented camelCase envelope when called with `jsconfig=eccn:true`
+#     (without it the response shape differs), so it is carried as a default param.
+#   • api.cricket-australia.pulselive.com/content — the Pulselive CMS (video, text,
+#     audio articles + curated playlists).
+#
+# Id model: list fixtures via `cricket_fixtures` (each fixture carries id,
+# competitionId, venueId, homeTeamId, awayTeamId), then fetch a match's detail with
+# `cricket_scorecard?fixtureId=`, players with `cricket_players?playerIds=`, and a
+# competition's ladder with `cricket_standings?competitionId=`.
+
+provider:
+  id: cricket
+  display_name: "Cricket Australia (cricket.com.au)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Cricket.md"
+  base_urls:
+    default: https://apiv2.cricket.com.au/web
+    content: https://api.cricket-australia.pulselive.com/content/cricket-australia
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── cricket.core — fixtures, competitions, teams, players, ladder ─────
+  - name: cricket_fixtures
+    group: cricket.core
+    capabilities: [sport.fixtures_by_date]
+    summary: "Match list (the /matches feed) — fixtures with teams, venue, competition, status, toss and result. Filter by competition, completed/live, etc."
+    base: default
+    path: /fixtures
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Season/calendar year (e.g. 2026)." }
+      - { name: isCompleted, in: query, type: boolean, description: "Only completed matches." }
+      - { name: isLive, in: query, type: boolean, description: "Only live matches." }
+      - { name: competitionId, in: query, type: integer, description: "Filter to one competition." }
+      - { name: gameTypeId, in: query, type: integer, description: "Filter by game type (Test / ODI / T20)." }
+      - { name: limit, in: query, type: integer, description: "Max fixtures to return." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave as the default to get the camelCase envelope)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{fixtures:[{id, name, startDateTime, gameType, isLive, isCompleted, resultText, competitionId, venueId, homeTeamId, awayTeamId, tossResult, tossDecision}], responseError}"
+
+  - name: cricket_competitions
+    group: cricket.core
+    capabilities: [sport.competitions_list]
+    summary: "Competition catalogue — series / tournaments with id, name, dates and artwork."
+    base: default
+    path: /competitions
+    auth: default
+    params:
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{competitions:[{id, name, url, imageUrl, startDateTime, endDateTime, order}], responseError}"
+
+  - name: cricket_teams
+    group: cricket.core
+    capabilities: [ref.teams]
+    summary: "Team catalogue — id, name, short name, colours, logo/badge URLs across all CA competitions."
+    base: default
+    path: /teams
+    auth: default
+    params:
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{teams:[{id, name, shortName, teamColor, logoUrl, teambadgeImageUrl, isActive}], responseError}"
+
+  - name: cricket_players
+    group: cricket.core
+    capabilities: [ref.players, stats.player_profile]
+    summary: "Player profiles for a batch of player ids — name, DOB, birthplace, batting/bowling hand + type, height, image. Pass a list of playerIds."
+    base: default
+    path: /players
+    auth: default
+    params:
+      - { name: playerIds, in: query, type: string_csv, required: true, description: "List of player ids (sent as a comma-separated list). Ids come from a scorecard's players[] or fixtures." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{players:[{id, displayName, firstName, lastName, dob, birthPlace, battingHand, bowlingHand, bowlingType, height, imageUrl}], responseError}"
+
+  - name: cricket_standings
+    group: cricket.core
+    capabilities: [stats.ladder]
+    summary: "Competition ladder — per-team played/won/lost/drawn/tied/no-result, points, net run rate. Needs competitionId (empty for competitions without a points table)."
+    base: default
+    path: /standings
+    auth: default
+    params:
+      - { name: competitionId, in: query, type: integer, required: true, description: "Competition id (from cricket_competitions or a fixture)." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{standings:[{competitionId, teamId, groupName, played, won, lost, drawn, matchTied, noResult, points, netRunRate, deductions}], responseError}"
+
+  # ─── cricket.match — scorecard, run graph, live streams ────────────────
+  - name: cricket_scorecard
+    group: cricket.match
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Full match scorecard — per-innings batting, bowling and fall-of-wickets, plus the players[] lookup for the fixture."
+    base: default
+    path: /views/scorecard
+    auth: default
+    params:
+      - { name: fixtureId, in: query, type: integer, required: true, description: "Fixture id (from cricket_fixtures)." }
+      - { name: competitionId, in: query, type: integer, description: "Optional competition id (some fixtures resolve faster with it)." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{fixture:{id, name, innings:[{inningNumber, battingTeamId, bowlingTeamId, batsmen:[...], bowlers:[...], wickets:[...]}]}, fixtureTitle, players:[{id, displayName}], dataSupport, responseError}"
+
+  - name: cricket_runs_graph
+    group: cricket.match
+    capabilities: [stats.advanced_metrics]
+    summary: "Run-progression (worm/manhattan) data per innings for a fixture — the series behind cricket.com.au's run graphs."
+    base: default
+    path: /views/graphs/runs
+    auth: default
+    params:
+      - { name: fixtureId, in: query, type: integer, required: true, description: "Fixture id." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{innings:[{inningNumber, battingTeamId, bowlingTeamId, overs, overnightRuns, overnightWickets, byesRuns, legByesRuns, noBalls}]}"
+
+  - name: cricket_streams
+    group: cricket.match
+    capabilities: [sport.live_video]
+    summary: "Live video stream entries for a fixture (populated during live matches; empty array otherwise)."
+    base: default
+    path: /streams
+    auth: default
+    params:
+      - { name: fixtureId, in: query, type: integer, required: true, description: "Fixture id." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+    response_hint: "{streams:[{...stream urls/metadata}], responseError}  (streams empty when the match isn't live)"
+
+  # ─── cricket.content — Pulselive CMS (video / text / audio / playlists) ─
+  - name: cricket_content
+    group: cricket.content
+    capabilities: [content.video, content.news]
+    summary: "Pulselive CMS content list by type — VIDEO (highlights/replays), TEXT (articles) or AUDIO. Paginated."
+    base: content
+    path: /{contentType}/EN
+    auth: default
+    params:
+      - { name: contentType, in: path, type: string, required: true, enum: [VIDEO, TEXT, AUDIO], description: "Content type." }
+      - { name: pageSize, in: query, type: integer, default: 10, description: "Items per page." }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page index." }
+      - { name: tagNames, in: query, type: string, description: "Optional tag filter (e.g. a competition or team tag)." }
+      - { name: detail, in: query, type: string, default: STANDARD, description: "Detail level (STANDARD or BASIC)." }
+    response_hint: "{pageInfo:{page, pageSize, numPages, numEntries}, content:[{id, type, title, description, date, ...}]}"
+
+  - name: cricket_playlist
+    group: cricket.content
+    capabilities: [content.video]
+    summary: "A single Pulselive playlist by id — a curated collection of videos (e.g. a match's highlights playlist)."
+    base: content
+    path: /PLAYLIST/EN/{playlistId}
+    auth: default
+    params:
+      - { name: playlistId, in: path, type: integer, required: true, description: "Playlist id." }
+      - { name: detail, in: query, type: string, default: STANDARD, description: "Detail level." }
+      - { name: pageSize, in: query, type: integer, default: 10, description: "Max items to include." }
+    response_hint: "{id, type, title, description, date, content:[{id, type, title, ...}]}"
