@@ -165,6 +165,14 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `pinnacle.sports` | 13 | Sports/leagues, full + highlighted + live + per-league matchups, carousel, matchup detail, straight + parlay markets (American-odds prices) |
 | `pinnacle.reference` | 4 | Enums, market-label dictionary, teaser definitions, API status |
 
+### Betfair Exchange — `betfair.com.au` (exchange odds)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `betfair.exchange` | 2 | `bymarket` back/lay price feed (the sharpest odds) + cash-out availability |
+| `betfair.navigation` | 1 | `bynode` catalogue graph (sport → meeting → event → market) |
+| `betfair.inplay` | 4 | Live scores, event details, timeline, scores+broadcast |
+
 ### FanDuel — `fanduel.com` (US)
 
 | Group | Tools | Notes |
@@ -290,6 +298,14 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   (event types → categories → markets, SGMs). The `betr.com.au` Next.js
   `_next/data/{buildHash}` blobs are skipped (fragile per-deploy hash; the API
   serves the same data).
+- **Betfair Exchange** — anonymous, the open read-only web APIs keyed by the public
+  `_ak` query param. The crown jewel is `betfair_market_prices` (`ero …/bymarket`) —
+  exchange **back/lay** prices, the sharpest reference odds. Discover market ids by
+  walking `betfair_navigation` (`scan …/bynode`, e.g. `EVENT_TYPE:7` = Horse Racing)
+  down to MARKET nodes; live scores/details come from the `ips` in-play service.
+  `string_csv` id params take a list. (The `apieds` racing widgets are Cloudflare-gated
+  from datacenter IPs and the `appsync` GraphQL needs a session, so they're out of
+  scope — racing is covered via navigation→bymarket.)
 - **Pinnacle** — anonymous, no key. The Arcadia "guest" API
   (`guest.api.arcadia.pinnacle.com`) — the open feed the web sportsbook reads.
   Sports only (sharp-odds book, no racing); prices are American odds. Flow:
