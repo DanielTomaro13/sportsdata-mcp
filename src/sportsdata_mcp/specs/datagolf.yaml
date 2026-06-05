@@ -131,6 +131,58 @@ endpoints:
       - { name: file_format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{event_name, course_name, last_updated, live_stats:[{dg_id, player_name, sg_total, sg_ott, sg_app, ...}]}"
 
+  - name: datagolf_pre_tournament_archive
+    group: datagolf.predictions
+    summary: "Archived pre-tournament predictions for a past event (what the model said beforehand)."
+    base: default
+    path: /preds/pre-tournament-archive
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: event_id, in: query, type: integer, description: "Event id (from get-schedule / historical event lists)." }
+      - { name: year, in: query, type: integer, description: "Calendar year of the event." }
+      - { name: odds_format, in: query, type: string, default: percent, enum: [percent, decimal, american, fraction], description: "Odds/probability format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{baseline:[{dg_id, player_name, fin_text, win, make_cut, first_round_leader, top_10}]}"
+
+  - name: datagolf_player_decompositions
+    group: datagolf.predictions
+    capabilities: [stats.advanced_metrics]
+    summary: "Per-player skill decomposition for the current event — how each skill (driving, approach, putting, course-fit) contributes to the prediction."
+    base: default
+    path: /preds/player-decompositions
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, course_name, players:[{dg_id, player_name, ...skill/course-fit components}]}"
+
+  - name: datagolf_fantasy_projections
+    group: datagolf.predictions
+    capabilities: [stats.fantasy_projections]
+    summary: "DFS fantasy-points projections + salaries/ownership for a site + slate."
+    base: default
+    path: /preds/fantasy-projection-defaults
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: site, in: query, type: string, default: draftkings, enum: [draftkings, fanduel, yahoo], description: "DFS site." }
+      - { name: slate, in: query, type: string, default: main, description: "Slate (e.g. main)." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, last_updated, projections:[{dg_id, player_name, proj_points, salary, proj_ownership}]}"
+
+  - name: datagolf_live_hole_stats
+    group: datagolf.predictions
+    capabilities: [stats.advanced_metrics]
+    summary: "Live per-hole scoring distributions for the in-progress event (avg score, birdie/bogey rates by hole, AM/PM wave)."
+    base: default
+    path: /preds/live-hole-stats
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{courses:[{course_code, course_key, rounds:[{round_num, holes:[{hole, par, avg_score, afternoon_wave:{...}, morning_wave:{...}}]}]}]}"
+
   # ─── datagolf.betting — cross-book odds ───────────────────────────────
   - name: datagolf_outrights
     group: datagolf.betting
@@ -159,3 +211,111 @@ endpoints:
       - { name: odds_format, in: query, type: string, default: decimal, enum: [decimal, american, fraction, percent], description: "Odds format." }
       - { name: file_format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{event_name, market, last_updated, match_list:[{p1_player_name, p2_player_name, odds:{datagolf, bet365, pinnacle, ...}}]}"
+
+  - name: datagolf_matchups_all_pairings
+    group: datagolf.betting
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "All possible tournament matchup pairings for the current event with Data Golf's model odds (every player-vs-player price)."
+    base: default
+    path: /betting-tools/matchups-all-pairings
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: odds_format, in: query, type: string, default: decimal, enum: [decimal, american, fraction, percent], description: "Odds format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, last_update, pairings:[{p1_player_name, p2_player_name, p3_player_name, ...model odds}]}"
+
+  # ─── datagolf.historical — raw data, historical odds, DFS results ──────
+  - name: datagolf_hist_event_list
+    group: datagolf.historical
+    summary: "List of historical events that have raw round-level data available (event_id + year to pass to the rounds feed)."
+    base: default
+    path: /historical-raw-data/event-list
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, enum: [pga, euro, kft, alt, liv], description: "Optional tour filter." }
+      - { name: year, in: query, type: integer, description: "Optional calendar-year filter." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "[{event_id, event_name, tour, calendar_year, date, sg_categories}]  (top-level array)"
+
+  - name: datagolf_hist_rounds
+    group: datagolf.historical
+    capabilities: [stats.player_match]
+    summary: "Historical round-by-round scoring + strokes-gained for every player in a past event."
+    base: default
+    path: /historical-raw-data/rounds
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: event_id, in: query, type: integer, required: true, description: "Event id (from datagolf_hist_event_list)." }
+      - { name: year, in: query, type: integer, required: true, description: "Calendar year of the event." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_id, event_name, event_completed, scores:[{dg_id, player_name, fin_text, rounds:[{round_num, score, sg_total, sg_putt, ...}]}]}"
+
+  - name: datagolf_hist_odds_event_list
+    group: datagolf.historical
+    summary: "List of historical events that have archived bookmaker odds available."
+    base: default
+    path: /historical-odds/event-list
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "[{event_id, event_name, calendar_year, archived_preds, ...}]  (top-level array)"
+
+  - name: datagolf_hist_outrights
+    group: datagolf.historical
+    summary: "Historical opening/closing outright odds for a past event from one sportsbook."
+    base: default
+    path: /historical-odds/outrights
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: event_id, in: query, type: integer, required: true, description: "Event id." }
+      - { name: year, in: query, type: integer, required: true, description: "Calendar year." }
+      - { name: market, in: query, type: string, default: win, enum: [win, top_5, top_10, top_20, make_cut, mc, frl], description: "Outright market." }
+      - { name: book, in: query, type: string, default: pinnacle, description: "Sportsbook (e.g. pinnacle, bet365, draftkings)." }
+      - { name: odds_format, in: query, type: string, default: decimal, enum: [decimal, american, fraction, percent], description: "Odds format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{book, event_id, event_name, event_completed, outrights:[{dg_id, player_name, open_odds, close_odds, ...}]}"
+
+  - name: datagolf_hist_matchups
+    group: datagolf.historical
+    summary: "Historical matchup / 3-ball odds for a past event from one sportsbook."
+    base: default
+    path: /historical-odds/matchups
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: event_id, in: query, type: integer, required: true, description: "Event id." }
+      - { name: year, in: query, type: integer, required: true, description: "Calendar year." }
+      - { name: book, in: query, type: string, default: pinnacle, description: "Sportsbook." }
+      - { name: odds_format, in: query, type: string, default: decimal, enum: [decimal, american, fraction, percent], description: "Odds format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{book, event_id, event_name, event_completed, matchups:[{p1_player_name, p2_player_name, open_odds, close_odds, ...}]}"
+
+  - name: datagolf_hist_dfs_event_list
+    group: datagolf.historical
+    summary: "List of historical events with DFS salary/ownership/points data for a site."
+    base: default
+    path: /historical-dfs-data/event-list
+    auth: default
+    params:
+      - { name: site, in: query, type: string, default: draftkings, enum: [draftkings, fanduel, yahoo], description: "DFS site (this feed keys off site, not tour)." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "[{event_id, event_name, calendar_year, date, dk_salaries, dk_ownerships}]  (top-level array)"
+
+  - name: datagolf_hist_dfs_points
+    group: datagolf.historical
+    capabilities: [stats.fantasy_projections]
+    summary: "Historical DFS points + salary + ownership per player for a past event."
+    base: default
+    path: /historical-dfs-data/points
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: site, in: query, type: string, default: draftkings, enum: [draftkings, fanduel, yahoo], description: "DFS site." }
+      - { name: event_id, in: query, type: integer, required: true, description: "Event id." }
+      - { name: year, in: query, type: integer, required: true, description: "Calendar year." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_id, event_name, event_completed, season, dfs_points:[{dg_id, player_name, fin_text, finish_pts, total_pts, salary, ownership}]}"

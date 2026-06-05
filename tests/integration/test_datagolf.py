@@ -19,7 +19,12 @@ from fastmcp.exceptions import ToolError as MCPToolError
 from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
 
-DATAGOLF_GROUPS = ["datagolf.general", "datagolf.predictions", "datagolf.betting"]
+DATAGOLF_GROUPS = [
+    "datagolf.general",
+    "datagolf.predictions",
+    "datagolf.betting",
+    "datagolf.historical",
+]
 _NO_KEY = not os.environ.get("DATAGOLF_KEY")
 
 
@@ -45,7 +50,25 @@ async def test_datagolf_tools_registered(datagolf_server):
     names = {t.name for t in await datagolf_server.list_tools()}
     assert {"datagolf_player_list", "datagolf_schedule", "datagolf_field_updates"} <= names
     assert {"datagolf_rankings", "datagolf_pre_tournament", "datagolf_skill_ratings"} <= names
-    assert {"datagolf_outrights", "datagolf_matchups"} <= names
+    # higher-tier predictions
+    assert {
+        "datagolf_pre_tournament_archive",
+        "datagolf_player_decompositions",
+        "datagolf_fantasy_projections",
+        "datagolf_live_hole_stats",
+    } <= names
+    # betting (incl. all-pairings)
+    assert {"datagolf_outrights", "datagolf_matchups", "datagolf_matchups_all_pairings"} <= names
+    # historical raw data / odds / DFS
+    assert {
+        "datagolf_hist_event_list",
+        "datagolf_hist_rounds",
+        "datagolf_hist_odds_event_list",
+        "datagolf_hist_outrights",
+        "datagolf_hist_matchups",
+        "datagolf_hist_dfs_event_list",
+        "datagolf_hist_dfs_points",
+    } <= names
 
 
 # ─── live: feeds.datagolf.com (needs DATAGOLF_KEY) ──────────────────────
@@ -86,3 +109,32 @@ async def test_outrights_cross_book_live(datagolf_server):
         pytest.xfail(f"feeds.datagolf.com unavailable: {e}")
     data = _payload(res)
     assert "books_offering" in data and isinstance(data["books_offering"], list)
+
+
+@pytest.mark.live
+@pytest.mark.skipif(_NO_KEY, reason="DATAGOLF_KEY not set")
+async def test_hist_event_list_live(datagolf_server):
+    """Higher-tier: historical raw-data event list is a top-level array of past events."""
+    try:
+        res = await datagolf_server.call_tool("datagolf_hist_event_list", {"tour": "pga"})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"feeds.datagolf.com unavailable / plan-gated: {e}")
+    data = _payload(res)
+    if not data:
+        pytest.skip("no historical events returned")
+    assert isinstance(data, list)
+    assert "event_id" in data[0] and "calendar_year" in data[0]
+
+
+@pytest.mark.live
+@pytest.mark.skipif(_NO_KEY, reason="DATAGOLF_KEY not set")
+async def test_fantasy_projections_live(datagolf_server):
+    """Higher-tier: DFS fantasy projections for the current event/slate."""
+    try:
+        res = await datagolf_server.call_tool(
+            "datagolf_fantasy_projections", {"tour": "pga", "site": "draftkings"}
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"feeds.datagolf.com unavailable / plan-gated: {e}")
+    data = _payload(res)
+    assert data is not None
