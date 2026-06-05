@@ -9,15 +9,15 @@ spec_version: 1
 #   • api.cricket-australia.pulselive.com/content — the Pulselive CMS (video, text,
 #     audio articles + curated playlists).
 #
-# Id model: list fixtures via `cricket_fixtures` (each fixture carries id,
+# Id model: list fixtures via `cricketaustralia_fixtures` (each fixture carries id,
 # competitionId, venueId, homeTeamId, awayTeamId), then fetch a match's detail with
-# `cricket_scorecard?fixtureId=`, players with `cricket_players?playerIds=`, and a
-# competition's ladder with `cricket_standings?competitionId=`.
+# `cricketaustralia_scorecard?fixtureId=`, players with `cricketaustralia_players?playerIds=`, and a
+# competition's ladder with `cricketaustralia_standings?competitionId=`.
 
 provider:
-  id: cricket
+  id: cricketaustralia
   display_name: "Cricket Australia (cricket.com.au)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Cricket.md"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/CricketAustralia.md"
   base_urls:
     default: https://apiv2.cricket.com.au/web
     content: https://api.cricket-australia.pulselive.com/content/cricket-australia
@@ -35,9 +35,9 @@ provider:
     retry_backoff_seconds: 0.5
 
 endpoints:
-  # ─── cricket.core — fixtures, competitions, teams, players, ladder ─────
-  - name: cricket_fixtures
-    group: cricket.core
+  # ─── cricketaustralia.core — fixtures, competitions, teams, players, ladder ─────
+  - name: cricketaustralia_fixtures
+    group: cricketaustralia.core
     capabilities: [sport.fixtures_by_date]
     summary: "Match list (the /matches feed) — fixtures with teams, venue, competition, status, toss and result. Filter by competition, completed/live, etc."
     base: default
@@ -54,8 +54,8 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{fixtures:[{id, name, startDateTime, gameType, isLive, isCompleted, resultText, competitionId, venueId, homeTeamId, awayTeamId, tossResult, tossDecision}], responseError}"
 
-  - name: cricket_competitions
-    group: cricket.core
+  - name: cricketaustralia_competitions
+    group: cricketaustralia.core
     capabilities: [sport.competitions_list]
     summary: "Competition catalogue — series / tournaments with id, name, dates and artwork."
     base: default
@@ -66,8 +66,8 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{competitions:[{id, name, url, imageUrl, startDateTime, endDateTime, order}], responseError}"
 
-  - name: cricket_tours
-    group: cricket.core
+  - name: cricketaustralia_tours
+    group: cricketaustralia.core
     capabilities: [sport.competitions_list]
     summary: "Tours / series with status flags — each tour groups its competitions and is flagged upcoming / in-progress / completed. The feed behind the site's series navigation."
     base: default
@@ -78,8 +78,8 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{tours:[{competitionId, name, startDateTime, endDateTime, isUpComing, isInProgress, isCompleted, competitions:[...], bannerUrl, logoUrl}]}"
 
-  - name: cricket_venue
-    group: cricket.core
+  - name: cricketaustralia_venue
+    group: cricketaustralia.core
     capabilities: [ref.venues]
     summary: "Venue detail for one venueId — name, city, country, state, coordinates. Resolve a fixture's venueId (one venue per call)."
     base: default
@@ -91,8 +91,8 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{venue:{id, name, city, state, countryName, latitude, longitude}, responseError}"
 
-  - name: cricket_teams
-    group: cricket.core
+  - name: cricketaustralia_teams
+    group: cricketaustralia.core
     capabilities: [ref.teams]
     summary: "Team catalogue — id, name, short name, colours, logo/badge URLs across all CA competitions."
     base: default
@@ -103,8 +103,8 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{teams:[{id, name, shortName, teamColor, logoUrl, teambadgeImageUrl, isActive}], responseError}"
 
-  - name: cricket_players
-    group: cricket.core
+  - name: cricketaustralia_players
+    group: cricketaustralia.core
     capabilities: [ref.players, stats.player_profile]
     summary: "Player profiles for a batch of player ids — name, DOB, birthplace, batting/bowling hand + type, height, image. Pass a list of playerIds."
     base: default
@@ -116,36 +116,36 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{players:[{id, displayName, firstName, lastName, dob, birthPlace, battingHand, bowlingHand, bowlingType, height, imageUrl}], responseError}"
 
-  - name: cricket_standings
-    group: cricket.core
+  - name: cricketaustralia_standings
+    group: cricketaustralia.core
     capabilities: [stats.ladder]
     summary: "Competition ladder — per-team played/won/lost/drawn/tied/no-result, points, net run rate. Needs competitionId (empty for competitions without a points table)."
     base: default
     path: /standings
     auth: default
     params:
-      - { name: competitionId, in: query, type: integer, required: true, description: "Competition id (from cricket_competitions or a fixture)." }
+      - { name: competitionId, in: query, type: integer, required: true, description: "Competition id (from cricketaustralia_competitions or a fixture)." }
       - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{standings:[{competitionId, teamId, groupName, played, won, lost, drawn, matchTied, noResult, points, netRunRate, deductions}], responseError}"
 
-  # ─── cricket.match — scorecard, run graph, live streams ────────────────
-  - name: cricket_scorecard
-    group: cricket.match
+  # ─── cricketaustralia.match — scorecard, run graph, live streams ────────────────
+  - name: cricketaustralia_scorecard
+    group: cricketaustralia.match
     capabilities: [sport.match_boxscore, stats.player_match]
     summary: "Full match scorecard — per-innings batting, bowling and fall-of-wickets, plus the players[] lookup for the fixture."
     base: default
     path: /views/scorecard
     auth: default
     params:
-      - { name: fixtureId, in: query, type: integer, required: true, description: "Fixture id (from cricket_fixtures)." }
+      - { name: fixtureId, in: query, type: integer, required: true, description: "Fixture id (from cricketaustralia_fixtures)." }
       - { name: competitionId, in: query, type: integer, description: "Optional competition id (some fixtures resolve faster with it)." }
       - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{fixture:{id, name, innings:[{inningNumber, battingTeamId, bowlingTeamId, batsmen:[...], bowlers:[...], wickets:[...]}]}, fixtureTitle, players:[{id, displayName}], dataSupport, responseError}"
 
-  - name: cricket_runs_graph
-    group: cricket.match
+  - name: cricketaustralia_runs_graph
+    group: cricketaustralia.match
     capabilities: [stats.advanced_metrics]
     summary: "Run-progression (worm/manhattan) data per innings for a fixture — the series behind cricket.com.au's run graphs."
     base: default
@@ -157,8 +157,8 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{innings:[{inningNumber, battingTeamId, bowlingTeamId, overs, overnightRuns, overnightWickets, byesRuns, legByesRuns, noBalls}]}"
 
-  - name: cricket_streams
-    group: cricket.match
+  - name: cricketaustralia_streams
+    group: cricketaustralia.match
     capabilities: [sport.live_video]
     summary: "Live video stream entries for a fixture (populated during live matches; empty array otherwise)."
     base: default
@@ -169,9 +169,9 @@ endpoints:
       - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
     response_hint: "{streams:[{...stream urls/metadata}], responseError}  (streams empty when the match isn't live)"
 
-  # ─── cricket.content — Pulselive CMS (video / text / audio / playlists) ─
-  - name: cricket_content
-    group: cricket.content
+  # ─── cricketaustralia.content — Pulselive CMS (video / text / audio / playlists) ─
+  - name: cricketaustralia_content
+    group: cricketaustralia.content
     capabilities: [content.video, content.news]
     summary: "Pulselive CMS content list by type — VIDEO (highlights/replays), TEXT (articles), AUDIO, or PLAYLIST (curated collections). Paginated."
     base: content
@@ -185,8 +185,8 @@ endpoints:
       - { name: detail, in: query, type: string, default: STANDARD, description: "Detail level (STANDARD or BASIC)." }
     response_hint: "{pageInfo:{page, pageSize, numPages, numEntries}, content:[{id, type, title, description, date, ...}]}"
 
-  - name: cricket_playlist
-    group: cricket.content
+  - name: cricketaustralia_playlist
+    group: cricketaustralia.content
     capabilities: [content.video]
     summary: "A single Pulselive playlist by id — a curated collection of videos (e.g. a match's highlights playlist)."
     base: content

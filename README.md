@@ -251,14 +251,14 @@ with `openf1_sessions` / `openf1_meetings` first.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `cricket.core` | 7 | Fixtures (the `/matches` feed), competitions, tours/series, teams, player profiles (batch), venue lookup, competition ladder |
-| `cricket.match` | 3 | Full scorecard (innings batting/bowling/wickets), run-graph series, live video streams |
-| `cricket.content` | 2 | Pulselive CMS: video/text/audio/playlist content list + curated playlists |
+| `cricketaustralia.core` | 7 | Fixtures (the `/matches` feed), competitions, tours/series, teams, player profiles (batch), venue lookup, competition ladder |
+| `cricketaustralia.match` | 3 | Full scorecard (innings batting/bowling/wickets), run-graph series, live video streams |
+| `cricketaustralia.content` | 2 | Pulselive CMS: video/text/audio/playlist content list + curated playlists |
 
 Two no-auth hosts (`apiv2.cricket.com.au/web` + the Pulselive CMS). The apiv2
 endpoints carry `jsconfig=eccn:true` by default so they return the documented
-camelCase shape; flow is `cricket_fixtures` → `cricket_scorecard?fixtureId=` →
-`cricket_players?playerIds=`.
+camelCase shape; flow is `cricketaustralia_fixtures` → `cricketaustralia_scorecard?fixtureId=` →
+`cricketaustralia_players?playerIds=`.
 
 ## Cross-provider comparison
 
