@@ -83,6 +83,7 @@ endpoints:
       - { name: session_key, in: query, type: string, description: "Session key, or 'latest'. Strongly recommended to bound the response." }
       - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
       - { name: driver_number, in: query, type: integer, description: "Filter to one car number." }
+      - { name: name_acronym, in: query, type: string, description: "Filter by 3-letter driver code (e.g. 'VER', 'HAM', 'NOR')." }
       - { name: team_name, in: query, type: string, description: "Filter by team name." }
     response_hint: "[{driver_number, full_name, name_acronym, broadcast_name, team_name, team_colour, headshot_url, session_key, meeting_key}]  (top-level array)"
 
@@ -177,6 +178,7 @@ endpoints:
     params:
       - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
       - { name: driver_number, in: query, type: integer, description: "Car number." }
+      - { name: lap_number, in: query, type: integer, description: "Filter to pit stops on one lap." }
       - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
     response_hint: "[{date, driver_number, lap_number, pit_duration, lane_duration, stop_duration, session_key}]  (top-level array)"
 
@@ -189,6 +191,7 @@ endpoints:
     params:
       - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
       - { name: driver_number, in: query, type: integer, description: "Car number." }
+      - { name: compound, in: query, type: string, description: "Filter by tyre compound (e.g. 'SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE', 'WET')." }
       - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
     response_hint: "[{stint_number, driver_number, lap_start, lap_end, compound, tyre_age_at_start, session_key}]  (top-level array)"
 
@@ -258,6 +261,7 @@ endpoints:
       - { name: session_key, in: query, type: string, description: "Session key, or 'latest'." }
       - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
       - { name: driver_number, in: query, type: integer, description: "Filter to messages about one driver." }
+      - { name: lap_number, in: query, type: integer, description: "Filter to messages on one lap." }
       - { name: flag, in: query, type: string, description: "Filter by flag (e.g. 'YELLOW', 'GREEN', 'RED', 'BLACK AND WHITE')." }
       - { name: category, in: query, type: string, description: "Filter by category (e.g. 'Flag', 'SafetyCar', 'Drs', 'CarEvent')." }
     response_hint: "[{date, category, flag, scope, sector, lap_number, driver_number, message, session_key}]  (top-level array)"
