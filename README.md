@@ -179,6 +179,17 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 |---|---:|---|
 | `racingandsports.racing` | 3 | Today's race meetings (all codes, verified) + sports match list + per-race odds (token) |
 
+### Data Golf — `datagolf.com` (needs a key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `datagolf.general` | 3 | Player list, tour schedule, current event field |
+| `datagolf.predictions` | 5 | DG rankings, pre-tournament + in-play model probabilities, skill ratings, live SG stats |
+| `datagolf.betting` | 2 | Outright + matchup odds across ~13 books (incl. model line) |
+
+Needs a Data Golf API key in the `DATAGOLF_KEY` env var (a personal subscription
+key — sourced via the `static_query` auth scheme, never stored in the repo).
+
 ### FanDuel — `fanduel.com` (US)
 
 | Group | Tools | Notes |

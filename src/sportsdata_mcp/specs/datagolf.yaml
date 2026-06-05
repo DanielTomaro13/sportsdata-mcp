@@ -1,0 +1,161 @@
+spec_version: 1
+
+# Data Golf (datagolf.com) — golf analytics + model predictions + cross-book betting
+# odds. The API is feeds.datagolf.com; every call authenticates with a personal
+# `?key=` query parameter tied to a paid subscription. The key is a SECRET — it is
+# sourced from the DATAGOLF_KEY env var via the `static_query` auth scheme and never
+# stored in this spec. (Set DATAGOLF_KEY, or put it in the config `secrets` block.)
+#
+# Tours: pga, euro (DP World), kft (Korn Ferry), alt, liv. Most endpoints take
+# `file_format=json` (carried as a default). Some endpoints require a higher data
+# tier; a 403/permission error means the key's plan doesn't include that feed.
+
+provider:
+  id: datagolf
+  display_name: "Data Golf"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/DataGolf.md"
+  base_urls:
+    default: https://feeds.datagolf.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_query
+      param: key
+      env: DATAGOLF_KEY
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── datagolf.general — players, schedule, field ──────────────────────
+  - name: datagolf_player_list
+    group: datagolf.general
+    capabilities: [ref.players]
+    summary: "Full player list with Data Golf ids (dg_id), name, country, amateur flag."
+    base: default
+    path: /get-player-list
+    auth: default
+    params:
+      - { name: file_format, in: query, type: string, default: json, description: "Response format (leave json)." }
+    response_hint: "[{dg_id, player_name, country, country_code, amateur}]  (top-level array)"
+
+  - name: datagolf_schedule
+    group: datagolf.general
+    capabilities: [ref.seasons]
+    summary: "Tour schedule — the season's events with dates, courses and locations."
+    base: default
+    path: /get-schedule
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{schedule:[{event_id, event_name, course, course_key, location, country, latitude, longitude, start_date}]}"
+
+  - name: datagolf_field_updates
+    group: datagolf.general
+    capabilities: [sport.match_detail]
+    summary: "Current event field — players entered, tee times, withdrawals, current round."
+    base: default
+    path: /field-updates
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, event_id, course_name, current_round, date_start, date_end, field:[{dg_id, player_name, ...tee times}]}"
+
+  # ─── datagolf.predictions — rankings, model preds, live stats ─────────
+  - name: datagolf_rankings
+    group: datagolf.predictions
+    summary: "Data Golf player rankings (top ~500) with skill estimate and OWGR rank."
+    base: default
+    path: /preds/get-dg-rankings
+    auth: default
+    params:
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{last_updated, rankings:[{datagolf_rank, owgr_rank, dg_id, player_name, dg_skill_estimate, country}]}"
+
+  - name: datagolf_pre_tournament
+    group: datagolf.predictions
+    summary: "Pre-tournament model predictions — win / top-5/10/20 / make-cut probabilities per player."
+    base: default
+    path: /preds/pre-tournament
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: odds_format, in: query, type: string, default: percent, enum: [percent, decimal, american, fraction], description: "How probabilities/odds are expressed." }
+      - { name: add_position, in: query, type: string, description: "Extra finish positions to include (e.g. '1,2,3')." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{baseline:[{dg_id, player_name, win, top_5, top_10, top_20, make_cut}], baseline_history_fit:[...]}"
+
+  - name: datagolf_in_play
+    group: datagolf.predictions
+    capabilities: [sport.in_play]
+    summary: "Live (in-play) model predictions during a tournament — current position/score + updated win probabilities."
+    base: default
+    path: /preds/in-play
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: odds_format, in: query, type: string, default: percent, enum: [percent, decimal, american, fraction], description: "Odds/probability format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{data:[{dg_id, player_name, current_pos, current_score, R1, R2, R3, R4, make_cut, win, ...}]}"
+
+  - name: datagolf_skill_ratings
+    group: datagolf.predictions
+    capabilities: [stats.advanced_metrics]
+    summary: "Player skill ratings — strokes-gained components (off-tee, approach, around-green, putting) + driving acc/dist."
+    base: default
+    path: /preds/skill-ratings
+    auth: default
+    params:
+      - { name: display, in: query, type: string, default: value, enum: [value, rank], description: "Show raw values or ranks." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{last_updated, players:[{dg_id, player_name, sg_total, sg_ott, sg_app, sg_arg, sg_putt, driving_acc, driving_dist}]}"
+
+  - name: datagolf_live_tournament_stats
+    group: datagolf.predictions
+    capabilities: [stats.advanced_metrics, stats.player_match]
+    summary: "Live per-player tournament stats (strokes-gained by category, accuracy, etc.) for the requested round."
+    base: default
+    path: /preds/live-tournament-stats
+    auth: default
+    params:
+      - { name: stats, in: query, type: string_csv, default: "sg_putt,sg_arg,sg_app,sg_ott,sg_t2g,sg_total,distance,accuracy,gir,prox_fw,scrambling", description: "Stat categories to include (CSV)." }
+      - { name: round, in: query, type: string, default: event_cumulative, enum: [event_cumulative, event_avg, 1, 2, 3, 4], description: "Which round (or cumulative/average)." }
+      - { name: display, in: query, type: string, default: value, enum: [value, rank], description: "Values or ranks." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, course_name, last_updated, live_stats:[{dg_id, player_name, sg_total, sg_ott, sg_app, ...}]}"
+
+  # ─── datagolf.betting — cross-book odds ───────────────────────────────
+  - name: datagolf_outrights
+    group: datagolf.betting
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Outright (win / top-N / make-cut) odds for the current event across ~13 sportsbooks, plus Data Golf's model line."
+    base: default
+    path: /betting-tools/outrights
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: market, in: query, type: string, default: win, enum: [win, top_5, top_10, top_20, make_cut, mc, frl], description: "Outright market." }
+      - { name: odds_format, in: query, type: string, default: decimal, enum: [decimal, american, fraction, percent], description: "Odds format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, last_updated, books_offering:[...], odds:[{dg_id, player_name, datagolf:{...}, bet365, pinnacle, draftkings, fanduel, ...}]}"
+
+  - name: datagolf_matchups
+    group: datagolf.betting
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Tournament / round / 3-ball matchup odds across sportsbooks, plus Data Golf's model line."
+    base: default
+    path: /betting-tools/matchups
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, enum: [pga, euro, kft, alt, liv], description: "Tour." }
+      - { name: market, in: query, type: string, default: tournament_matchups, enum: [tournament_matchups, round_matchups, 3_balls], description: "Matchup market." }
+      - { name: odds_format, in: query, type: string, default: decimal, enum: [decimal, american, fraction, percent], description: "Odds format." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, market, last_updated, match_list:[{p1_player_name, p2_player_name, odds:{datagolf, bet365, pinnacle, ...}}]}"

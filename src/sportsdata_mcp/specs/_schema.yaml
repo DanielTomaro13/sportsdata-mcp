@@ -24,8 +24,9 @@ provider:
   auth:
     # one block per base that needs auth; endpoints reference by key via `auth:`
     default:
-      type: "none | static_header | afl_wmctok"
-      # static_header:  header, (value | env)
+      type: "none | static_header | static_query | afl_wmctok"
+      # static_header:  header, (value | env)   — secret rides in a request header
+      # static_query:   param,  (value | env)   — secret rides in a query param (e.g. Data Golf ?key=)
       # afl_wmctok:     mint_url, mint_headers, header
   hash_refresh:
     # optional — used by `sportsdata-mcp refresh-hashes`

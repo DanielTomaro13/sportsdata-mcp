@@ -22,6 +22,15 @@ class AuthStaticHeader(BaseModel):
     env: str | None = None
 
 
+class AuthStaticQuery(BaseModel):
+    # Like static_header but the secret rides in a query parameter (e.g. Data Golf's
+    # `?key=`). The value comes from an env var (preferred) or a literal.
+    type: Literal["static_query"]
+    param: str
+    value: str | None = None
+    env: str | None = None
+
+
 class AuthAFLWMCTok(BaseModel):
     type: Literal["afl_wmctok"]
     mint_url: str
@@ -30,7 +39,7 @@ class AuthAFLWMCTok(BaseModel):
 
 
 AuthSpec = Annotated[
-    AuthNone | AuthStaticHeader | AuthAFLWMCTok,
+    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthAFLWMCTok,
     Field(discriminator="type"),
 ]
 

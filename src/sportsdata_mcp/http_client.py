@@ -15,9 +15,10 @@ from .auth.afl import AFLTokenProvider
 from .auth.base import AuthProvider
 from .auth.header import StaticHeaderAuthProvider
 from .auth.none import NullAuthProvider
+from .auth.query import StaticQueryAuthProvider
 from .config import Config
 from .errors import ToolError
-from .spec import AuthAFLWMCTok, AuthNone, AuthStaticHeader, Provider
+from .spec import AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
 
 log = logging.getLogger("sportsdata_mcp.http")
 
@@ -90,6 +91,8 @@ class HTTPClient:
             provider: AuthProvider = NullAuthProvider()
         elif isinstance(spec, AuthStaticHeader):
             provider = StaticHeaderAuthProvider(spec, self._secrets)
+        elif isinstance(spec, AuthStaticQuery):
+            provider = StaticQueryAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthAFLWMCTok):
             provider = AFLTokenProvider(spec, self._client)
         else:
@@ -112,11 +115,19 @@ class HTTPClient:
         merged_headers = dict(headers or {})
         auth_spec = self._provider.auth.get(auth_key)
         needs_auth = auth_spec is not None and not isinstance(auth_spec, AuthNone)
+        auth_query: dict[str, str] = {}
 
         if needs_auth:
             ap = self._auth_provider(auth_key)
             name, value = await ap.get()
-            merged_headers[name] = value
+            # static_query rides in the query string (e.g. Data Golf ?key=); everything
+            # else is a header.
+            if isinstance(auth_spec, AuthStaticQuery):
+                auth_query[name] = value
+            else:
+                merged_headers[name] = value
+
+        merged_params = {**(params or {}), **auth_query} if auth_query else params
 
         auth_refetched = False
         retries_used = 0
@@ -125,7 +136,7 @@ class HTTPClient:
             # stay under the rate limit too, not just the first request.
             await self._bucket.acquire()
             log.info("→ %s %s (provider=%s, auth=%s)", method, full_url, self._provider.id, auth_key)
-            r = await self._client.request(method, full_url, params=params, headers=merged_headers, json=json_body)
+            r = await self._client.request(method, full_url, params=merged_params, headers=merged_headers, json=json_body)
             # A stale credential surfaces as 401 — refetch once and retry immediately.
             if r.status_code == 401 and needs_auth and not auth_refetched:
                 auth_refetched = True
