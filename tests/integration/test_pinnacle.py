@@ -44,6 +44,8 @@ async def test_pinnacle_tools_registered(pinnacle_server):
     names = {t.name for t in await pinnacle_server.list_tools()}
     assert {"pinnacle_sports", "pinnacle_sports_live", "pinnacle_sport_leagues"} <= names
     assert {"pinnacle_sport_matchups", "pinnacle_matchup", "pinnacle_matchup_markets"} <= names
+    # key-unlocked full lists + parlay markets
+    assert {"pinnacle_sport_matchups_all", "pinnacle_league_matchups", "pinnacle_matchup_parlay_markets"} <= names
     assert {"pinnacle_enums", "pinnacle_labels", "pinnacle_teasers", "pinnacle_status"} <= names
 
 
@@ -71,6 +73,22 @@ async def test_status_live(pinnacle_server):
         pytest.xfail(f"guest.api.arcadia.pinnacle.com unavailable: {e}")
     data = _payload(res)
     assert "code" in data
+
+
+@pytest.mark.live
+async def test_key_unlocked_lists_live(pinnacle_server):
+    """The provider's public X-API-Key unlocks the full per-sport matchup list and the
+    per-league matchups (both 401 without it). Schedule-independent structure."""
+    try:
+        allm = await pinnacle_server.call_tool("pinnacle_sport_matchups_all", {"sportId": 3})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"guest.api.arcadia.pinnacle.com unavailable: {e}")
+    assert isinstance(_payload(allm), list)  # would be a ToolError (401) without the key
+    leagues = _payload(await pinnacle_server.call_tool("pinnacle_sport_leagues", {"sportId": 3}))
+    if not leagues:
+        pytest.skip("no baseball leagues right now")
+    res = await pinnacle_server.call_tool("pinnacle_league_matchups", {"leagueId": leagues[0]["id"]})
+    assert isinstance(_payload(res), list)
 
 
 @pytest.mark.live

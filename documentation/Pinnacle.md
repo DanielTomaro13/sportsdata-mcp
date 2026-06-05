@@ -6,10 +6,10 @@ sportsbook reads. Anonymous, no key. Verified against live traffic (probed
 2026-06-05). **Sports only** — Pinnacle is a sharp-odds sportsbook, no racing.
 
 > Most endpoints return a **top-level JSON array**. Prices are **American odds**
-> (e.g. `-128`, `+105`). The full `/sports/{id}/matchups` and
-> `/leagues/{id}/matchups` lists require an auth token (401 as guest); the guest
-> feed exposes matchups via the *highlighted / live / carousel* views plus the
-> single-matchup, related, and markets endpoints — which is what is modelled.
+> (e.g. `-128`, `+105`). The provider sends Pinnacle's public web-client
+> **`X-API-Key`** (hardcoded in their front-end, not a user secret), which unlocks
+> the full `/sports/{id}/matchups` and `/leagues/{id}/matchups` lists and the
+> parlay markets — all of which 401 without it.
 
 ## Host
 
@@ -37,11 +37,15 @@ sportsbook reads. Anonymous, no key. Verified against live traffic (probed
 | `pinnacle_sports_live` | `/sports/live` | `sport.in_play` |
 | `pinnacle_sport_leagues` | `/sports/{sportId}/leagues` | `sport.competitions_list` |
 | `pinnacle_sport_matchups` | `/sports/{sportId}/matchups/highlighted` | `sport.competition_screen` |
+| `pinnacle_sport_matchups_all` | `/sports/{sportId}/matchups` | `sport.competition_screen` (full list, not just highlighted) |
+| `pinnacle_league_matchups` | `/leagues/{leagueId}/matchups` | `sport.competition_screen` (every game in a competition) |
 | `pinnacle_sport_matchups_live` | `/sports/{sportId}/matchups/live` | `sport.in_play` |
+| `pinnacle_league_matchups_live` | `/leagues/{leagueId}/matchups/live` | `sport.in_play` |
 | `pinnacle_carousel` | `/matchups/carousel` | — (featured) |
 | `pinnacle_matchup` | `/matchups/{matchupId}` | `sport.match_detail` |
 | `pinnacle_matchup_related` | `/matchups/{matchupId}/related` | — |
 | `pinnacle_matchup_markets` | `/matchups/{matchupId}/markets/related/straight` | `sport.event_markets`, `sport.prices` |
+| `pinnacle_matchup_parlay_markets` | `/matchups/{matchupId}/markets/related/parlay` | `sport.same_game_multi` |
 
 ### Discovery flow (odds)
 
@@ -74,11 +78,10 @@ Pinnacle's sharp prices are valuable to compare against the other books via
 
 ## Not modelled
 
-- `/sports/{id}/matchups`, `/leagues/{id}/matchups`,
-  `/matchups/{id}/markets/related` (without `/straight`), and
-  `/matchups/{id}/markets/related/parlay` — require an auth token (401 as guest).
-  (`/matchups/{id}/markets/straight` *is* guest-open but is a strict subset of the
-  modelled `…/markets/related/straight`, so it isn't duplicated.)
+- `/matchups/{id}/markets/straight` (and `…/parlay` without `related`) — strict
+  subsets of the modelled `…/markets/related/{straight,parlay}`, so not duplicated.
+  (`/matchups/{id}/markets/related` with no `straight`/`parlay` suffix is invalid —
+  the API requires one.)
 - `pinnacle.com/config/*.json`, `/translations/*`, device/location/time/dataVersion
   endpoints — app config / infra, not sports data.
 - Account / wagering surfaces — out of scope for a read-only data provider.

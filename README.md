@@ -162,7 +162,7 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `pinnacle.sports` | 9 | Sports/leagues, highlighted + live matchups, carousel, matchup detail, straight markets (American-odds prices) |
+| `pinnacle.sports` | 13 | Sports/leagues, full + highlighted + live + per-league matchups, carousel, matchup detail, straight + parlay markets (American-odds prices) |
 | `pinnacle.reference` | 4 | Enums, market-label dictionary, teaser definitions, API status |
 
 ### FanDuel — `fanduel.com` (US)
@@ -294,8 +294,8 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   (`guest.api.arcadia.pinnacle.com`) — the open feed the web sportsbook reads.
   Sports only (sharp-odds book, no racing); prices are American odds. Flow:
   `pinnacle_sports` → `pinnacle_sport_matchups(sportId)` → `pinnacle_matchup_markets(matchupId)`.
-  The full per-league matchup lists need an auth token (401 as guest), so the
-  guest feed is exposed via the highlighted/live/carousel + single-matchup views.
+  The provider sends Pinnacle's public web-client `X-API-Key`, which unlocks the
+  full per-sport + per-league matchup lists and the parlay markets.
 - **FanDuel (US)** — anonymous US data, no secrets, two surfaces under one provider.
   **Racing** is the first **full-query GraphQL** provider: `fanduel_racing_call`
   POSTs the literal query text (the `graphql_query` dispatcher kind, sibling to the

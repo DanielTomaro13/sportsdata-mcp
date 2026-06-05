@@ -6,10 +6,9 @@ spec_version: 1
 # top-level JSON array. Prices are American odds; the markets endpoint encodes the
 # market in a `key` like "s;1;tt;2.5;home" (spread/total/moneyline + period).
 #
-# Note: the full /sports/{id}/matchups and /leagues/{id}/matchups lists require an
-# auth token (401 as guest); the guest feed exposes matchups via the highlighted /
-# live / carousel views + the single-matchup + related endpoints, which is what is
-# modelled here.
+# The public web-client X-API-Key (in provider.default_headers) unlocks the full
+# /sports/{id}/matchups and /leagues/{id}/matchups lists and the parlay markets,
+# which 401 without it.
 
 provider:
   id: pinnacle
@@ -22,6 +21,10 @@ provider:
     Accept: "application/json"
     Origin: https://www.pinnacle.com
     Referer: https://www.pinnacle.com/
+    # Pinnacle's well-known public web-client guest key (hardcoded in their front-end,
+    # not a user secret). Unlocks the full matchup/league lists + parlay markets that
+    # 401 without it; harmless on the always-open endpoints.
+    X-API-Key: "CmX2KcMrXuFmNg6YFbmTxE0y9CIrOi0R"
   auth:
     default:
       type: none
@@ -80,6 +83,42 @@ endpoints:
       - description: "Highlighted baseball matchups"
         params: {sportId: 3}
 
+  - name: pinnacle_sport_matchups_all
+    group: pinnacle.sports
+    capabilities: [sport.competition_screen]
+    summary: "All matchups for one sport (the full list, not just highlighted)."
+    base: default
+    path: /sports/{sportId}/matchups
+    auth: default
+    params:
+      - { name: sportId, in: path, type: integer, description: "Sport id, from pinnacle_sports." }
+    response_hint: "[{id, league:{name}, participants:[{name, alignment}], startTime, hasMarkets, isLive}]  (top-level array)"
+    examples:
+      - description: "All baseball matchups"
+        params: {sportId: 3}
+
+  - name: pinnacle_league_matchups
+    group: pinnacle.sports
+    capabilities: [sport.competition_screen]
+    summary: "All matchups for one league (competition) — e.g. every NBA game on the board."
+    base: default
+    path: /leagues/{leagueId}/matchups
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, description: "League id, from pinnacle_sport_leagues." }
+    response_hint: "[{id, league:{name}, participants:[{name, alignment}], startTime, hasMarkets, isLive}]  (top-level array)"
+
+  - name: pinnacle_league_matchups_live
+    group: pinnacle.sports
+    capabilities: [sport.in_play]
+    summary: "Live (in-play) matchups for one league (competition)."
+    base: default
+    path: /leagues/{leagueId}/matchups/live
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, description: "League id, from pinnacle_sport_leagues." }
+    response_hint: "[{id, league:{name}, participants:[{name}], startTime, isLive, liveMode}]  (top-level array; empty when nothing live)"
+
   - name: pinnacle_sport_matchups_live
     group: pinnacle.sports
     capabilities: [sport.in_play]
@@ -130,6 +169,17 @@ endpoints:
     params:
       - { name: matchupId, in: path, type: integer, description: "Matchup id (from a matchups feed; needs hasMarkets=true)." }
     response_hint: "[{key, matchupId, period, cutoffAt, isAlternate, limits:[{amount, type}], prices:[{designation, points, price}]}]  (top-level array; price is American odds)"
+
+  - name: pinnacle_matchup_parlay_markets
+    group: pinnacle.sports
+    capabilities: [sport.same_game_multi]
+    summary: "Parlay (same-game multi) markets + prices for one matchup and its related markets."
+    base: default
+    path: /matchups/{matchupId}/markets/related/parlay
+    auth: default
+    params:
+      - { name: matchupId, in: path, type: integer, description: "Matchup id (needs hasMarkets=true)." }
+    response_hint: "[{key, matchupId, period, cutoffAt, limits:[{amount, type}], prices:[{designation, points, price}]}]  (top-level array; price is American odds)"
 
   # ─── pinnacle.reference — enums, teasers, status ───────────────────────
   - name: pinnacle_enums
