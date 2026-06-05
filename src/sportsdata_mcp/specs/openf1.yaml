@@ -1,0 +1,287 @@
+spec_version: 1
+
+# OpenF1 (openf1.org) — free, open Formula 1 data API. It surfaces the same
+# timing / telemetry / results data that the official F1 live-timing service
+# publishes, normalised into clean JSON arrays. No key is required for historical
+# data (2023+); only true real-time streaming needs a paid plan, but every
+# endpoint below is the public REST surface and needs no auth.
+#
+# Scoping model — almost every feed is filtered by:
+#   • session_key  — one session (a Practice / Qualifying / Sprint / Race). Accepts
+#                    an integer key OR the literal "latest" for the current/most
+#                    recent session.
+#   • meeting_key  — one Grand Prix *weekend* (groups its sessions). Also accepts
+#                    "latest".
+#   • driver_number — the car number (1, 44, 81, …).
+# Call openf1_sessions / openf1_meetings first to discover the keys, then pass them
+# to the timing, telemetry and results feeds.
+#
+# Advanced filtering: the live API also accepts comparison operators appended in the
+# raw query string (e.g. `date>=2023-09-15`, `speed>=320`, `lap_number<10`). The
+# typed tools here expose equality filters, which cover the common case; for operator
+# filters hit the documented REST endpoint directly.
+
+provider:
+  id: openf1
+  display_name: "OpenF1 (Formula 1)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/OpenF1.md"
+  base_urls:
+    default: https://api.openf1.org/v1
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── openf1.reference — calendar, sessions, drivers ───────────────────
+  - name: openf1_meetings
+    group: openf1.reference
+    summary: "Grand Prix weekends (meetings). Filter by year/country, or pass meeting_key=latest for the current event."
+    base: default
+    path: /meetings
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Season year (e.g. 2024)." }
+      - { name: country_name, in: query, type: string, description: "Country name (e.g. 'Italy')." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or the literal 'latest'." }
+      - { name: meeting_name, in: query, type: string, description: "Meeting name (e.g. 'Singapore Grand Prix')." }
+    response_hint: "[{meeting_key, meeting_name, meeting_official_name, country_name, country_code, circuit_short_name, location, year, date_start}]  (top-level array)"
+
+  - name: openf1_sessions
+    group: openf1.reference
+    capabilities: [sport.fixtures_by_date]
+    summary: "F1 sessions (Practice / Qualifying / Sprint / Race). This is the fixtures feed — filter by year, country or session_name to find a session_key."
+    base: default
+    path: /sessions
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Season year." }
+      - { name: country_name, in: query, type: string, description: "Country name." }
+      - { name: session_name, in: query, type: string, description: "Session name (e.g. 'Race', 'Qualifying', 'Sprint', 'Practice 1')." }
+      - { name: session_type, in: query, type: string, description: "Session type (e.g. 'Race', 'Qualifying', 'Practice')." }
+      - { name: session_key, in: query, type: string, description: "Session key, or 'latest'." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key to list that weekend's sessions, or 'latest'." }
+      - { name: circuit_short_name, in: query, type: string, description: "Circuit short name (e.g. 'Monza')." }
+    response_hint: "[{session_key, session_name, session_type, date_start, date_end, meeting_key, circuit_short_name, country_name, year}]  (top-level array)"
+
+  - name: openf1_drivers
+    group: openf1.reference
+    capabilities: [ref.players]
+    summary: "Drivers entered in a session — number, name, acronym, team and colours. Pass session_key (or 'latest')."
+    base: default
+    path: /drivers
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, description: "Session key, or 'latest'. Strongly recommended to bound the response." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Filter to one car number." }
+      - { name: team_name, in: query, type: string, description: "Filter by team name." }
+    response_hint: "[{driver_number, full_name, name_acronym, broadcast_name, team_name, team_colour, headshot_url, session_key, meeting_key}]  (top-level array)"
+
+  # ─── openf1.results — classifications, standings, overtakes ────────────
+  - name: openf1_session_result
+    group: openf1.results
+    capabilities: [stats.player_match]
+    summary: "Final classification of a session — per-driver position, laps, points, gap, DNF/DNS/DSQ flags."
+    base: default
+    path: /session_result
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Filter to one driver." }
+      - { name: position, in: query, type: integer, description: "Filter to one finishing position." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{position, driver_number, number_of_laps, points, dnf, dns, dsq, duration, gap_to_leader, session_key}]  (top-level array)"
+
+  - name: openf1_starting_grid
+    group: openf1.results
+    summary: "Race starting grid — per-driver grid position and lap time. (Sparse feed: OpenF1 returns a 404 'No results found' for sessions where no grid is published, which is currently most of them.)"
+    base: default
+    path: /starting_grid
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Race session key, or 'latest'." }
+      - { name: position, in: query, type: integer, description: "Filter to one grid slot." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{position, driver_number, lap_duration, session_key, meeting_key}]  (top-level array)"
+
+  - name: openf1_championship_drivers
+    group: openf1.results
+    capabilities: [stats.ladder]
+    summary: "Drivers' championship standings around a race — points and position before/after the session."
+    base: default
+    path: /championship_drivers
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Race session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Filter to one driver." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{driver_number, position_start, position_current, points_start, points_current, session_key}]  (top-level array)"
+
+  - name: openf1_championship_teams
+    group: openf1.results
+    capabilities: [stats.ladder]
+    summary: "Constructors' championship standings around a race — points and position before/after the session."
+    base: default
+    path: /championship_teams
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Race session key, or 'latest'." }
+      - { name: team_name, in: query, type: string, description: "Filter to one team." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{team_name, position_start, position_current, points_start, points_current, session_key}]  (top-level array)"
+
+  - name: openf1_overtakes
+    group: openf1.results
+    capabilities: [stats.play_by_play]
+    summary: "Overtake events in a race — who passed whom, when, and for which position."
+    base: default
+    path: /overtakes
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Race session key, or 'latest'." }
+      - { name: overtaking_driver_number, in: query, type: integer, description: "Filter by the car making the pass." }
+      - { name: overtaken_driver_number, in: query, type: integer, description: "Filter by the car being passed." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, overtaking_driver_number, overtaken_driver_number, position, session_key}]  (top-level array)"
+
+  # ─── openf1.timing — laps, pit, stints, gaps, position ─────────────────
+  - name: openf1_laps
+    group: openf1.timing
+    capabilities: [stats.advanced_metrics]
+    summary: "Per-lap timing for a driver — lap + sector durations, speed-trap (i1/i2/st) speeds, mini-sector segment colours, pit-out flag."
+    base: default
+    path: /laps
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Car number (strongly recommended)." }
+      - { name: lap_number, in: query, type: integer, description: "Filter to one lap." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{driver_number, lap_number, lap_duration, duration_sector_1/2/3, i1_speed, i2_speed, st_speed, is_pit_out_lap, segments_sector_1/2/3, date_start}]  (top-level array)"
+
+  - name: openf1_pit
+    group: openf1.timing
+    summary: "Pit stops — lap, total time in pit lane and stationary stop duration per driver."
+    base: default
+    path: /pit
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Car number." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, driver_number, lap_number, pit_duration, lane_duration, stop_duration, session_key}]  (top-level array)"
+
+  - name: openf1_stints
+    group: openf1.timing
+    summary: "Tyre stints — compound and tyre age per driving period (lap_start → lap_end)."
+    base: default
+    path: /stints
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Car number." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{stint_number, driver_number, lap_start, lap_end, compound, tyre_age_at_start, session_key}]  (top-level array)"
+
+  - name: openf1_intervals
+    group: openf1.timing
+    capabilities: [sport.in_play]
+    summary: "Live gap data during a race — each driver's gap to the leader and interval to the car ahead, sampled over time."
+    base: default
+    path: /intervals
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Race session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Car number (strongly recommended — this feed is high-volume)." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, driver_number, gap_to_leader, interval, session_key}]  (top-level array)"
+
+  - name: openf1_position
+    group: openf1.timing
+    capabilities: [sport.in_play]
+    summary: "Driver track position over time — position changes throughout a session."
+    base: default
+    path: /position
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Car number (strongly recommended)." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+      - { name: position, in: query, type: integer, description: "Filter to one position." }
+    response_hint: "[{date, driver_number, position, session_key, meeting_key}]  (top-level array)"
+
+  # ─── openf1.telemetry — car telemetry + track location ─────────────────
+  - name: openf1_car_data
+    group: openf1.telemetry
+    capabilities: [stats.advanced_metrics]
+    summary: "Car telemetry at ~3.7 Hz — speed, throttle, brake, gear, RPM, DRS. HIGH VOLUME: always pass session_key + driver_number."
+    base: default
+    path: /car_data
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, required: true, description: "Car number (required — one driver's telemetry can be tens of thousands of samples)." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, driver_number, speed, throttle, brake, n_gear, rpm, drs, session_key}]  (top-level array; large — use date>=/date<= operators on the raw API to window it)"
+
+  - name: openf1_location
+    group: openf1.telemetry
+    capabilities: [stats.advanced_metrics]
+    summary: "Car (x, y, z) track position at ~3.7 Hz. HIGH VOLUME: always pass session_key + driver_number (and ideally a date window on the raw API)."
+    base: default
+    path: /location
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, required: true, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, required: true, description: "Car number (required — high-frequency spatial data)." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, driver_number, x, y, z, session_key}]  (top-level array; large)"
+
+  # ─── openf1.live — race control, radio, weather ────────────────────────
+  - name: openf1_race_control
+    group: openf1.live
+    capabilities: [sport.commentary]
+    summary: "Race-control messages — flags, safety cars, incidents, investigations, penalties — the official message feed."
+    base: default
+    path: /race_control
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, description: "Session key, or 'latest'." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Filter to messages about one driver." }
+      - { name: flag, in: query, type: string, description: "Filter by flag (e.g. 'YELLOW', 'GREEN', 'RED', 'BLACK AND WHITE')." }
+      - { name: category, in: query, type: string, description: "Filter by category (e.g. 'Flag', 'SafetyCar', 'Drs', 'CarEvent')." }
+    response_hint: "[{date, category, flag, scope, sector, lap_number, driver_number, message, session_key}]  (top-level array)"
+
+  - name: openf1_team_radio
+    group: openf1.live
+    capabilities: [sport.live_audio]
+    summary: "Team-radio clips — recording URLs of driver/pit-wall radio exchanges during a session."
+    base: default
+    path: /team_radio
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, description: "Session key, or 'latest'." }
+      - { name: driver_number, in: query, type: integer, description: "Car number." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, driver_number, recording_url, session_key, meeting_key}]  (top-level array)"
+
+  - name: openf1_weather
+    group: openf1.live
+    summary: "Track weather, updated ~once a minute — air/track temperature, humidity, pressure, wind, rainfall."
+    base: default
+    path: /weather
+    auth: default
+    params:
+      - { name: session_key, in: query, type: string, description: "Session key, or 'latest'." }
+      - { name: meeting_key, in: query, type: string, description: "Meeting key, or 'latest'." }
+    response_hint: "[{date, air_temperature, track_temperature, humidity, pressure, wind_speed, wind_direction, rainfall, session_key}]  (top-level array)"

@@ -233,6 +233,20 @@ All ESPN tools are parametric over `sport` + `league` slugs (e.g. `football`/`nf
 carries. Browse each dispatcher's operations in its `espn://{site,core,web,cdn}/operations`
 resource.
 
+### OpenF1 — `api.openf1.org` (Formula 1, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `openf1.reference` | 3 | Grand Prix weekends (meetings), sessions (the fixtures feed), driver roster |
+| `openf1.results` | 5 | Session classification, starting grid, drivers'/constructors' championship standings, overtakes |
+| `openf1.timing` | 5 | Per-lap sector + speed-trap timing, pit stops, tyre stints, live gaps/intervals, track position |
+| `openf1.telemetry` | 2 | Car telemetry (speed/throttle/brake/gear/RPM/DRS) + (x,y,z) location at ~3.7 Hz |
+| `openf1.live` | 3 | Race-control messages (flags/SC/incidents), team-radio clips, weather |
+
+Free, no-auth public REST surface (`auth: none`). Scope feeds by `session_key` /
+`meeting_key` (both accept the literal `latest`) and `driver_number`; discover keys
+with `openf1_sessions` / `openf1_meetings` first.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.
