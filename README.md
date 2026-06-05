@@ -169,9 +169,9 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `betfair.exchange` | 2 | `bymarket` back/lay price feed (the sharpest odds) + cash-out availability |
+| `betfair.exchange` | 3 | `bymarket` + `byevent` back/lay price feeds (the sharpest odds) + cash-out availability |
 | `betfair.navigation` | 1 | `bynode` catalogue graph (sport → meeting → event → market) |
-| `betfair.inplay` | 4 | Live scores, event details, timeline, scores+broadcast |
+| `betfair.inplay` | 5 | Live scores, event details, timeline (single + batch), scores+broadcast |
 
 ### FanDuel — `fanduel.com` (US)
 

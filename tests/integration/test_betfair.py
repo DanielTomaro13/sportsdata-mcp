@@ -46,8 +46,9 @@ def _payload(result):
 
 async def test_betfair_tools_registered(betfair_server):
     names = {t.name for t in await betfair_server.list_tools()}
-    assert {"betfair_market_prices", "betfair_cashout", "betfair_navigation"} <= names
-    assert {"betfair_scores", "betfair_event_details", "betfair_event_timeline", "betfair_scores_broadcast"} <= names
+    assert {"betfair_market_prices", "betfair_markets_by_event", "betfair_cashout", "betfair_navigation"} <= names
+    assert {"betfair_scores", "betfair_event_details", "betfair_event_timeline",
+            "betfair_event_timelines", "betfair_scores_broadcast"} <= names
 
 
 # ─── live: the readonly web hosts ───────────────────────────────────────

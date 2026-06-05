@@ -22,8 +22,9 @@ secret). Verified against live traffic (probed 2026-06-05). The exchange's
 
 ```
 betfair_navigation(nodeIds=["EVENT_TYPE:7"], attachments=["MENU","EVENT","MARKET"], maxOutDistance=4)
-   → walk the tree to a MARKET node → marketId (1.xxxxxxxxx)
-betfair_market_prices(marketIds=[marketId])     → back/lay prices + runners + state
+   → walk the tree to EVENT / MARKET nodes
+betfair_markets_by_event(eventIds=[eventId])     → every market for an event + prices
+   └ or betfair_market_prices(marketIds=[marketId])  → price specific market ids
 betfair_event_details(eventIds=[eventId])        → in-play event detail
 betfair_scores(eventIds=[eventId])               → live score
 ```
@@ -35,7 +36,8 @@ betfair_scores(eventIds=[eventId])               → live score
 
 | Tool | Host / Path | Capability |
 |---|---|---|
-| `betfair_market_prices` | `ero` `/www/sports/exchange/readonly/v1/bymarket` | `sport.event_markets`, `sport.prices` |
+| `betfair_market_prices` | `ero` `…/readonly/v1/bymarket` | `sport.event_markets`, `sport.prices` |
+| `betfair_markets_by_event` | `ero` `…/readonly/v1/byevent` | `sport.event_markets`, `sport.prices` (all markets for an event, by event id) |
 | `betfair_cashout` | `cos` `/cashout-service/readonly/v1.0/availableCashoutMarkets` | — |
 
 `betfair_market_prices` `types` (CSV, all default-on) selects the data sections:
@@ -61,7 +63,8 @@ walk `maxOutDistance` levels down (and `maxInDistance` up). Node types are
 |---|---|---|
 | `betfair_scores` | `/inplayservice/v1/scores` | `sport.match_score` |
 | `betfair_event_details` | `/inplayservice/v1/eventDetails` | `sport.in_play`, `sport.match_detail` |
-| `betfair_event_timeline` | `/inplayservice/v1/eventTimeline` | `sport.match_score` |
+| `betfair_event_timeline` | `/inplayservice/v1/eventTimeline` | `sport.match_score` (single event) |
+| `betfair_event_timelines` | `/inplayservice/v1/eventTimelines` | `sport.match_score` (batch) |
 | `betfair_scores_broadcast` | `/inplayservice/v1/scoresAndBroadcast` | `sport.match_score` |
 
 ## Cross-provider comparison
@@ -85,5 +88,8 @@ against the soft books is the headline use:
 - `appsync.navql.betfair.com.au/graphql` (`nextToJump`) — returns 401 without a
   logged-in session.
 - `betfair-data-supplier` (herokuapp) — needs an `ssoid`.
-- `ips/soccerEventStats` — returns `null` for most events; low value.
+- `ips/soccerEventStats` — returns `null` for most events; `tennis/cricketEventStats`
+  and a generic `eventStats` don't exist (404). `scan …/facet/v1/search` rejects every
+  param combination tried (DSC-0024); `ero …/bycompetition` / `…/byeventtype` 404 —
+  `bymarket` + `byevent` are the only price endpoints.
 - Account / wagering surfaces — out of scope for a read-only data provider.
