@@ -32,13 +32,18 @@ Every apiv2 response is wrapped `{<payload>, responseError}`.
 |---|---|---|
 | `cricket_fixtures` | `/fixtures?year=&isCompleted=&competitionId=` | `sport.fixtures_by_date` |
 | `cricket_competitions` | `/competitions` | `sport.competitions_list` |
+| `cricket_tours` | `/tours` | `sport.competitions_list` |
 | `cricket_teams` | `/teams` | `ref.teams` |
 | `cricket_players` | `/players?playerIds=` | `ref.players`, `stats.player_profile` |
+| `cricket_venue` | `/venue?venueId=` | `ref.venues` |
 | `cricket_standings` | `/standings?competitionId=` | `stats.ladder` |
 
-`cricket_players` takes a **list** of ids (sent comma-separated). `cricket_standings`
-returns an empty `standings` array for competitions that don't run a points table
-(e.g. one-off tours / bilateral series).
+`cricket_players` takes a **list** of ids (sent comma-separated). `cricket_venue`
+resolves one venue id per call (get ids from a fixture's `venueId`; there is no venue
+list endpoint). `cricket_tours` is the series view behind the site nav — each tour
+carries `isUpComing` / `isInProgress` / `isCompleted` and its nested `competitions[]`.
+`cricket_standings` returns an empty `standings` array for competitions that don't run
+a points table (e.g. one-off tours / bilateral series).
 
 ## Match — group `cricket.match`
 
@@ -60,16 +65,17 @@ site's worm/manhattan graphs. `cricket_streams` is empty unless the match is liv
 | `cricket_playlist` | `/PLAYLIST/EN/{playlistId}` | `content.video` |
 
 `cricket_content` lists Pulselive CMS items by type — **VIDEO** (highlights/replays),
-**TEXT** (articles) or **AUDIO** — paginated via `pageInfo`. `cricket_playlist`
-returns one curated collection (e.g. a match's highlights playlist).
+**TEXT** (articles), **AUDIO**, or **PLAYLIST** (curated collections) — paginated via
+`pageInfo`. `cricket_playlist` returns one curated collection by id (e.g. a match's
+highlights playlist).
 
 ## Cross-provider comparison
 
 The cricket feeds reuse the shared capability tags, so they line up with the other
 providers via `list_tools_by_capability`:
 
-- **`ref.teams`** / **`ref.players`** → `cricket_teams` / `cricket_players` join the
-  AFL / NBA / Data Golf catalogues.
+- **`ref.teams`** / **`ref.players`** / **`ref.venues`** → `cricket_teams` /
+  `cricket_players` / `cricket_venue` join the AFL / NBA / Data Golf catalogues.
 - **`sport.fixtures_by_date`** → `cricket_fixtures` sits next to the ESPN / NBA / OpenF1
   schedules.
 - **`stats.ladder`** → `cricket_standings` alongside the AFL ladder and OpenF1

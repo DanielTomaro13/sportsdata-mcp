@@ -251,9 +251,9 @@ with `openf1_sessions` / `openf1_meetings` first.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `cricket.core` | 5 | Fixtures (the `/matches` feed), competitions, teams, player profiles (batch), competition ladder |
+| `cricket.core` | 7 | Fixtures (the `/matches` feed), competitions, tours/series, teams, player profiles (batch), venue lookup, competition ladder |
 | `cricket.match` | 3 | Full scorecard (innings batting/bowling/wickets), run-graph series, live video streams |
-| `cricket.content` | 2 | Pulselive CMS: video/text/audio content list + curated playlists |
+| `cricket.content` | 2 | Pulselive CMS: video/text/audio/playlist content list + curated playlists |
 
 Two no-auth hosts (`apiv2.cricket.com.au/web` + the Pulselive CMS). The apiv2
 endpoints carry `jsconfig=eccn:true` by default so they return the documented

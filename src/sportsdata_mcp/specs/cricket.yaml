@@ -66,6 +66,31 @@ endpoints:
       - { name: format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{competitions:[{id, name, url, imageUrl, startDateTime, endDateTime, order}], responseError}"
 
+  - name: cricket_tours
+    group: cricket.core
+    capabilities: [sport.competitions_list]
+    summary: "Tours / series with status flags — each tour groups its competitions and is flagged upcoming / in-progress / completed. The feed behind the site's series navigation."
+    base: default
+    path: /tours
+    auth: default
+    params:
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{tours:[{competitionId, name, startDateTime, endDateTime, isUpComing, isInProgress, isCompleted, competitions:[...], bannerUrl, logoUrl}]}"
+
+  - name: cricket_venue
+    group: cricket.core
+    capabilities: [ref.venues]
+    summary: "Venue detail for one venueId — name, city, country, state, coordinates. Resolve a fixture's venueId (one venue per call)."
+    base: default
+    path: /venue
+    auth: default
+    params:
+      - { name: venueId, in: query, type: integer, required: true, description: "Venue id (from a fixture's venueId)." }
+      - { name: jsconfig, in: query, type: string, default: "eccn:true", description: "Response-shape flag (leave default)." }
+      - { name: format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{venue:{id, name, city, state, countryName, latitude, longitude}, responseError}"
+
   - name: cricket_teams
     group: cricket.core
     capabilities: [ref.teams]
@@ -148,12 +173,12 @@ endpoints:
   - name: cricket_content
     group: cricket.content
     capabilities: [content.video, content.news]
-    summary: "Pulselive CMS content list by type — VIDEO (highlights/replays), TEXT (articles) or AUDIO. Paginated."
+    summary: "Pulselive CMS content list by type — VIDEO (highlights/replays), TEXT (articles), AUDIO, or PLAYLIST (curated collections). Paginated."
     base: content
     path: /{contentType}/EN
     auth: default
     params:
-      - { name: contentType, in: path, type: string, required: true, enum: [VIDEO, TEXT, AUDIO], description: "Content type." }
+      - { name: contentType, in: path, type: string, required: true, enum: [VIDEO, TEXT, AUDIO, PLAYLIST], description: "Content type." }
       - { name: pageSize, in: query, type: integer, default: 10, description: "Items per page." }
       - { name: page, in: query, type: integer, default: 0, description: "Zero-based page index." }
       - { name: tagNames, in: query, type: string, description: "Optional tag filter (e.g. a competition or team tag)." }

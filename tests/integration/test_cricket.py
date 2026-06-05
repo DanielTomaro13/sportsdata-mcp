@@ -45,8 +45,10 @@ async def test_cricket_tools_registered(cricket_server):
     assert {
         "cricket_fixtures",
         "cricket_competitions",
+        "cricket_tours",
         "cricket_teams",
         "cricket_players",
+        "cricket_venue",
         "cricket_standings",
     } <= names
     assert {"cricket_scorecard", "cricket_runs_graph", "cricket_streams"} <= names
@@ -108,12 +110,45 @@ async def test_standings_live(cricket_server):
 
 
 @pytest.mark.live
+async def test_venue_live(cricket_server):
+    """A fixture's venueId resolves to venue detail."""
+    try:
+        f = await _first_completed_fixture(cricket_server)
+        if not f.get("venueId"):
+            pytest.skip("fixture has no venueId")
+        res = _payload(await cricket_server.call_tool("cricket_venue", {"venueId": f["venueId"]}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"apiv2.cricket.com.au unavailable: {e}")
+    venue = res.get("venue")
+    if not venue:
+        pytest.skip("no venue record")
+    assert "name" in venue
+
+
+@pytest.mark.live
+async def test_tours_live(cricket_server):
+    """Tours feed groups competitions with status flags."""
+    try:
+        res = _payload(await cricket_server.call_tool("cricket_tours", {}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"apiv2.cricket.com.au unavailable: {e}")
+    tours = res.get("tours") or []
+    if not tours:
+        pytest.skip("no tours")
+    assert "competitionId" in tours[0] and "name" in tours[0]
+
+
+@pytest.mark.live
 async def test_content_live(cricket_server):
-    """Pulselive CMS returns a paginated video list."""
+    """Pulselive CMS returns a paginated video list (and a playlist list via the same tool)."""
     try:
         res = _payload(
             await cricket_server.call_tool("cricket_content", {"contentType": "VIDEO", "pageSize": 3})
         )
+        pl = _payload(
+            await cricket_server.call_tool("cricket_content", {"contentType": "PLAYLIST", "pageSize": 3})
+        )
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"pulselive CMS unavailable: {e}")
     assert "pageInfo" in res and "content" in res
+    assert "pageInfo" in pl and "content" in pl
