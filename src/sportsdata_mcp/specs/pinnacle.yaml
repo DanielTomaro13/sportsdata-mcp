@@ -1,0 +1,165 @@
+spec_version: 1
+
+# Pinnacle — the Arcadia "guest" API (guest.api.arcadia.pinnacle.com/0.1), the same
+# open feed pinnacle.com's web sportsbook reads. Anonymous, no key. Sports only
+# (Pinnacle is a sharp-odds sportsbook; no racing). Many endpoints return a
+# top-level JSON array. Prices are American odds; the markets endpoint encodes the
+# market in a `key` like "s;1;tt;2.5;home" (spread/total/moneyline + period).
+#
+# Note: the full /sports/{id}/matchups and /leagues/{id}/matchups lists require an
+# auth token (401 as guest); the guest feed exposes matchups via the highlighted /
+# live / carousel views + the single-matchup + related endpoints, which is what is
+# modelled here.
+
+provider:
+  id: pinnacle
+  display_name: "Pinnacle"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Pinnacle.md"
+  base_urls:
+    default: https://guest.api.arcadia.pinnacle.com/0.1
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json"
+    Origin: https://www.pinnacle.com
+    Referer: https://www.pinnacle.com/
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── pinnacle.sports — Arcadia guest sports + matchups + markets ───────
+  - name: pinnacle_sports
+    group: pinnacle.sports
+    capabilities: [sport.competitions_list]
+    summary: "All sports with their matchup counts and primary market type."
+    base: default
+    path: /sports
+    auth: default
+    response_hint: "[{id, name, primaryMarketType, matchupCount, isFeatured, isHidden}]  (top-level array)"
+
+  - name: pinnacle_sports_live
+    group: pinnacle.sports
+    capabilities: [sport.in_play]
+    summary: "Sports that currently have live (in-play) matchups."
+    base: default
+    path: /sports/live
+    auth: default
+    response_hint: "[{id, name, matchupCount, primaryMarketType}]  (top-level array)"
+
+  - name: pinnacle_sport_leagues
+    group: pinnacle.sports
+    capabilities: [sport.competitions_list]
+    summary: "Leagues (competitions) for one sport, with feature/group info."
+    base: default
+    path: /sports/{sportId}/leagues
+    auth: default
+    params:
+      - { name: sportId, in: path, type: integer, description: "Sport id (e.g. 3 Baseball, 4 Basketball), from pinnacle_sports." }
+    response_hint: "[{id, name, group, isFeatured, matchupCount}]  (top-level array)"
+    examples:
+      - description: "Baseball leagues"
+        params: {sportId: 3}
+
+  - name: pinnacle_sport_matchups
+    group: pinnacle.sports
+    capabilities: [sport.competition_screen]
+    summary: "Highlighted matchups for one sport (teams, league, start time, market flags)."
+    base: default
+    path: /sports/{sportId}/matchups/highlighted
+    auth: default
+    params:
+      - { name: sportId, in: path, type: integer, description: "Sport id, from pinnacle_sports." }
+    response_hint: "[{id, league:{name}, participants:[{name, alignment}], startTime, hasMarkets, isLive}]  (top-level array)"
+    examples:
+      - description: "Highlighted baseball matchups"
+        params: {sportId: 3}
+
+  - name: pinnacle_sport_matchups_live
+    group: pinnacle.sports
+    capabilities: [sport.in_play]
+    summary: "Live (in-play) matchups for one sport."
+    base: default
+    path: /sports/{sportId}/matchups/live
+    auth: default
+    params:
+      - { name: sportId, in: path, type: integer, description: "Sport id, from pinnacle_sports_live." }
+    response_hint: "[{id, league:{name}, participants:[{name}], startTime, isLive, liveMode}]  (top-level array)"
+
+  - name: pinnacle_carousel
+    group: pinnacle.sports
+    summary: "Featured matchups carousel across all sports (homepage highlights)."
+    base: default
+    path: /matchups/carousel
+    auth: default
+    response_hint: "[{id, league:{name}, participants:[{name}], startTime, hasMarkets, hasLive}]  (top-level array)"
+
+  - name: pinnacle_matchup
+    group: pinnacle.sports
+    capabilities: [sport.match_detail]
+    summary: "One matchup's detail: participants, league, periods, start time, state."
+    base: default
+    path: /matchups/{matchupId}
+    auth: default
+    params:
+      - { name: matchupId, in: path, type: integer, description: "Matchup id (from any matchups feed)." }
+    response_hint: "{id, league:{name}, participants:[{name, alignment}], periods:[...], startTime, state, type, rotation}"
+
+  - name: pinnacle_matchup_related
+    group: pinnacle.sports
+    summary: "Matchups related to one matchup (the same event's sub-matchups / alternative lines)."
+    base: default
+    path: /matchups/{matchupId}/related
+    auth: default
+    params:
+      - { name: matchupId, in: path, type: integer, description: "Matchup id." }
+    response_hint: "[{id, type, participants:[{name}], hasMarkets}]  (top-level array)"
+
+  - name: pinnacle_matchup_markets
+    group: pinnacle.sports
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "All straight (non-parlay) markets + American-odds prices for one matchup and its related markets."
+    base: default
+    path: /matchups/{matchupId}/markets/related/straight
+    auth: default
+    params:
+      - { name: matchupId, in: path, type: integer, description: "Matchup id (from a matchups feed; needs hasMarkets=true)." }
+    response_hint: "[{key, matchupId, period, cutoffAt, isAlternate, limits:[{amount, type}], prices:[{designation, points, price}]}]  (top-level array; price is American odds)"
+
+  # ─── pinnacle.reference — enums, teasers, status ───────────────────────
+  - name: pinnacle_enums
+    group: pinnacle.reference
+    summary: "Reference enums (countries, currencies, occupations, etc.) used across the API."
+    base: default
+    path: /enums
+    auth: default
+    response_hint: "{countries:[{code2, code3, legalAge, license:{name}}], ...}"
+
+  - name: pinnacle_labels
+    group: pinnacle.reference
+    summary: "Per-sport market-label dictionary — decodes market keys/types into human names (moneyline → 'Match Odds', etc.)."
+    base: default
+    path: /labels
+    auth: default
+    response_hint: "[{sport, labels:[{marketLabels:[{full, short, type}]}]}]  (top-level array, one per sport)"
+
+  - name: pinnacle_teasers
+    group: pinnacle.reference
+    summary: "Teaser bet definitions (point teasers by sport group and team count)."
+    base: default
+    path: /teasers
+    auth: default
+    response_hint: "[{id, description, groupId, groupName, leagues:[{league:{...}}]}]  (top-level array)"
+
+  - name: pinnacle_status
+    group: pinnacle.reference
+    summary: "API system status (online/offline + per-service health)."
+    base: default
+    path: /status
+    auth: default
+    response_hint: "{code, description, services:[{name, status}]}"
