@@ -1,0 +1,63 @@
+spec_version: 1
+
+# Racing and Sports (Australia) — www.racingandsports.com.au, the form/data site
+# for thoroughbred, harness and greyhound racing (plus a sports match list). The
+# JSON feeds the site's front-end reads.
+#
+# Cloudflare note: the site sits behind Cloudflare, which JS-challenges most paths
+# from datacenter IPs. The `/todays-racing-json-v2` feed is whitelisted and is
+# verified live here; the other JSON endpoints below are reached fine from a normal
+# browser/residential IP but get challenged from a datacenter, so their live tests
+# xfail in that environment. No auth.
+
+provider:
+  id: racingandsports
+  display_name: "Racing and Sports (Australia)"
+  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/RacingAndSports.md"
+  base_urls:
+    default: https://www.racingandsports.com.au
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json, text/plain, */*"
+    Accept-Language: "en-AU,en;q=0.9"
+    X-Requested-With: "XMLHttpRequest"
+    Referer: https://www.racingandsports.com.au/
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── racingandsports.racing ────────────────────────────────────────────
+  - name: racingandsports_todays_racing
+    group: racingandsports.racing
+    capabilities: [racing.meetings_by_date]
+    summary: "Today's race meetings across all codes (thoroughbred / harness / greyhound), grouped by country, each meeting with its form-guide / results URLs."
+    base: default
+    path: /todays-racing-json-v2
+    auth: default
+    response_hint: "[{Discipline:'T'|'H'|'G', DisciplineFullText, Countries:[{CountryName, countryCode, Flag, HasResults, Meetings:[{Course, RaceNumber, HasResults, Remaining, MeetingClosed, FormGuideUrl, PostMeetingUrl, PreMeetingUrl, PDFUrl}]}]}]  (top-level array, one per discipline)"
+
+  - name: racingandsports_match_list
+    group: racingandsports.racing
+    summary: "Sports match list (the site's non-racing fixtures feed). Cloudflare-challenged from datacenter IPs."
+    base: default
+    path: /match-list-json
+    auth: default
+    response_hint: "(sports fixtures feed; shape served to the site's XHR)"
+
+  - name: racingandsports_race_odds
+    group: racingandsports.racing
+    summary: "Bookmaker odds for one race. Needs a per-race `token` (issued by the form-guide page); raceId + token come from the form-guide view."
+    base: default
+    path: /FormGuide/GetOdds
+    auth: default
+    params:
+      - { name: raceId, in: query, type: integer, required: true, description: "Race id (from the form-guide page)." }
+      - { name: token, in: query, type: string, required: true, description: "Per-race access token issued by the form-guide page (not generatable here)." }
+    response_hint: "(per-runner bookmaker odds; shape served to the form-guide XHR)"

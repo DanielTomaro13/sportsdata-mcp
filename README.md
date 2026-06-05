@@ -173,6 +173,12 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `betfair.navigation` | 1 | `bynode` catalogue graph (sport → meeting → event → market) |
 | `betfair.inplay` | 5 | Live scores, event details, timeline (single + batch), scores+broadcast |
 
+### Racing and Sports — `racingandsports.com.au`
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `racingandsports.racing` | 3 | Today's race meetings (all codes, verified) + sports match list + per-race odds (token) |
+
 ### FanDuel — `fanduel.com` (US)
 
 | Group | Tools | Notes |
@@ -298,6 +304,13 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
   (event types → categories → markets, SGMs). The `betr.com.au` Next.js
   `_next/data/{buildHash}` blobs are skipped (fragile per-deploy hash; the API
   serves the same data).
+- **Racing and Sports** — `www.racingandsports.com.au` racing/form data, no auth.
+  `racingandsports_todays_racing` (`/todays-racing-json-v2`) is the verified feed —
+  today's meetings across thoroughbred/harness/greyhound, by country. The site is
+  behind Cloudflare, which whitelists that feed but JS-challenges the other paths
+  from datacenter IPs (they work from a residential/browser IP); the form/fields/
+  results are HTML pages, and `GetOdds` needs a per-race token, so only the JSON
+  feeds are modelled.
 - **Betfair Exchange** — anonymous, the open read-only web APIs keyed by the public
   `_ak` query param. The crown jewel is `betfair_market_prices` (`ero …/bymarket`) —
   exchange **back/lay** prices, the sharpest reference odds. Discover market ids by
