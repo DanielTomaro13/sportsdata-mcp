@@ -17,10 +17,19 @@ enable.
 
 ## Install
 
+This is a **private repository** — it is not published to PyPI. Install from source
+(you need read access to the repo):
+
 ```bash
-uvx sportsdata-mcp serve        # run without installing
-# or
-pip install sportsdata-mcp
+git clone git@github.com:DanielTomaro13/sportsdata-mcp.git
+cd sportsdata-mcp
+pip install -e .                # add ".[dev]" for the test + lint toolchain
+```
+
+Or run it directly with `uvx` from the private repo (requires SSH access):
+
+```bash
+uvx --from git+ssh://git@github.com/DanielTomaro13/sportsdata-mcp.git sportsdata-mcp serve
 ```
 
 ## Quickstart
@@ -408,7 +417,9 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
 
 ## Contributing
 
-Adding a provider is a spec-only change in the common case:
+**See [`documentation/ADDING_A_PROVIDER.md`](./documentation/ADDING_A_PROVIDER.md)** for
+the full guide, with separate playbooks for adding a **bookmaker** vs a **sports website /
+data API**. In short, adding a provider is a spec-only change in the common case:
 
 1. Write `src/sportsdata_mcp/specs/<provider>.yaml` (copy an existing spec).
 2. Tag each tool with capability slugs from `specs/_capabilities.yaml`; add a new

@@ -95,10 +95,19 @@ CONTRACTS: list[Contract] = [
     Contract("afl_competitions_list", {}, ("meta", "competitions"), "competitions", ("id",)),
     # ── Data Golf (needs DATAGOLF_KEY → skips in CI) ──
     Contract("datagolf_player_list", {}, list_at="", item_keys=("dg_id", "player_name")),
-    # ── Bookmakers (often geo/bot-blocked from CI → skip; verified when reachable) ──
+    # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
+    # These pin each book's response shape for local regression value; in CI they
+    # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.
     Contract("tab_sports", {}, ("sports",)),
     Contract("pinnacle_sports", {}, list_at="", item_keys=("id", "matchupCount")),
     Contract("racingandsports_todays_racing", {}, list_at="", item_keys=("Discipline", "Countries")),
+    Contract("sportsbet_upcoming_events", {}, list_at="", item_keys=("id", "name", "className")),
+    Contract("pointsbet_events_nextup", {}, ("events",)),
+    Contract("betr_event_types", {}, ("Items",)),
+    Contract("unibet_kambi_odds_ladder", {}, list_at="", item_keys=("name", "steps")),
+    Contract("entain_racing_search", {}, ("facets", "meta")),
+    Contract("fanduel_racing_quicklinks", {}, list_at="", item_keys=("id", "name", "quicklinks")),
+    Contract("betfair_navigation", {"nodeIds": ["EVENT_TYPE:7"]}, ("nodes", "edges")),
 ]
 
 
