@@ -61,7 +61,6 @@ capabilities:
     single_provider: true
   - id: sport.draft
     description: "Draft results / picks for a given season."
-    single_provider: true
   - id: sport.rankings
     description: "Poll rankings (AP, coaches, committee) for a league."
     single_provider: true

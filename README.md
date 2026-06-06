@@ -260,6 +260,21 @@ endpoints carry `jsconfig=eccn:true` by default so they return the documented
 camelCase shape; flow is `cricketaustralia_fixtures` → `cricketaustralia_scorecard?fixtureId=` →
 `cricketaustralia_players?playerIds=`.
 
+### MLB — `statsapi.mlb.com` (official Stats API, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `mlb.reference` | 9 | Sports, leagues, divisions, teams, roster, player profile + name search, venues, seasons |
+| `mlb.schedule` | 1 | Games by date / range / team (carries gamePk + score) |
+| `mlb.game` | 4 | Boxscore, linescore, play-by-play, and the full v1.1 `feed/live` firehose |
+| `mlb.stats` | 4 | Division standings, season stats query, one-player stats, league leaders |
+| `mlb.extra` | 3 | Rule-4 draft, award recipients, attendance |
+
+The official MLB Stats API the `MLB-StatsAPI` library wraps, read directly (no key).
+`sportId=1` is MLB; discover ids with `mlb_teams` / `mlb_schedule` /
+`mlb_player_search`, then drill into a game or player. Most tools accept the API's
+`hydrate` string to embed related objects in one call.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.
