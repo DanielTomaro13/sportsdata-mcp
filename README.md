@@ -264,16 +264,18 @@ camelCase shape; flow is `cricketaustralia_fixtures` → `cricketaustralia_score
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `mlb.reference` | 9 | Sports, leagues, divisions, teams, roster, player profile + name search, venues, seasons |
-| `mlb.schedule` | 1 | Games by date / range / team (carries gamePk + score) |
-| `mlb.game` | 4 | Boxscore, linescore, play-by-play, and the full v1.1 `feed/live` firehose |
-| `mlb.stats` | 4 | Division standings, season stats query, one-player stats, league leaders |
-| `mlb.extra` | 3 | Rule-4 draft, award recipients, attendance |
+| `mlb.reference` | 20 | Sports/leagues/divisions/conferences, teams (+ single, affiliates, history, uniforms), rosters, alumni, coaches, personnel, players (profile, batch, search, season catalogue), venues, seasons |
+| `mlb.schedule` | 5 | Games by date / range / team, plus postseason (schedule, series, tune-in) and tied games |
+| `mlb.game` | 10 | Boxscore, linescore, play-by-play, v1.1 `feed/live` firehose, win-probability, context metrics, content, per-player game line, changes, uniforms |
+| `mlb.stats` | 9 | Standings, season stats, one-player stats, league + team leaders, team-season stats, game pace, high/low records |
+| `mlb.extra` | 14 | Draft (+ prospects), awards, attendance, transactions, free agents, jobs (umpires/datacasters/scorers), Home Run Derby, All-Star ballots |
+| `mlb.meta` | 1 | `mlb_meta` — the `/{type}` lookup for every enum (positions, statTypes, gameTypes, pitchCodes, …) |
 
-The official MLB Stats API the `MLB-StatsAPI` library wraps, read directly (no key).
-`sportId=1` is MLB; discover ids with `mlb_teams` / `mlb_schedule` /
-`mlb_player_search`, then drill into a game or player. Most tools accept the API's
-`hydrate` string to embed related objects in one call.
+The official MLB Stats API the `MLB-StatsAPI` library wraps, read directly (no key) —
+**comprehensive coverage of the public surface**. `sportId=1` is MLB; discover ids
+with `mlb_teams` / `mlb_schedule` / `mlb_player_search`, then drill into a game or
+player. Most tools accept the API's `hydrate` string to embed related objects in one
+call.
 
 ## Cross-provider comparison
 

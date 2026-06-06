@@ -58,7 +58,6 @@ capabilities:
     single_provider: true
   - id: sport.transactions
     description: "Roster transactions log (signings, trades, waivers, call-ups)."
-    single_provider: true
   - id: sport.draft
     description: "Draft results / picks for a given season."
   - id: sport.rankings
@@ -103,7 +102,6 @@ capabilities:
     single_provider: true
   - id: stats.win_probability
     description: "In-game win-probability time series for a contest."
-    single_provider: true
 
   # ─── Sport — fixtures (non-betting data sources) ─────────────────────
   - id: sport.fixtures_by_date
@@ -125,7 +123,6 @@ capabilities:
     description: "Season / competition-season catalogue."
   - id: ref.coaches
     description: "Coach catalogue / coaching records."
-    single_provider: true
 
   # ─── Content / editorial ─────────────────────────────────────────────
   - id: content.news

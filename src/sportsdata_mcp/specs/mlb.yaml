@@ -321,3 +321,470 @@ endpoints:
       - { name: season, in: query, type: integer, description: "Season year." }
       - { name: date, in: query, type: string, description: "As-of date (YYYY-MM-DD)." }
     response_hint: "{records:[{openings, attendanceTotal, attendanceAverage, team, season}], aggregateTotals}"
+
+  # ─── mlb.reference (more) — single team, staff, affiliates, catalogues ──
+  - name: mlb_team
+    group: mlb.reference
+    capabilities: [ref.teams]
+    summary: "Single team detail by id — name, league/division, venue, colours, founding."
+    base: default
+    path: /teams/{teamId}
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: hydrate, in: query, type: string, description: "Embed related objects (e.g. 'venue,league,division,social')." }
+    response_hint: "{teams:[{id, name, abbreviation, league, division, venue, locationName, firstYearOfPlay}]}"
+
+  - name: mlb_team_coaches
+    group: mlb.reference
+    capabilities: [ref.coaches]
+    summary: "A team's coaching staff — manager, hitting/pitching/bench coaches, etc."
+    base: default
+    path: /teams/{teamId}/coaches
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: date, in: query, type: string, description: "As-of date (YYYY-MM-DD)." }
+    response_hint: "{roster:[{person, jobId, job, title}], teamId}"
+
+  - name: mlb_team_personnel
+    group: mlb.reference
+    summary: "A team's front-office / non-uniformed personnel."
+    base: default
+    path: /teams/{teamId}/personnel
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id." }
+      - { name: date, in: query, type: string, description: "As-of date (YYYY-MM-DD)." }
+    response_hint: "{roster:[{person, job, title}], teamId}"
+
+  - name: mlb_team_alumni
+    group: mlb.reference
+    capabilities: [ref.players]
+    summary: "Former players (alumni) for a team in a season + group (hitting/pitching/fielding)."
+    base: default
+    path: /teams/{teamId}/alumni
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: group, in: query, type: string, default: hitting, description: "hitting | pitching | fielding." }
+    response_hint: "{people:[{id, fullName, primaryPosition, mlbDebutDate}]}"
+
+  - name: mlb_teams_history
+    group: mlb.reference
+    summary: "Franchise history (name/league/division changes over time) for one or more teams."
+    base: default
+    path: /teams/history
+    auth: default
+    params:
+      - { name: teamIds, in: query, type: string_csv, required: true, description: "Team id(s)." }
+      - { name: startSeason, in: query, type: integer, description: "First season." }
+      - { name: endSeason, in: query, type: integer, description: "Last season." }
+    response_hint: "{teams:[{id, name, season, league, division, locationName, active}]}"
+
+  - name: mlb_teams_affiliates
+    group: mlb.reference
+    capabilities: [ref.teams]
+    summary: "A club's affiliated teams across the minor-league levels."
+    base: default
+    path: /teams/affiliates
+    auth: default
+    params:
+      - { name: teamIds, in: query, type: string_csv, required: true, description: "Parent team id(s)." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: hydrate, in: query, type: string, description: "Embed related objects." }
+    response_hint: "{teams:[{id, name, sport, league, parentOrgId, parentOrgName}]}"
+
+  - name: mlb_team_uniforms
+    group: mlb.reference
+    summary: "Uniform assets / descriptions for one or more teams."
+    base: default
+    path: /uniforms/team
+    auth: default
+    params:
+      - { name: teamIds, in: query, type: string_csv, required: true, description: "Team id(s)." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+    response_hint: "{uniforms:[{teamId, uniformAssets:[{uniformAssetText, uniformAssetType, ...}]}]}"
+
+  - name: mlb_conferences
+    group: mlb.reference
+    summary: "Conference catalogue (used by some leagues / amateur levels)."
+    base: default
+    path: /conferences
+    auth: default
+    params:
+      - { name: conferenceId, in: query, type: integer, description: "Filter to one conference." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+    response_hint: "{conferences:[{id, name, abbreviation, league, hasWildcard}]}"
+
+  - name: mlb_people
+    group: mlb.reference
+    capabilities: [ref.players]
+    summary: "Batch player profiles for a list of personIds (the multi-id form of mlb_player)."
+    base: default
+    path: /people
+    auth: default
+    params:
+      - { name: personIds, in: query, type: string_csv, required: true, description: "Player id(s)." }
+      - { name: hydrate, in: query, type: string, description: "Embed related objects (e.g. 'currentTeam,stats(type=season)')." }
+    response_hint: "{people:[{id, fullName, primaryNumber, birthDate, primaryPosition, batSide, pitchHand, currentTeam}]}"
+
+  - name: mlb_sports_players
+    group: mlb.reference
+    capabilities: [ref.players]
+    summary: "All players in a sport for a season — the full player catalogue (name → id resolution). sportId=1 for MLB."
+    base: default
+    path: /sports/{sportId}/players
+    auth: default
+    params:
+      - { name: sportId, in: path, type: integer, required: true, description: "Sport id (1 = MLB)." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: hydrate, in: query, type: string, description: "Embed related objects." }
+    response_hint: "{people:[{id, fullName, firstName, lastName, primaryNumber, birthDate, currentAge}]}  (large)"
+
+  - name: mlb_season
+    group: mlb.reference
+    capabilities: [ref.seasons]
+    summary: "Single season detail by seasonId — key dates and game-count info."
+    base: default
+    path: /seasons/{seasonId}
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year/id." }
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+    response_hint: "{seasons:[{seasonId, regularSeasonStartDate, regularSeasonEndDate, postSeasonStartDate, postSeasonEndDate}]}"
+
+  # ─── mlb.schedule (more) — postseason, tied games ─────────────────────
+  - name: mlb_schedule_postseason
+    group: mlb.schedule
+    capabilities: [sport.fixtures_by_date]
+    summary: "Postseason schedule — all playoff games (optionally a single season / series type)."
+    base: default
+    path: /schedule/postseason
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: gameTypes, in: query, type: string_csv, description: "Postseason game type code(s): F, D, L, W." }
+      - { name: hydrate, in: query, type: string, description: "Embed related objects." }
+    response_hint: "{totalGames, dates:[{date, games:[{gamePk, seriesDescription, teams, status}]}]}"
+
+  - name: mlb_schedule_postseason_series
+    group: mlb.schedule
+    summary: "Postseason series view — games grouped by series (e.g. ALDS, NLCS, World Series)."
+    base: default
+    path: /schedule/postseason/series
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+    response_hint: "{series:[{series:{id, gameType}, totalItems, games:[...]}]}"
+
+  - name: mlb_schedule_postseason_tunein
+    group: mlb.schedule
+    summary: "Postseason broadcast 'tune-in' info (where/when to watch playoff games)."
+    base: default
+    path: /schedule/postseason/tuneIn
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+    response_hint: "{dates:[{games:[{gamePk, broadcasts:[...]}]}]}"
+
+  - name: mlb_schedule_tied
+    group: mlb.schedule
+    summary: "Tie-breaker / tied games for a season."
+    base: default
+    path: /schedule/games/tied
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: gameTypes, in: query, type: string_csv, description: "Game type code(s)." }
+      - { name: hydrate, in: query, type: string, description: "Embed related objects." }
+    response_hint: "{totalGames, dates:[{games:[...]}]}"
+
+  # ─── mlb.game (more) — win prob, context, content, player-game stats ──
+  - name: mlb_game_win_probability
+    group: mlb.game
+    capabilities: [stats.win_probability]
+    summary: "Win-probability time series for a game — WP after each play, with leverage index."
+    base: default
+    path: /game/{gamePk}/winProbability
+    auth: default
+    params:
+      - { name: gamePk, in: path, type: integer, required: true, description: "Game id." }
+      - { name: timecode, in: query, type: string, description: "Point-in-time snapshot (YYYYMMDD_HHMMSS)." }
+    response_hint: "[{atBatIndex, homeTeamWinProbability, awayTeamWinProbability, leverageIndex, homeTeamWinProbabilityAdded}]  (top-level array)"
+
+  - name: mlb_game_context_metrics
+    group: mlb.game
+    capabilities: [stats.advanced_metrics]
+    summary: "Context metrics for a game — leverage, win-probability and run-expectancy context for the current/most-recent state."
+    base: default
+    path: /game/{gamePk}/contextMetrics
+    auth: default
+    params:
+      - { name: gamePk, in: path, type: integer, required: true, description: "Game id." }
+      - { name: timecode, in: query, type: string, description: "Point-in-time snapshot." }
+    response_hint: "{game, leverageIndex, homeWinProbability, awayWinProbability}"
+
+  - name: mlb_game_content
+    group: mlb.game
+    capabilities: [content.video]
+    summary: "Editorial / media content for a game — highlights, recap, media, and (when present) the box-score-and-storylines bundle."
+    base: default
+    path: /game/{gamePk}/content
+    auth: default
+    params:
+      - { name: gamePk, in: path, type: integer, required: true, description: "Game id." }
+    response_hint: "{editorial, media, highlights, summary, gameNotes}"
+
+  - name: mlb_player_game_stats
+    group: mlb.game
+    capabilities: [stats.player_match]
+    summary: "One player's stat line for one specific game (batting/pitching/fielding for that gamePk)."
+    base: default
+    path: /people/{personId}/stats/game/{gamePk}
+    auth: default
+    params:
+      - { name: personId, in: path, type: integer, required: true, description: "Player id." }
+      - { name: gamePk, in: path, type: integer, required: true, description: "Game id." }
+    response_hint: "{stats:[{group, splits:[{stat:{...}, game}]}]}"
+
+  - name: mlb_game_changes
+    group: mlb.game
+    summary: "Games changed since a timestamp — a polling helper to detect updated games."
+    base: default
+    path: /game/changes
+    auth: default
+    params:
+      - { name: updatedSince, in: query, type: string, required: true, description: "ISO timestamp (e.g. 2025-09-01T00:00:00Z)." }
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+      - { name: fields, in: query, type: string, description: "Trim the response to these fields." }
+    response_hint: "{totalItems, dates:[{games:[{gamePk, gameDate}]}]}"
+
+  - name: mlb_game_uniforms
+    group: mlb.game
+    summary: "Uniforms worn in one or more games."
+    base: default
+    path: /uniforms/game
+    auth: default
+    params:
+      - { name: gamePks, in: query, type: string_csv, required: true, description: "Game id(s)." }
+    response_hint: "{uniforms:[{gamePk, home:{...}, away:{...}}]}"
+
+  # ─── mlb.stats (more) — team stats, team leaders, pace, high/low ──────
+  - name: mlb_team_stats
+    group: mlb.stats
+    capabilities: [stats.team_season]
+    summary: "One team's aggregate stats — by season + group (hitting/pitching/fielding) and stat type."
+    base: default
+    path: /teams/{teamId}/stats
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: group, in: query, type: string, default: hitting, description: "hitting | pitching | fielding." }
+      - { name: stats, in: query, type: string, default: season, description: "season | career | yearByYear | ..." }
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+    response_hint: "{stats:[{type, group, splits:[{season, team, stat:{...}}]}]}"
+
+  - name: mlb_teams_stats
+    group: mlb.stats
+    capabilities: [stats.team_season]
+    summary: "Aggregate stats across all teams — league-wide team leaderboard by season + group. Sort + limit for top-N."
+    base: default
+    path: /teams/stats
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: group, in: query, type: string, default: hitting, description: "hitting | pitching | fielding." }
+      - { name: stats, in: query, type: string, default: season, description: "Stat type." }
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+      - { name: sortStat, in: query, type: string, description: "Stat to sort by." }
+      - { name: limit, in: query, type: integer, description: "Max rows." }
+    response_hint: "{stats:[{type, group, splits:[{team, stat:{...}}]}]}"
+
+  - name: mlb_team_leaders
+    group: mlb.stats
+    capabilities: [stats.leaders_season]
+    summary: "A team's statistical leaders for given categories (e.g. homeRuns, era) in a season."
+    base: default
+    path: /teams/{teamId}/leaders
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id." }
+      - { name: leaderCategories, in: query, type: string_csv, required: true, description: "Category code(s): homeRuns, battingAverage, era, ..." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: leaderGameTypes, in: query, type: string_csv, description: "Game type code(s)." }
+      - { name: limit, in: query, type: integer, description: "Top-N." }
+    response_hint: "{teamLeaders:[{leaderCategory, season, leaders:[{rank, value, person}]}]}"
+
+  - name: mlb_game_pace
+    group: mlb.stats
+    summary: "Game-pace / tempo metrics for a season (pitches per game, time of game, etc.), optionally by team."
+    base: default
+    path: /gamePace
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: teamIds, in: query, type: string_csv, description: "Filter to team(s)." }
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+    response_hint: "{sports:[{...pace}], teams:[{team, ...pace}], leagues:[...]}"
+
+  - name: mlb_high_low
+    group: mlb.stats
+    summary: "High / low stat records for an org level — top and bottom performances for a sortStat in a season."
+    base: default
+    path: /highLow/{orgType}
+    auth: default
+    params:
+      - { name: orgType, in: path, type: string, required: true, enum: [player, team, division, league, sport], description: "Org level for the records." }
+      - { name: sortStat, in: query, type: string, required: true, description: "Stat to rank by (e.g. 'homeRuns'). See mlb_meta(type='statTypes')." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: gameType, in: query, type: string, description: "Game type code." }
+      - { name: limit, in: query, type: integer, description: "Top-N." }
+    response_hint: "{highLow:[{statType, splits:[{stat, player|team}]}]}"
+
+  # ─── mlb.extra (more) — transactions, free agents, jobs, draft, all-star ─
+  - name: mlb_transactions
+    group: mlb.extra
+    capabilities: [sport.transactions]
+    summary: "Roster transactions — signings, trades, call-ups, IL moves, DFA, etc. Filter by team, player, single date or date range."
+    base: default
+    path: /transactions
+    auth: default
+    params:
+      - { name: teamId, in: query, type: integer, description: "Filter to one team." }
+      - { name: playerId, in: query, type: integer, description: "Filter to one player." }
+      - { name: date, in: query, type: string, description: "Single date (YYYY-MM-DD)." }
+      - { name: startDate, in: query, type: string, description: "Range start (YYYY-MM-DD); use with endDate." }
+      - { name: endDate, in: query, type: string, description: "Range end (YYYY-MM-DD)." }
+      - { name: sportId, in: query, type: integer, description: "Sport id." }
+    response_hint: "{transactions:[{id, person, fromTeam, toTeam, date, typeCode, typeDesc, description]}]}"
+
+  - name: mlb_free_agents
+    group: mlb.extra
+    summary: "Free agents for a season — players and their from/to-team signing info."
+    base: default
+    path: /people/freeAgents
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+      - { name: leagueId, in: query, type: string, description: "League id(s): 103=AL, 104=NL." }
+      - { name: order, in: query, type: string, description: "Sort order." }
+    response_hint: "{freeAgents:[{player, originalTeam, newTeam, dateSigned, dateDeclared, position]}]}"
+
+  - name: mlb_draft_prospects
+    group: mlb.extra
+    summary: "Draft prospects for a year (the pre-draft prospect board)."
+    base: default
+    path: /draft/prospects/{year}
+    auth: default
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Draft year." }
+      - { name: limit, in: query, type: integer, description: "Max prospects." }
+      - { name: round, in: query, type: string, description: "Filter to a round." }
+    response_hint: "{prospects:[{id, rank, person, school, position}]}"
+
+  - name: mlb_jobs
+    group: mlb.extra
+    summary: "People holding a job type for a season — jobType e.g. UMPR (umpires), SCORER, DATACASTER, BROADCASTER, COACH."
+    base: default
+    path: /jobs
+    auth: default
+    params:
+      - { name: jobType, in: query, type: string, required: true, description: "Job type code (see mlb_meta(type='jobTypes'))." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+    response_hint: "{roster:[{person, jobType, job}]}"
+
+  - name: mlb_umpires
+    group: mlb.extra
+    summary: "Current umpire crew list."
+    base: default
+    path: /jobs/umpires
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, description: "Sport id." }
+      - { name: date, in: query, type: string, description: "As-of date." }
+    response_hint: "{roster:[{person, jobType, job}]}"
+
+  - name: mlb_datacasters
+    group: mlb.extra
+    summary: "Datacaster (official scorer-adjacent stringer) assignments."
+    base: default
+    path: /jobs/datacasters
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, description: "Sport id." }
+      - { name: date, in: query, type: string, description: "As-of date." }
+    response_hint: "{roster:[{person, job}]}"
+
+  - name: mlb_official_scorers
+    group: mlb.extra
+    summary: "Official scorer assignments."
+    base: default
+    path: /jobs/officialScorers
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, description: "Sport id." }
+      - { name: date, in: query, type: string, description: "As-of date." }
+    response_hint: "{roster:[{person, job}]}"
+
+  - name: mlb_home_run_derby
+    group: mlb.extra
+    summary: "Home Run Derby bracket + results for a derby gamePk."
+    base: default
+    path: /homeRunDerby/{gamePk}
+    auth: default
+    params:
+      - { name: gamePk, in: path, type: integer, required: true, description: "Derby game id." }
+    response_hint: "{info, status, rounds:[{matchups:[{topSeed, bottomSeed, ...}]}]}"
+
+  - name: mlb_allstar_ballot
+    group: mlb.extra
+    summary: "All-Star Game ballot candidates for a league + season."
+    base: default
+    path: /league/{leagueId}/allStarBallot
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id (103=AL, 104=NL)." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+    response_hint: "{league, candidates:[{position, players:[{person, team}]}]}"
+
+  - name: mlb_allstar_writeins
+    group: mlb.extra
+    summary: "All-Star write-in candidates for a league + season."
+    base: default
+    path: /league/{leagueId}/allStarWriteIns
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id (103=AL, 104=NL)." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+    response_hint: "{league, writeIns:[{person, team, position}]}"
+
+  - name: mlb_allstar_final_vote
+    group: mlb.extra
+    summary: "All-Star 'Final Vote' candidates for a league + season."
+    base: default
+    path: /league/{leagueId}/allStarFinalVote
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id (103=AL, 104=NL)." }
+      - { name: season, in: query, type: integer, required: true, description: "Season year." }
+    response_hint: "{league, candidates:[{person, team, position}]}"
+
+  # ─── mlb.meta — the {type} lookup endpoint (enums used by other calls) ──
+  - name: mlb_meta
+    group: mlb.meta
+    summary: "Meta lookup — fetch the valid values for a parameter used elsewhere (stat types, positions, game types, pitch codes, etc.). One tool over the API's /{type} endpoint."
+    base: default
+    path: /{type}
+    auth: default
+    params:
+      - { name: type, in: path, type: string, required: true, enum: [awards, baseballStats, eventTypes, gameStatus, gameTypes, hitTrajectories, jobTypes, languages, leagueLeaderTypes, logicalEvents, metrics, pitchCodes, pitchTypes, platforms, positions, reviewReasons, rosterTypes, scheduleEventTypes, situationCodes, sky, standingsTypes, statGroups, statTypes, windDirection], description: "Which lookup table to return." }
+    response_hint: "[{...lookup rows}]  (shape depends on type; e.g. positions → [{code, name, type, abbrev}])"

@@ -17,7 +17,7 @@ from fastmcp.exceptions import ToolError as MCPToolError
 from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
 
-MLB_GROUPS = ["mlb.reference", "mlb.schedule", "mlb.game", "mlb.stats", "mlb.extra"]
+MLB_GROUPS = ["mlb.reference", "mlb.schedule", "mlb.game", "mlb.stats", "mlb.extra", "mlb.meta"]
 
 
 @pytest.fixture
@@ -55,6 +55,31 @@ async def test_mlb_tools_registered(mlb_server):
     assert {"mlb_boxscore", "mlb_linescore", "mlb_playbyplay", "mlb_live_feed"} <= names
     assert {"mlb_standings", "mlb_stats", "mlb_player_stats", "mlb_leaders"} <= names
     assert {"mlb_draft", "mlb_awards", "mlb_attendance"} <= names
+    # extended coverage
+    assert {
+        "mlb_team",
+        "mlb_team_coaches",
+        "mlb_teams_affiliates",
+        "mlb_people",
+        "mlb_sports_players",
+    } <= names
+    assert {"mlb_schedule_postseason", "mlb_schedule_tied"} <= names
+    assert {
+        "mlb_game_win_probability",
+        "mlb_game_context_metrics",
+        "mlb_game_content",
+        "mlb_player_game_stats",
+    } <= names
+    assert {"mlb_team_stats", "mlb_teams_stats", "mlb_team_leaders", "mlb_high_low"} <= names
+    assert {
+        "mlb_transactions",
+        "mlb_free_agents",
+        "mlb_jobs",
+        "mlb_umpires",
+        "mlb_home_run_derby",
+        "mlb_allstar_ballot",
+    } <= names
+    assert {"mlb_meta"} <= names
 
 
 # ─── live: statsapi.mlb.com ─────────────────────────────────────────────
@@ -124,3 +149,42 @@ async def test_leaders_live(mlb_server):
         pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
     data = _payload(res)
     assert "leagueLeaders" in data
+
+
+@pytest.mark.live
+async def test_meta_lookup_live(mlb_server):
+    """The meta endpoint returns a lookup table (positions) used by other calls."""
+    try:
+        res = await mlb_server.call_tool("mlb_meta", {"type": "positions"})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
+    data = _payload(res)
+    assert isinstance(data, list) and data
+    assert "abbrev" in data[0] or "code" in data[0]
+
+
+@pytest.mark.live
+async def test_win_probability_and_transactions_live(mlb_server):
+    """Win-probability series + transactions log resolve (newly multi-provider caps)."""
+    try:
+        gp = await _a_final_gamepk(mlb_server)
+        wp = _payload(await mlb_server.call_tool("mlb_game_win_probability", {"gamePk": gp}))
+        tx = _payload(
+            await mlb_server.call_tool(
+                "mlb_transactions", {"teamId": 133, "startDate": "2025-07-01", "endDate": "2025-07-15"}
+            )
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
+    assert isinstance(wp, list) and wp and "homeTeamWinProbability" in wp[0]
+    assert "transactions" in tx
+
+
+@pytest.mark.live
+async def test_team_stats_live(mlb_server):
+    """League-wide team stats (stats.team_season)."""
+    try:
+        res = await mlb_server.call_tool("mlb_teams_stats", {"season": 2025, "group": "hitting"})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
+    assert "stats" in _payload(res)
