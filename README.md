@@ -455,4 +455,6 @@ Every push/PR runs three jobs (`.github/workflows/ci.yml`):
 
 ## License
 
-MIT
+**Proprietary and confidential.** Copyright (c) 2026 Daniel Tomaro. All rights
+reserved. No use, copying, modification, or distribution is permitted without the
+owner's prior written consent — see [`LICENSE`](./LICENSE).

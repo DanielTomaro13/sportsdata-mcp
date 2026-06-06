@@ -3,7 +3,7 @@ spec_version: 1
 provider:
   id: sportsbet
   display_name: "Sportsbet (Australia)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Sportsbet.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Sportsbet.md"
   base_urls:
     default: https://www.sportsbet.com.au/apigw
   default_headers:

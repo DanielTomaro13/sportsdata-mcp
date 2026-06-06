@@ -13,7 +13,7 @@ spec_version: 1
 provider:
   id: pinnacle
   display_name: "Pinnacle"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Pinnacle.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Pinnacle.md"
   base_urls:
     default: https://guest.api.arcadia.pinnacle.com/0.1
   default_headers:

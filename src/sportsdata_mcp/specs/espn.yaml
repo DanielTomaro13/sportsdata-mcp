@@ -38,7 +38,7 @@ spec_version: 1
 provider:
   id: espn
   display_name: "ESPN (site.api + core.api + web.api + cdn)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/ESPN.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/ESPN.md"
   base_urls:
     site: https://site.api.espn.com
     core: https://sports.core.api.espn.com

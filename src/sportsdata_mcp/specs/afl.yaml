@@ -3,7 +3,7 @@ spec_version: 1
 provider:
   id: afl
   display_name: "AFL (Australian Football League)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/AFL.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/AFL.md"
   base_urls:
     public: https://aflapi.afl.com.au
     premium: https://api.afl.com.au

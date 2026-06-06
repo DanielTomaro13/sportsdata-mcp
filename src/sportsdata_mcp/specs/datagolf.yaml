@@ -13,7 +13,7 @@ spec_version: 1
 provider:
   id: datagolf
   display_name: "Data Golf"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/DataGolf.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/DataGolf.md"
   base_urls:
     default: https://feeds.datagolf.com
   default_headers:

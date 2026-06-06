@@ -13,7 +13,7 @@ spec_version: 1
 provider:
   id: racingandsports
   display_name: "Racing and Sports (Australia)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/RacingAndSports.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/RacingAndSports.md"
   base_urls:
     default: https://www.racingandsports.com.au
   default_headers:

@@ -16,7 +16,7 @@ spec_version: 1
 provider:
   id: mlb
   display_name: "MLB (statsapi.mlb.com)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/MLB.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/MLB.md"
   base_urls:
     default: https://statsapi.mlb.com/api/v1
     live: https://statsapi.mlb.com/api/v1.1

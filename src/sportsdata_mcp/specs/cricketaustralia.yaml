@@ -17,7 +17,7 @@ spec_version: 1
 provider:
   id: cricketaustralia
   display_name: "Cricket Australia (cricket.com.au)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/CricketAustralia.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/CricketAustralia.md"
   base_urls:
     default: https://apiv2.cricket.com.au/web
     content: https://api.cricket-australia.pulselive.com/content/cricket-australia

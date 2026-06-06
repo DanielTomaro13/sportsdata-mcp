@@ -10,7 +10,7 @@ spec_version: 1
 provider:
   id: betr
   display_name: "BetR (Australia)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/BetR.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/BetR.md"
   base_urls:
     default: https://web20-api.bluebet.com.au
   default_headers:

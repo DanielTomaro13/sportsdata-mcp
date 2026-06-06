@@ -24,7 +24,7 @@ spec_version: 1
 provider:
   id: openf1
   display_name: "OpenF1 (Formula 1)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/OpenF1.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/OpenF1.md"
   base_urls:
     default: https://api.openf1.org/v1
   default_headers:

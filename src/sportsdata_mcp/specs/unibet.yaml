@@ -15,7 +15,7 @@ spec_version: 1
 provider:
   id: unibet
   display_name: "Unibet (Australia)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Unibet.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Unibet.md"
   base_urls:
     racing_graphql: https://rsa.unibet.com.au
     kambi_offering: https://ap.offering-api.kambicdn.com/offering/v2018/ubau

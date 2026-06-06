@@ -3,7 +3,7 @@ spec_version: 1
 provider:
   id: entain
   display_name: "Entain (Ladbrokes / Neds Australia)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/Entain.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Entain.md"
   base_urls:
     default: https://api.ladbrokes.com.au
     # The Contentful CMS + form guides are proxied through the www host, NOT the API host.

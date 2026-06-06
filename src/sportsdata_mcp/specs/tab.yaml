@@ -17,7 +17,7 @@ spec_version: 1
 provider:
   id: tab
   display_name: "TAB (Australia)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/TAB.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/TAB.md"
   base_urls:
     default: https://api.beta.tab.com.au/v1
     cms: https://cmsapi.tab.com.au

@@ -15,7 +15,7 @@ spec_version: 1
 provider:
   id: fanduel
   display_name: "FanDuel (US)"
-  doc_url: "https://github.com/danieltomaro/sportsdata-mcp/blob/main/documentation/FanDuel.md"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FanDuel.md"
   base_urls:
     racing_graphql: https://api.racing.fanduel.com
     racing_service: https://service.racing.fanduel.com
