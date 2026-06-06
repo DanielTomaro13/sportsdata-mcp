@@ -43,8 +43,6 @@ from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
 from sportsdata_mcp.spec_loader import load_all_specs
 
-pytestmark = [pytest.mark.live, pytest.mark.contract]
-
 # HTTP statuses that mean "our request was wrong" → a genuine contract break.
 _BREAK_STATUSES = {400, 404, 405, 410, 422}
 
@@ -128,6 +126,27 @@ def _is_contract_break(err: Exception) -> bool:
     return bool(m) and int(m.group(1)) in _BREAK_STATUSES
 
 
+# ─── offline guard ───────────────────────────────────────────────────────
+# Runs in the deterministic suite (no `live` marker). A typo'd or renamed tool in
+# the table would otherwise raise "Unknown tool" at call time — which the live test
+# classifies as a SKIP — so the contract would silently stop running. This fails
+# loudly instead, with no network needed.
+
+
+async def test_contract_table_is_well_formed(contract_server):
+    registered = {t.name for t in await contract_server.list_tools()}
+    unknown = sorted({c.tool for c in CONTRACTS} - registered)
+    assert not unknown, f"contract table references tools that don't exist: {unknown}"
+    # every row must assert *something* (a no-op contract is a silent gap)
+    empty = [c.tool for c in CONTRACTS if not c.top_keys and c.list_at is None]
+    assert not empty, f"contract rows with no expectations: {empty}"
+
+
+# ─── live contract checks ─────────────────────────────────────────────────
+
+
+@pytest.mark.live
+@pytest.mark.contract
 @pytest.mark.parametrize("c", CONTRACTS, ids=lambda c: c.tool)
 async def test_response_contract(contract_server, c: Contract):
     try:
