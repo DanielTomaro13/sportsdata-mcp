@@ -416,12 +416,31 @@ Adding a provider is a spec-only change in the common case:
 3. `sportsdata-mcp lint` — must pass.
 4. `sportsdata-mcp doctor` (with the new groups enabled) — probes it live.
 5. `pytest -m "not live"` — offline suite; drop the marker filter to run live tests.
+6. Add a row to `tests/contract/test_api_contracts.py` so the new provider's
+   documented response shape is verified live on every PR (see below).
 
 ```bash
 pip install -e ".[dev]"
-pytest -m "not live"
+pytest -m "not live"      # offline suite (the CI gate)
+pytest -m contract        # live response-contract checks (see below)
 ruff check .
 ```
+
+### CI
+
+Every push/PR runs three jobs (`.github/workflows/ci.yml`):
+
+- **test** — ruff, `sportsdata-mcp lint`, and the offline suite (`pytest -m "not live"`)
+  across Python 3.11–3.13. The deterministic gate.
+- **contract** — `pytest -m contract`: live response-contract checks that hit each
+  upstream API and assert it still returns the **documented** shape (top-level keys,
+  and the documented keys on list items). It is resilient by design — it **skips**
+  on anything outside our control (network errors, `5xx`, `401/403/429`, geo-blocks,
+  a missing `DATAGOLF_KEY`, or an empty feed) and only **fails** on a genuine shape
+  regression or a broken spec (wrong path/params → `4xx`). Bookmaker APIs that
+  geo-block GitHub's runners simply skip there.
+- **package** — builds the wheel and proves the CLI loads the packaged specs from a
+  clean install.
 
 ## License
 

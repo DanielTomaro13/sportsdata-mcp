@@ -53,6 +53,7 @@ include = [
 asyncio_mode = "auto"
 markers = [
   "live: integration tests that hit real third-party endpoints",
+  "contract: live response-contract tests (structure matches the docs); resilient to transient/blocked endpoints",
 ]
 testpaths = ["tests"]
 

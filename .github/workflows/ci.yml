@@ -32,8 +32,36 @@ jobs:
         run: sportsdata-mcp lint
 
       - name: Tests (offline only)
-        # `live` tests hit real third-party endpoints and must never run in CI.
+        # The broad `live` integration suite hits real endpoints and stays out of CI.
+        # The curated `contract` subset (also `live`-marked) runs in its own job below.
         run: pytest -m "not live"
+
+  contract:
+    # Live response-contract checks on every PR: verify each upstream API still
+    # returns the shape we documented + coded. The test is resilient by design — it
+    # SKIPS on transient/blocked/keyless endpoints (network errors, 5xx, 401/403/429,
+    # geo-blocks, missing API keys, empty feeds) and only FAILS on a genuine shape
+    # regression or a broken spec (wrong path/params → 4xx). Many bookmaker APIs
+    # geo-block GitHub's runners and will simply skip here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Response contracts (live)
+        env:
+          # Optional: set this repo secret to also contract-check Data Golf
+          # (it skips cleanly when the key is absent).
+          DATAGOLF_KEY: ${{ secrets.DATAGOLF_KEY }}
+        run: pytest -m contract -v
 
   package:
     # Proves the wheel ships the packaged specs and the CLI loads them from the
