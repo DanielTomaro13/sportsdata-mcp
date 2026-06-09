@@ -46,8 +46,10 @@ We read it directly. Verified against live traffic (probed 2026-06-05).
 | `mlb_people` | `/people?personIds=` | `ref.players` |
 | `mlb_player_search` | `/people/search?names=` | `ref.players` |
 | `mlb_sports_players` | `/sports/{sportId}/players?season=` | `ref.players` |
+| `mlb_people_changes` | `/people/changes?updatedSince=` | `ref.players` |
 | `mlb_venues` | `/venues?venueIds=` | `ref.venues` |
 | `mlb_seasons` | `/seasons?sportId=1` | `ref.seasons` |
+| `mlb_seasons_all` | `/seasons/all?sportId=1` | `ref.seasons` |
 | `mlb_season` | `/seasons/{seasonId}` | `ref.seasons` |
 
 ## Schedule — group `mlb.schedule`
@@ -106,6 +108,7 @@ yearByYear / gameLog via the `stats` param, and hitting / pitching / fielding vi
 |---|---|---|
 | `mlb_draft` | `/draft/{year}` | `sport.draft` |
 | `mlb_draft_prospects` | `/draft/prospects/{year}` | — |
+| `mlb_awards_list` | `/awards` | — (the awardId lookup) |
 | `mlb_awards` | `/awards/{awardId}/recipients` | — |
 | `mlb_attendance` | `/attendance?teamId=&leagueId=` | — |
 | `mlb_transactions` | `/transactions?teamId=&startDate=&endDate=` | `sport.transactions` |
@@ -139,8 +142,13 @@ values for parameters used by the other tools. `type` is one of: `awards`,
 
 > **Not modelled:** a handful of MLB Stats API endpoints require MLB-internal auth
 > (e.g. `/jobs/umpires/games/{umpireId}` → 401) or are incremental diff/timestamp
-> helpers (`feed/live/diffPatch`, `feed/color`, `feed/live/timestamps`). Those are
-> deliberately left out; everything in the tables above is public and verified.
+> helpers (`feed/live/diffPatch`, `feed/color`, `feed/live/timestamps`); `/stats/streaks`
+> now 404s upstream. Those are deliberately left out; everything in the tables above
+> is public and verified.
+>
+> Note on seasons: plain `/seasons` only returns the *current* season (its documented
+> `?all=true` flag is a no-op upstream) — `mlb_seasons_all` (`/seasons/all`) is the
+> full 151-season catalogue.
 
 ## Cross-provider comparison
 

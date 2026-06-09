@@ -3,7 +3,7 @@
 Unofficial reference for the JSON endpoints used by `www.nba.com` and the NBA apps. Two hosts make up the public surface:
 
 - **`cdn.nba.com`** — the **open** content CDN. No headers, no throttle, no auth. Serves today's scoreboard, the full season schedule, live box scores + play-by-play, and odds as static JSON (often labelled `text/plain`).
-- **`stats.nba.com`** — the **analytics** API (the `/stats/` family, 137 endpoints, plus a `/js/data/` feed). Fronted by **Akamai**, which black-holes any request that doesn't carry a full browser header bundle, and rate-limits aggressively. No bearer token is required — the "auth" is purely the header bundle + a polite request rate.
+- **`stats.nba.com`** — the **analytics** API (the `/stats/` family, 138 endpoints, plus a `/js/data/` feed). Fronted by **Akamai**, which black-holes any request that doesn't carry a full browser header bundle, and rate-limits aggressively. No bearer token is required — the "auth" is purely the header bundle + a polite request rate.
 
 > This document is generated from the packaged provider spec (`src/sportsdata_mcp/specs/nba.yaml`) and NBA's public surface as observed on 2026-06-01. The `/stats/` operation catalogue (names, required params and shipped defaults) is the spec's source of truth and is also exposed live at the `nba://stats/operations` MCP resource. Season-dependent defaults reflect the current `2025-26` season.
 
@@ -59,7 +59,7 @@ Unofficial reference for the JSON endpoints used by `www.nba.com` and the NBA ap
 | `cdn.nba.com/static/json/liveData/...` | Live scoreboard / box score / play-by-play / odds | ❌ none | ❌ none needed |
 | `cdn.nba.com/static/json/staticData/...` | Static season schedule | ❌ none | ❌ none needed |
 | `stats.nba.com/js/data/...` | JS data feed (daily lineups, leaders) | header bundle | ⚠️ Akamai |
-| `stats.nba.com/stats/...` | The `/stats/` analytics API (137 ops) | header bundle | ⚠️ Akamai |
+| `stats.nba.com/stats/...` | The `/stats/` analytics API (138 ops) | header bundle | ⚠️ Akamai |
 
 The two hosts map to the provider's two `base_urls`:
 
@@ -347,7 +347,7 @@ Projected/confirmed starting lineups for a date's games. This sits on `stats.nba
 
 ## stats.nba.com: the /stats/ dispatcher
 
-The 137 `/stats/` endpoints are exposed through **one** tool, `nba_stats_call`, rather than 137 separate tools.
+The 138 `/stats/` endpoints are exposed through **one** tool, `nba_stats_call`, rather than 138 separate tools.
 
 ### How a call is built
 
@@ -414,7 +414,7 @@ So you override only the fields that matter; everything else flows up as its def
 
 ## /stats/ operation reference
 
-All 137 operations, grouped by family. The **Req** column lists the `query_params` you must supply (everything else is defaulted). Read full per-op defaults at `nba://stats/operations`.
+All 138 operations, grouped by family. The **Req** column lists the `query_params` you must supply (everything else is defaulted). Read full per-op defaults at `nba://stats/operations`.
 
 ### Scoreboard & schedule
 
@@ -638,6 +638,7 @@ None require params (`Season`/`SeasonYear` defaulted to the current draft class)
 |---|---|---|
 | `synergyplaytypes` | — | Synergy play-type stats (iso, P&R, post-up, …) |
 | `fantasywidget` | — | Fantasy widget result set |
+| `boxscoresimilarityscore` | `Person1Id`, `Person2Id` | Box-score similarity between two players (slow upstream computation — often needs a raised `providers.nba.request_timeout_seconds`) |
 | `glalumboxscoresimilarityscore` | `Person1Id`, `Person2Id` | G-League alum box-score similarity |
 
 ---
@@ -654,6 +655,6 @@ Tools exposed by this server's NBA spec:
 | `nba_playbyplay` | `nba.public.cdn` | cdn | `/static/json/liveData/playbyplay/playbyplay_{gameId}.json` |
 | `nba_odds_today` | `nba.public.cdn` | cdn | `/static/json/liveData/odds/odds_todaysGames.json` |
 | `nba_daily_lineups` | `nba.stats` | stats | `/js/data/leaders/00_daily_lineups_{date}.json` |
-| `nba_stats_call` | `nba.stats` | stats | `/stats/{operation}` — dispatcher over 137 ops (catalogue: `nba://stats/operations`) |
+| `nba_stats_call` | `nba.stats` | stats | `/stats/{operation}` — dispatcher over 138 ops (catalogue: `nba://stats/operations`) |
 
 **Discovery flow:** `nba_scoreboard_today` → grab a `gameId` → `nba_boxscore` / `nba_playbyplay` for that game; or `nba_stats_call` with an analytics `operation` (resolve `TeamID`/`PlayerID` via `commonteamyears` / `playerindex` first).

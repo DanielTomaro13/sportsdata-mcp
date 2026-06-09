@@ -62,11 +62,11 @@ async def test_cdn_and_stats_tools_registered(nba_server):
     assert "nba_stats_call" in names
 
 
-async def test_stats_catalogue_lists_137_operations(nba_server):
+async def test_stats_catalogue_lists_138_operations(nba_server):
     result = await nba_server.read_resource("nba://stats/operations")
     payload = json.loads(result.contents[0].content)
     assert payload["dispatcher"] == "nba_stats_call"
-    assert len(payload["operations"]) == 137
+    assert len(payload["operations"]) == 138
     names = {op["name"] for op in payload["operations"]}
     # a spread across the families the dispatcher fronts
     assert {"shotchartdetail", "boxscoretraditionalv3", "leaguestandingsv3", "commonteamyears"} <= names

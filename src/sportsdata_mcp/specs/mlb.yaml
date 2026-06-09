@@ -145,9 +145,21 @@ endpoints:
     auth: default
     params:
       - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
-      - { name: all, in: query, type: boolean, description: "Return every season rather than just the current one." }
       - { name: season, in: query, type: integer, description: "Filter to one season year." }
     response_hint: "{seasons:[{seasonId, regularSeasonStartDate, regularSeasonEndDate, seasonStartDate, seasonEndDate, preSeasonStartDate, postSeasonEndDate}]}"
+
+  - name: mlb_seasons_all
+    group: mlb.reference
+    capabilities: [ref.seasons]
+    summary: "Every season in MLB history (151+) with key dates — the /seasons/all catalogue. (Plain /seasons only returns the current season; an ?all=true query there is a no-op.)"
+    base: default
+    path: /seasons/all
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, default: 1, description: "Sport id (1 = MLB)." }
+      - { name: divisionId, in: query, type: integer, description: "Filter by division." }
+      - { name: leagueId, in: query, type: integer, description: "Filter by league (103=AL, 104=NL)." }
+    response_hint: "{seasons:[{seasonId, regularSeasonStartDate, regularSeasonEndDate, seasonStartDate, seasonEndDate, preSeasonStartDate, qualifierPlateAppearances, hasWildcard}]}"
 
   # ─── mlb.schedule — games by date / team ──────────────────────────────
   - name: mlb_schedule
@@ -297,9 +309,20 @@ endpoints:
       - { name: limit, in: query, type: integer, description: "Max picks." }
     response_hint: "{drafts:{draftYear, rounds:[{round, picks:[{pickNumber, person, team, school, position}]}]}}"
 
+  - name: mlb_awards_list
+    group: mlb.extra
+    summary: "Award definitions catalogue — every awardId with name, description and sport (the id lookup for mlb_awards)."
+    base: default
+    path: /awards
+    auth: default
+    params:
+      - { name: sportId, in: query, type: integer, description: "Filter by sport (1 = MLB)." }
+      - { name: leagueId, in: query, type: integer, description: "Filter by league (103=AL, 104=NL)." }
+    response_hint: "{awards:[{id, name, description, sortOrder, sport, active}]}"
+
   - name: mlb_awards
     group: mlb.extra
-    summary: "Recipients of an award — e.g. MLBHOF (Hall of Fame), ALMVP/NLMVP, ALCY/NLCY (Cy Young), ALROY/NLROY (Rookie of the Year)."
+    summary: "Recipients of an award — e.g. MLBHOF (Hall of Fame), ALMVP/NLMVP, ALCY/NLCY (Cy Young), ALROY/NLROY (Rookie of the Year). Discover awardIds with mlb_awards_list."
     base: default
     path: /awards/{awardId}/recipients
     auth: default
@@ -431,6 +454,18 @@ endpoints:
       - { name: personIds, in: query, type: string_csv, required: true, description: "Player id(s)." }
       - { name: hydrate, in: query, type: string, description: "Embed related objects (e.g. 'currentTeam,stats(type=season)')." }
     response_hint: "{people:[{id, fullName, primaryNumber, birthDate, primaryPosition, batSide, pitchHand, currentTeam}]}"
+
+  - name: mlb_people_changes
+    group: mlb.reference
+    capabilities: [ref.players]
+    summary: "Player records changed since a timestamp — a polling/sync helper (the people-side sibling of mlb_game_changes)."
+    base: default
+    path: /people/changes
+    auth: default
+    params:
+      - { name: updatedSince, in: query, type: string, required: true, description: "ISO timestamp (e.g. 2026-06-01T00:00:00Z)." }
+      - { name: fields, in: query, type: string, description: "Trim the response to these fields." }
+    response_hint: "{people:[{id, fullName, currentAge, birthDate, active, primaryPosition, batSide, pitchHand}]}  (can be large for a wide window)"
 
   - name: mlb_sports_players
     group: mlb.reference

@@ -2,7 +2,7 @@
 
 A demonstration of the **dispatcher pattern**: going from "today's games" to a
 per-player shot chart by combining the open CDN surface with the
-`nba_stats_call` gateway over the 137-endpoint `stats.nba.com` `/stats/` API.
+`nba_stats_call` gateway over the 138-endpoint `stats.nba.com` `/stats/` API.
 Load the server with [`nba-config.yaml`](./nba-config.yaml), which enables both
 NBA tool groups.
 
@@ -29,7 +29,7 @@ NBA is a single provider with **two surfaces** behind one config:
   through, and throttles to ~1 req / 2.5 s with 429/5xx retry so you don't get
   rate-limited.
 
-Crucially, the 137 `/stats/` endpoints are **one tool**, `nba_stats_call`. You
+Crucially, the 138 `/stats/` endpoints are **one tool**, `nba_stats_call`. You
 pick an `operation` (the path segment, e.g. `shotchartdetail`) and pass
 `query_params`. Every operation already carries NBA's full, mostly-empty default
 param set, so you override only the handful of fields that matter. Browse the
@@ -134,6 +134,6 @@ score → `nba_stats_call` for the spatial detail the CDN feed doesn't carry.)
 - `commonteamyears` / `franchisehistory` — resolve the 30 `teamId`s to names.
 - `shotchartleaguewide` — league-average shot zones to normalise a player's chart.
 
-Browse all 137 operations and their parameters in `nba://stats/operations`, and
+Browse all 138 operations and their parameters in `nba://stats/operations`, and
 the always-on `list_tools_by_capability` / `list_resources` meta-tools to discover
 the rest.

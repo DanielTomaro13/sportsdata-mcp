@@ -75,6 +75,9 @@ CONTRACTS: list[Contract] = [
     Contract("mlb_player", {"personId": 592450}, ("people",), "people", ("id", "fullName")),
     Contract("mlb_leaders", {"leaderCategories": ["homeRuns"], "season": 2025, "limit": 5}, ("leagueLeaders",)),
     Contract("mlb_meta", {"type": "positions"}, list_at="", item_keys=("code", "abbrev", "type")),
+    Contract("mlb_awards_list", {}, ("awards",), "awards", ("id", "name")),
+    Contract("mlb_seasons_all", {"sportId": 1}, ("seasons",), "seasons", ("seasonId", "seasonStartDate", "seasonEndDate")),
+    Contract("mlb_people_changes", {"updatedSince": "2026-06-01T00:00:00Z"}, ("people",), "people", ("id", "fullName")),
     # ── OpenF1 (api.openf1.org — public) ──
     Contract("openf1_sessions", {"session_key": "latest"}, list_at="", item_keys=("session_key", "session_name")),
     Contract("openf1_meetings", {"meeting_key": "latest"}, list_at="", item_keys=("meeting_key", "meeting_name")),
@@ -95,6 +98,8 @@ CONTRACTS: list[Contract] = [
     Contract("afl_competitions_list", {}, ("meta", "competitions"), "competitions", ("id",)),
     # ── Data Golf (needs DATAGOLF_KEY → skips in CI) ──
     Contract("datagolf_player_list", {}, list_at="", item_keys=("dg_id", "player_name")),
+    # TODO(DATAGOLF_KEY): add rows for datagolf_approach_skill /
+    # datagolf_hist_results_event_list once their live shapes are verified with a key.
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

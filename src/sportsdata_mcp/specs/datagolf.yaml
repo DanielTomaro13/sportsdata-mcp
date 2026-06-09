@@ -117,6 +117,30 @@ endpoints:
       - { name: file_format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{last_updated, players:[{dg_id, player_name, sg_total, sg_ott, sg_app, sg_arg, sg_putt, driving_acc, driving_dist}]}"
 
+  - name: datagolf_approach_skill
+    group: datagolf.predictions
+    capabilities: [stats.advanced_metrics]
+    summary: "Detailed approach-play skill per player across yardage/lie buckets — SG per shot, proximity, GIR, good-shot and poor-shot-avoidance rates."
+    base: default
+    path: /preds/approach-skill
+    auth: default
+    params:
+      - { name: period, in: query, type: string, default: l24, enum: [l24, l12, ytd], description: "Window: last 24 months, last 12 months, or year-to-date." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{last_updated, time_period, data:[{dg_id, player_name, ...per-bucket sg/proximity/gir fields}]}"
+
+  - name: datagolf_live_strokes_gained
+    group: datagolf.predictions
+    capabilities: [stats.advanced_metrics, sport.in_play]
+    summary: "Live strokes-gained breakdown for every player during PGA Tour events (raw, or relative to the model's pre-round expectations)."
+    base: default
+    path: /preds/live-strokes-gained
+    auth: default
+    params:
+      - { name: sg, in: query, type: string, default: raw, enum: [raw, relative], description: "Raw SG values, or relative to model predictions." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_name, last_updated, data:[{dg_id, player_name, sg_total, sg_ott, sg_app, sg_arg, sg_putt, thru}]}"
+
   - name: datagolf_live_tournament_stats
     group: datagolf.predictions
     capabilities: [stats.advanced_metrics, stats.player_match]
@@ -251,6 +275,30 @@ endpoints:
       - { name: year, in: query, type: integer, required: true, description: "Calendar year of the event." }
       - { name: file_format, in: query, type: string, default: json, description: "Response format." }
     response_hint: "{event_id, event_name, event_completed, scores:[{dg_id, player_name, fin_text, rounds:[{round_num, score, sg_total, sg_putt, ...}]}]}"
+
+  - name: datagolf_hist_results_event_list
+    group: datagolf.historical
+    summary: "List of tournaments with historical event-level results data (finishes/earnings/points) — the id lookup for datagolf_hist_results."
+    base: default
+    path: /historical-event-data/event-list
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, description: "Tour (PGA only for this feed)." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "[{event_id, event_name, calendar_year, date}]  (top-level array)"
+
+  - name: datagolf_hist_results
+    group: datagolf.historical
+    summary: "Historical event-level results for a past tournament — finish position, earnings, FedExCup points and DG Points per player."
+    base: default
+    path: /historical-event-data/events
+    auth: default
+    params:
+      - { name: tour, in: query, type: string, default: pga, description: "Tour (PGA only for this feed)." }
+      - { name: event_id, in: query, type: integer, required: true, description: "Event id (from datagolf_hist_results_event_list)." }
+      - { name: year, in: query, type: integer, required: true, description: "Calendar year of the event." }
+      - { name: file_format, in: query, type: string, default: json, description: "Response format." }
+    response_hint: "{event_id, event_name, calendar_year, data:[{dg_id, player_name, fin_text, earnings, fec_points, dg_points}]}"
 
   - name: datagolf_hist_odds_event_list
     group: datagolf.historical

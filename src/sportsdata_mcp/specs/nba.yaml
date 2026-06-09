@@ -10,8 +10,8 @@ spec_version: 1
 #                   Akamai also rate-limits aggressively, so provider.defaults throttles
 #                   to ~1 req / 2.5s and retries transient 429/5xx with backoff.
 #
-# The 137 /stats/ endpoints are exposed through one dispatcher (nba_stats_call) rather
-# than 137 tools. The model picks an `operation` (the /stats/ path segment, e.g.
+# The 138 /stats/ endpoints are exposed through one dispatcher (nba_stats_call) rather
+# than 138 tools. The model picks an `operation` (the /stats/ path segment, e.g.
 # "leaguedashplayerstats") and supplies query_params; each operation carries the full
 # (mostly-empty) default param set NBA requires, so the model overrides only what matters.
 # Browse the catalogue at the nba://stats/operations resource.
@@ -152,7 +152,7 @@ endpoints:
         params: {date: "20260101"}
 
 dispatchers:
-  # ─── nba.stats — the stats.nba.com /stats/ analytics API (137 operations) ──
+  # ─── nba.stats — the stats.nba.com /stats/ analytics API (138 operations) ──
   - name: nba_stats_call
     group: nba.stats
     kind: templated_rest
@@ -178,7 +178,7 @@ dispatchers:
       - ref.players
       - ref.teams
     summary: |
-      Gateway to the stats.nba.com /stats/ analytics API (137 operations). Supply an
+      Gateway to the stats.nba.com /stats/ analytics API (138 operations). Supply an
       `operation` (the /stats/ path segment, e.g. "leaguedashplayerstats",
       "shotchartdetail", "boxscoretraditionalv3", "playercareerstats") plus a
       `query_params` map; each operation already carries NBA's full default param set,
@@ -260,6 +260,11 @@ dispatchers:
         query_params: [GameID]
         query_defaults: {EndPeriod: '0', EndRange: '0', RangeType: '0', StartPeriod: '0', StartRange: '0'}
         summary: 'BoxScoreScoringV3. resultSets: PlayerStats, TeamStats.'
+      - name: boxscoresimilarityscore
+        path: /stats/boxscoresimilarityscore
+        query_params: [Person2Id, Person1Id]
+        query_defaults: {Person1LeagueId: '00', Person1Season: '2025', Person1SeasonType: Regular Season, Person2LeagueId: '00', Person2Season: '2025', Person2SeasonType: Regular Season}
+        summary: 'BoxScoreSimilarityScore — how similar two players'' box-score profiles are. resultSets: BoxScoreSimilarityScores. SLOW: a heavy upstream computation that often exceeds the default 45 s timeout — raise providers.nba.request_timeout_seconds if it does.'
       - name: boxscoresummaryv2
         path: /stats/boxscoresummaryv2
         query_params: [GameID]

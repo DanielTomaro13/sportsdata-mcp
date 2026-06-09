@@ -38,7 +38,9 @@ odds. Verified against live traffic (probed 2026-06-05).
 | `datagolf_pre_tournament_archive` | `/preds/pre-tournament-archive?event_id=&year=` | — (historical snapshots of the pre-tournament model) |
 | `datagolf_in_play` | `/preds/in-play?tour=` | `sport.in_play` (live win probabilities) |
 | `datagolf_skill_ratings` | `/preds/skill-ratings` | `stats.advanced_metrics` (strokes-gained) |
+| `datagolf_approach_skill` | `/preds/approach-skill?period=` | `stats.advanced_metrics` (SG/proximity/GIR by yardage + lie bucket) |
 | `datagolf_player_decompositions` | `/preds/player-decompositions?tour=` | `stats.advanced_metrics` (player-by-player SG breakdown of the model) |
+| `datagolf_live_strokes_gained` | `/preds/live-strokes-gained?sg=` | `stats.advanced_metrics`, `sport.in_play` (live SG, raw or model-relative; PGA only) |
 | `datagolf_live_tournament_stats` | `/preds/live-tournament-stats?stats=&round=` | `stats.advanced_metrics`, `stats.player_match` |
 | `datagolf_live_hole_stats` | `/preds/live-hole-stats?tour=` | `stats.advanced_metrics` (live hole-by-hole scoring distributions) |
 | `datagolf_fantasy_projections` | `/preds/fantasy-projection-defaults?tour=&site=` | `stats.fantasy_projections` (DFS points projections) |
@@ -68,6 +70,8 @@ Archived raw scoring, bookmaker odds and DFS results for past events. The two
 |---|---|---|
 | `datagolf_hist_event_list` | `/historical-raw-data/event-list?tour=` | — (catalogue of events with raw round data) |
 | `datagolf_hist_rounds` | `/historical-raw-data/rounds?event_id=&year=` | `stats.player_match` (round-by-round SG per player) |
+| `datagolf_hist_results_event_list` | `/historical-event-data/event-list?tour=` | — (catalogue of events with results data; PGA only) |
+| `datagolf_hist_results` | `/historical-event-data/events?event_id=&year=` | — (finishes, earnings, FedExCup + DG points; PGA only) |
 | `datagolf_hist_odds_event_list` | `/historical-odds/event-list?tour=` | — (catalogue of events with archived odds) |
 | `datagolf_hist_outrights` | `/historical-odds/outrights?event_id=&year=&market=&book=` | — (opening/closing outright odds from one book) |
 | `datagolf_hist_matchups` | `/historical-odds/matchups?event_id=&year=&book=` | — (historical matchup / 3-ball odds from one book) |
@@ -92,9 +96,12 @@ Golf odds slot into the same capability tags as the other books:
 
 ## Notes
 
-- **Every documented Data Golf feed is modelled** (22 tools across the four groups
-  above), including the higher-tier archived predictions, decompositions, DFS
-  projections, historical raw data, historical odds and historical DFS. A
-  403/permission error on any of them means your plan doesn't cover that feed.
+- **Every documented Data Golf feed is modelled** (26 tools across the four groups
+  above), including the higher-tier archived predictions, decompositions, approach
+  skill, live strokes-gained, DFS projections, historical raw data, historical
+  event results, historical odds and historical DFS. A 403/permission error on any
+  of them means your plan doesn't cover that feed. (The approach-skill,
+  live-strokes-gained and historical-event-data tools were added from the official
+  endpoint docs but not yet shape-verified live — needs a DATAGOLF_KEY.)
 - `betting-tools/matchups` returns an empty `match_list` when the book hasn't posted
   that market for the current event.

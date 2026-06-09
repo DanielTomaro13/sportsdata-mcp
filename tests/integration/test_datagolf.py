@@ -56,13 +56,17 @@ async def test_datagolf_tools_registered(datagolf_server):
         "datagolf_player_decompositions",
         "datagolf_fantasy_projections",
         "datagolf_live_hole_stats",
+        "datagolf_approach_skill",
+        "datagolf_live_strokes_gained",
     } <= names
     # betting (incl. all-pairings)
     assert {"datagolf_outrights", "datagolf_matchups", "datagolf_matchups_all_pairings"} <= names
-    # historical raw data / odds / DFS
+    # historical raw data / event results / odds / DFS
     assert {
         "datagolf_hist_event_list",
         "datagolf_hist_rounds",
+        "datagolf_hist_results_event_list",
+        "datagolf_hist_results",
         "datagolf_hist_odds_event_list",
         "datagolf_hist_outrights",
         "datagolf_hist_matchups",

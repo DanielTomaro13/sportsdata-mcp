@@ -54,14 +54,16 @@ async def test_mlb_tools_registered(mlb_server):
     assert {"mlb_schedule"} <= names
     assert {"mlb_boxscore", "mlb_linescore", "mlb_playbyplay", "mlb_live_feed"} <= names
     assert {"mlb_standings", "mlb_stats", "mlb_player_stats", "mlb_leaders"} <= names
-    assert {"mlb_draft", "mlb_awards", "mlb_attendance"} <= names
+    assert {"mlb_draft", "mlb_awards", "mlb_awards_list", "mlb_attendance"} <= names
     # extended coverage
     assert {
         "mlb_team",
         "mlb_team_coaches",
         "mlb_teams_affiliates",
         "mlb_people",
+        "mlb_people_changes",
         "mlb_sports_players",
+        "mlb_seasons_all",
     } <= names
     assert {"mlb_schedule_postseason", "mlb_schedule_tied"} <= names
     assert {
@@ -188,3 +190,36 @@ async def test_team_stats_live(mlb_server):
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
     assert "stats" in _payload(res)
+
+
+@pytest.mark.live
+async def test_awards_list_live(mlb_server):
+    """The award-definitions catalogue returns awardIds for mlb_awards."""
+    try:
+        res = await mlb_server.call_tool("mlb_awards_list", {})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
+    awards = _payload(res)["awards"]
+    assert awards and "id" in awards[0] and "name" in awards[0]
+
+
+@pytest.mark.live
+async def test_seasons_all_live(mlb_server):
+    """/seasons/all returns the full season history (150+), unlike plain /seasons."""
+    try:
+        res = await mlb_server.call_tool("mlb_seasons_all", {"sportId": 1})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
+    seasons = _payload(res)["seasons"]
+    assert len(seasons) > 100 and "seasonId" in seasons[0]
+
+
+@pytest.mark.live
+async def test_people_changes_live(mlb_server):
+    """Recently-changed player records come back for a short updatedSince window."""
+    try:
+        res = await mlb_server.call_tool("mlb_people_changes", {"updatedSince": "2026-06-01T00:00:00Z"})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"statsapi.mlb.com unavailable: {e}")
+    data = _payload(res)
+    assert "people" in data

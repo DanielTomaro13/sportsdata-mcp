@@ -193,9 +193,9 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | Group | Tools | Notes |
 |---|---:|---|
 | `datagolf.general` | 3 | Player list, tour schedule, current event field |
-| `datagolf.predictions` | 9 | DG rankings, pre-tournament (+ archive) + in-play model probabilities, skill ratings, player/live SG decompositions, live hole stats, DFS projections |
+| `datagolf.predictions` | 11 | DG rankings, pre-tournament (+ archive) + in-play model probabilities, skill + approach-skill ratings, player/live SG decompositions, live strokes-gained, live hole stats, DFS projections |
 | `datagolf.betting` | 3 | Outright + matchup + all-pairings odds across ~13 books (incl. model line) |
-| `datagolf.historical` | 7 | Archived raw round data, historical bookmaker odds (outrights + matchups) and DFS results |
+| `datagolf.historical` | 9 | Archived raw round data, event-level results (finishes/earnings/points), historical bookmaker odds (outrights + matchups) and DFS results |
 
 Needs a Data Golf API key in the `DATAGOLF_KEY` env var (a personal subscription
 key — sourced via the `static_query` auth scheme, never stored in the repo).
@@ -220,7 +220,7 @@ Plus the `nrl://stats/definitions` resource (dictionary of every NRL stat code).
 | Group | Tools | Notes |
 |---|---:|---|
 | `nba.public.cdn` | 5 | Open CDN JSON: today's scoreboard, full schedule, live box score + play-by-play, odds |
-| `nba.stats` | 2 | `nba_daily_lineups` + `nba_stats_call`, the dispatcher over the 137-endpoint `/stats/` API |
+| `nba.stats` | 2 | `nba_daily_lineups` + `nba_stats_call`, the dispatcher over the 138-endpoint `/stats/` API |
 
 `nba_stats_call` fronts the whole stats.nba.com `/stats/` analytics surface (player/team
 dashboards, box scores v2+v3, shot charts, play-by-play, leaders, standings, draft, hustle,
@@ -273,11 +273,11 @@ camelCase shape; flow is `cricketaustralia_fixtures` → `cricketaustralia_score
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `mlb.reference` | 20 | Sports/leagues/divisions/conferences, teams (+ single, affiliates, history, uniforms), rosters, alumni, coaches, personnel, players (profile, batch, search, season catalogue), venues, seasons |
+| `mlb.reference` | 22 | Sports/leagues/divisions/conferences, teams (+ single, affiliates, history, uniforms), rosters, alumni, coaches, personnel, players (profile, batch, search, season catalogue, changes feed), venues, seasons (current + full history) |
 | `mlb.schedule` | 5 | Games by date / range / team, plus postseason (schedule, series, tune-in) and tied games |
 | `mlb.game` | 10 | Boxscore, linescore, play-by-play, v1.1 `feed/live` firehose, win-probability, context metrics, content, per-player game line, changes, uniforms |
 | `mlb.stats` | 9 | Standings, season stats, one-player stats, league + team leaders, team-season stats, game pace, high/low records |
-| `mlb.extra` | 14 | Draft (+ prospects), awards, attendance, transactions, free agents, jobs (umpires/datacasters/scorers), Home Run Derby, All-Star ballots |
+| `mlb.extra` | 15 | Draft (+ prospects), awards (catalogue + recipients), attendance, transactions, free agents, jobs (umpires/datacasters/scorers), Home Run Derby, All-Star ballots |
 | `mlb.meta` | 1 | `mlb_meta` — the `/{type}` lookup for every enum (positions, statTypes, gameTypes, pitchCodes, …) |
 
 The official MLB Stats API the `MLB-StatsAPI` library wraps, read directly (no key) —
