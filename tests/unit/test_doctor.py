@@ -150,3 +150,23 @@ def test_zero_variable_op_none_when_all_need_vars_or_unverified():
 
 def test_zero_variable_op_none_without_graphql_block():
     assert _zero_variable_op(Spec(provider=_provider())) is None
+
+
+# ─── _probe_endpoint error handling ────────────────────────────────────
+
+
+async def test_probe_endpoint_reports_tool_error_as_fail():
+    """A ToolError raised before/at request time (e.g. AuthMissingError for a
+    missing secret) must report FAIL, not crash the doctor run."""
+    from sportsdata_mcp.doctor import _probe_endpoint
+    from sportsdata_mcp.errors import AuthMissingError
+
+    class _StubHTTP:
+        async def request(self, **kwargs):
+            raise AuthMissingError("env var DEMO_KEY not set")
+
+    lines: list[str] = []
+    ep = _ep("demo_free", "/v2/teams")
+    outcome = await _probe_endpoint(_StubHTTP(), _provider(), ep, {}, lines.append)
+    assert outcome == "fail"
+    assert any("DEMO_KEY" in line for line in lines)

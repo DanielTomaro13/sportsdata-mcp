@@ -93,6 +93,10 @@ async def _probe_endpoint(http: HTTPClient, provider, ep: Endpoint, args: dict, 
     except httpx.HTTPError as e:
         echo(f"  {_RED}→ FAIL: transport error: {e}{_RESET}")
         return "fail"
+    except ToolError as e:
+        # e.g. AuthMissingError when a required secret isn't set — report, don't crash.
+        echo(f"  {_RED}→ FAIL: {e.message}{_RESET}")
+        return "fail"
     size = len(r.content)
     if r.status_code >= 400:
         echo(f"  {_RED}→ FAIL: HTTP {r.status_code} ({size} bytes){_RESET}")

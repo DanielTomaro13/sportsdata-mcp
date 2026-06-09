@@ -82,6 +82,7 @@ class HTTPClient:
         self._retry_statuses = set(statuses if statuses is not None else defaults.retry_statuses)
         self._max_retries = int(prov_cfg.get("max_retries", defaults.max_retries))
         self._retry_backoff = float(prov_cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds))
+        self._strip_cookies = bool(prov_cfg.get("strip_cookies", defaults.strip_cookies))
 
     def _auth_provider(self, key: str) -> AuthProvider:
         if key in self._auth_providers:
@@ -135,6 +136,8 @@ class HTTPClient:
             # Spend a token on every attempt — retries (esp. NBA/Akamai 429s) must
             # stay under the rate limit too, not just the first request.
             await self._bucket.acquire()
+            if self._strip_cookies:
+                self._client.cookies.clear()
             log.info("→ %s %s (provider=%s, auth=%s)", method, full_url, self._provider.id, auth_key)
             r = await self._client.request(method, full_url, params=merged_params, headers=merged_headers, json=json_body)
             # A stale credential surfaces as 401 — refetch once and retry immediately.

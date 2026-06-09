@@ -44,6 +44,10 @@ provider:
     retry_statuses: [429, 500, 502, 503, 504]
     max_retries: 2
     retry_backoff_seconds: 0.5
+    # Akamai bot-manager sets bm_* cookies on the first response and 403s any
+    # client that replays them without the matching JS-sensor telemetry — so
+    # never persist cookies across TAB requests.
+    strip_cookies: true
 
 endpoints:
   # ─── tab.racing — racing info-service ──────────────────────────────────

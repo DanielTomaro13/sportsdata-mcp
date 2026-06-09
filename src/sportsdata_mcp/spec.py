@@ -66,6 +66,10 @@ class ProviderDefaults(BaseModel):
     rate_limit_rps: float | None = None
     request_timeout_seconds: float | None = None
     burst: int | None = None
+    # Discard cookies the upstream sets instead of replaying them on later requests.
+    # Akamai bot-manager (e.g. TAB) sets bm_* cookies on the first response and 403s
+    # any client that echoes them back without the matching JS-sensor telemetry.
+    strip_cookies: bool = False
     # Transient statuses to retry (in addition to the always-on single 401 auth-refetch).
     # Empty list (the default) preserves the historical "no status retries" behaviour.
     retry_statuses: list[int] = Field(default_factory=list)
