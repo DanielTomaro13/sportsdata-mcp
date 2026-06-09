@@ -98,8 +98,8 @@ CONTRACTS: list[Contract] = [
     Contract("afl_competitions_list", {}, ("meta", "competitions"), "competitions", ("id",)),
     # ── Data Golf (needs DATAGOLF_KEY → skips in CI) ──
     Contract("datagolf_player_list", {}, list_at="", item_keys=("dg_id", "player_name")),
-    # TODO(DATAGOLF_KEY): add rows for datagolf_approach_skill /
-    # datagolf_hist_results_event_list once their live shapes are verified with a key.
+    Contract("datagolf_approach_skill", {}, ("last_updated", "time_period", "data"), "data", ("dg_id", "player_name")),
+    Contract("datagolf_hist_results_event_list", {}, list_at="", item_keys=("event_id", "event_name", "calendar_year", "tour")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

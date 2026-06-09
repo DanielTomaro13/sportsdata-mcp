@@ -100,8 +100,6 @@ Golf odds slot into the same capability tags as the other books:
   above), including the higher-tier archived predictions, decompositions, approach
   skill, live strokes-gained, DFS projections, historical raw data, historical
   event results, historical odds and historical DFS. A 403/permission error on any
-  of them means your plan doesn't cover that feed. (The approach-skill,
-  live-strokes-gained and historical-event-data tools were added from the official
-  endpoint docs but not yet shape-verified live — needs a DATAGOLF_KEY.)
+  of them means your plan doesn't cover that feed.
 - `betting-tools/matchups` returns an empty `match_list` when the book hasn't posted
   that market for the current event.

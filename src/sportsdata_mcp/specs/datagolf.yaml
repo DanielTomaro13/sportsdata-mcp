@@ -139,7 +139,7 @@ endpoints:
     params:
       - { name: sg, in: query, type: string, default: raw, enum: [raw, relative], description: "Raw SG values, or relative to model predictions." }
       - { name: file_format, in: query, type: string, default: json, description: "Response format." }
-    response_hint: "{event_name, last_updated, data:[{dg_id, player_name, sg_total, sg_ott, sg_app, sg_arg, sg_putt, thru}]}"
+    response_hint: "{event_name, current_round, last_update, strokes_gained_values, data:[{dg_id, player_name, pos, score, thru, today, R1:{...sg}, R2, R3, R4}]}"
 
   - name: datagolf_live_tournament_stats
     group: datagolf.predictions
@@ -298,7 +298,7 @@ endpoints:
       - { name: event_id, in: query, type: integer, required: true, description: "Event id (from datagolf_hist_results_event_list)." }
       - { name: year, in: query, type: integer, required: true, description: "Calendar year of the event." }
       - { name: file_format, in: query, type: string, default: json, description: "Response format." }
-    response_hint: "{event_id, event_name, calendar_year, data:[{dg_id, player_name, fin_text, earnings, fec_points, dg_points}]}"
+    response_hint: "{event_id, event_name, year, season, event_completed, event_stats:[{dg_id, player_name, fin_text, earnings, fec_points, dg_points}]}"
 
   - name: datagolf_hist_odds_event_list
     group: datagolf.historical
