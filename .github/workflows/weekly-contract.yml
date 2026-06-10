@@ -1,0 +1,18 @@
+# Weekly structure-drift check (§: agents depend on documented response shapes).
+# Runs the live contract suite against the real upstreams: FAILs when an API we
+# carry changes shape; SKIPs transient/geo-blocked feeds (AU bookmakers skip on
+# GitHub runners — they are covered by local runs, see documentation/Contributing).
+name: weekly-contracts
+on:
+  schedule:
+    - cron: "0 19 * * 0"   # Mondays 05:00 AEST
+  workflow_dispatch: {}
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: pytest -m contract -q
