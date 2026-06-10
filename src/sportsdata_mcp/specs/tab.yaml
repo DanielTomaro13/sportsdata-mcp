@@ -36,14 +36,13 @@ provider:
   auth:
     default:
       type: none
-    # OPTIONAL — no public endpoint uses it. Available for any future surface that
-    # needs a customer OAuth session. Secrets are env-only (DataGolf rule); tokens
-    # are short-lived and auto-refreshed in memory (form-encoded by contract —
-    # this endpoint rejects JSON bodies). Harvest fresh tokens before relying on it.
+    # OPTIONAL — no public endpoint uses it yet. Fully self-managing: the
+    # client_credentials grant mints ~3h access tokens on demand from
+    # TAB_CLIENT_ID/TAB_CLIENT_SECRET (verified live; expires_in 10800). Secrets are
+    # env-only (DataGolf rule); form-encoded by contract (JSON bodies rejected).
     oauth:
       type: oauth_refresh
       token_url: https://api.beta.tab.com.au/oauth/token
-      refresh_token_env: TAB_REFRESH_TOKEN
       client_id_env: TAB_CLIENT_ID
       client_secret_env: TAB_CLIENT_SECRET
   # Akamai throttles bursts (RST-drops) and the engine can't retry a transport

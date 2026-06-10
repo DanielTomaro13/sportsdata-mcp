@@ -32,15 +32,24 @@ class AuthStaticQuery(BaseModel):
 
 
 class AuthOAuthRefresh(BaseModel):
-    # Short-lived OAuth access tokens minted from a long-lived refresh token (e.g.
-    # TAB). All secrets come from env vars (preferred) or the config `secrets`
-    # block — never literals in the spec (the DataGolf rule). The token endpoint
-    # MUST be form-encoded (verified live on TAB: JSON bodies are rejected).
+    # Short-lived OAuth access tokens, self-minted. All secrets come from env vars
+    # (preferred) or the config `secrets` block — never literals in the spec (the
+    # DataGolf rule). The token endpoint MUST be form-encoded (verified live on TAB:
+    # JSON bodies are rejected).
+    #
+    # Grants (TAB verified live with all three):
+    #   client_credentials (default) — fully self-managing: client_id+secret mint
+    #     ~3h access tokens on demand; nothing to harvest, nothing expires for good.
+    #   refresh_token — needs refresh_token_env; optional password fallback.
+    #   password — username/password envs mint a token pair directly.
     type: Literal["oauth_refresh"]
     token_url: str
-    refresh_token_env: str
     client_id_env: str
     client_secret_env: str
+    grant: Literal["client_credentials", "refresh_token", "password"] = "client_credentials"
+    refresh_token_env: str | None = None
+    username_env: str | None = None
+    password_env: str | None = None
     header: str = "Authorization"
     value_prefix: str = "Bearer "
     # Refresh this many seconds BEFORE `expires_in` elapses (clock-skew margin).

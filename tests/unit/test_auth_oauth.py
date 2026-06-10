@@ -13,10 +13,18 @@ from sportsdata_mcp.spec import AuthOAuthRefresh
 SPEC = AuthOAuthRefresh(
     type="oauth_refresh",
     token_url="https://fake.tab/oauth/token",
+    grant="refresh_token",
     refresh_token_env="T_REFRESH",
     client_id_env="T_ID",
     client_secret_env="T_SECRET",
     expiry_margin_seconds=60,
+)
+
+CC_SPEC = AuthOAuthRefresh(
+    type="oauth_refresh",
+    token_url="https://fake.tab/oauth/token",
+    client_id_env="T_ID",
+    client_secret_env="T_SECRET",
 )
 
 
@@ -131,7 +139,7 @@ async def test_expired_refresh_token_is_actionable(monkeypatch: pytest.MonkeyPat
 def test_missing_env_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in ("T_REFRESH", "T_ID", "T_SECRET"):
         monkeypatch.delenv(var, raising=False)
-    with pytest.raises(AuthMissingError, match="T_REFRESH"):
+    with pytest.raises(AuthMissingError, match="not set"):  # client id resolves first
         OAuthRefreshProvider(SPEC, httpx.AsyncClient())
 
 
@@ -145,4 +153,67 @@ def test_tab_spec_carries_optional_oauth_scheme() -> None:
     oauth = tab.provider.auth["oauth"]
     assert isinstance(oauth, AOR)
     assert oauth.token_url.endswith("/oauth/token")
-    assert oauth.refresh_token_env == "TAB_REFRESH_TOKEN"
+    assert oauth.grant == "client_credentials"  # fully self-managing (verified live)
+    assert oauth.client_id_env == "TAB_CLIENT_ID"
+
+
+# ── client_credentials grant (the TAB default — fully self-managing) ──────
+
+
+async def test_client_credentials_mints_and_caches(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("T_ID", "client-1")
+    monkeypatch.setenv("T_SECRET", "secret-1")
+    monkeypatch.delenv("T_REFRESH", raising=False)  # not needed for this grant
+    fake = FakeTokenEndpoint()
+    provider = OAuthRefreshProvider(CC_SPEC, fake.client())
+    name, value = await provider.get()
+    assert (name, value) == ("Authorization", "Bearer at-1")
+    body = dict(pair.split("=") for pair in fake.calls[0].content.decode().split("&"))
+    assert body == {"grant_type": "client_credentials", "client_id": "client-1", "client_secret": "secret-1"}
+    await provider.get()
+    assert fake.minted == 1  # cached
+    provider.invalidate()  # the 401 path
+    _, value = await provider.get()
+    assert value == "Bearer at-2"
+
+
+async def test_client_credentials_bad_creds_actionable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("T_ID", "client-1")
+    monkeypatch.setenv("T_SECRET", "wrong")
+    fake = FakeTokenEndpoint(fail="server")
+    provider = OAuthRefreshProvider(CC_SPEC, fake.client())
+    with pytest.raises(AuthMissingError, match="T_ID"):
+        await provider.get()
+
+
+def test_client_credentials_needs_no_refresh_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default grant must construct without TAB_REFRESH_TOKEN-style vars."""
+    monkeypatch.setenv("T_ID", "client-1")
+    monkeypatch.setenv("T_SECRET", "secret-1")
+    monkeypatch.delenv("T_REFRESH", raising=False)
+    OAuthRefreshProvider(CC_SPEC, httpx.AsyncClient())  # no raise
+
+
+async def test_refresh_dead_falls_back_to_password_grant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Auto-harvest: refresh grant dies → password grant mints a fresh pair."""
+    _env(monkeypatch)
+    monkeypatch.setenv("T_USER", "1234567")
+    monkeypatch.setenv("T_PASS", "pw")
+    spec = SPEC.model_copy(update={"username_env": "T_USER", "password_env": "T_PASS"})
+
+    class Fallback(FakeTokenEndpoint):
+        def handler(self, request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            body = dict(pair.split("=") for pair in request.content.decode().split("&"))
+            if body["grant_type"] == "refresh_token":
+                return httpx.Response(400, json={"error": "invalid_grant",
+                                                 "error_description": "Refresh token has expired"})
+            self.minted += 1
+            return httpx.Response(200, json={"access_token": f"at-{self.minted}", "expires_in": 3600})
+
+    fake = Fallback()
+    provider = OAuthRefreshProvider(spec, fake.client())
+    _, value = await provider.get()
+    assert value == "Bearer at-1"
+    grants = [dict(p.split("=") for p in c.content.decode().split("&"))["grant_type"] for c in fake.calls]
+    assert grants == ["refresh_token", "password"]
