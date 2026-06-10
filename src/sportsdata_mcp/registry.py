@@ -40,7 +40,10 @@ _PY_TYPES: dict[str, type] = {
     "number": float,
     "boolean": bool,
     "string_csv": list,
-    "json": dict,
+    # `json` = any JSON value. Typing it `dict` forced models to wrap arrays in objects
+    # (observed live: Entain 500 "cannot unmarshal object into []uuid.UUID" because a
+    # correct array could not pass the tool signature).
+    "json": object,
     "object": dict,
 }
 

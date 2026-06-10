@@ -56,6 +56,17 @@ def test_build_query_csv_join():
     assert _build_query(ep, {"ids": ["a", "b", "c"]}) == {"ids": "a,b,c"}
 
 
+def test_build_query_json_accepts_arrays():
+    """`json` params are ANY JSON value. Typing them dict-only forced models to wrap
+    arrays in objects — reproduced live as Entain's 500 ("cannot unmarshal object
+    into []uuid.UUID"). Arrays must encode as compact JSON arrays."""
+    from sportsdata_mcp.registry import _PY_TYPES
+
+    ep = _ep([{"name": "category_ids", "in": "query", "type": "json"}])
+    assert _build_query(ep, {"category_ids": ["u1", "u2"]}) == {"category_ids": '["u1","u2"]'}
+    assert _PY_TYPES["json"] is object  # tool signature must admit lists, not just dicts
+
+
 def test_build_query_json_encode():
     ep = _ep([{"name": "filter", "in": "query", "type": "json"}])
     assert _build_query(ep, {"filter": {"k": 1}}) == {"filter": '{"k":1}'}
