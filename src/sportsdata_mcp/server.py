@@ -78,6 +78,11 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
 
     specs = load_all_specs(specs_dir)
     catalogue = load_capabilities(specs_dir / "_capabilities.yaml" if specs_dir else None)
+    if "*" in cfg.enabled_groups:
+        # Wildcard: enable every group (SPORTSDATA_MCP_GROUPS="*"). Used by clients that
+        # deliberately want the full catalogue, e.g. an agent runtime filtering by
+        # capability tags rather than by group.
+        cfg.enabled_groups = sorted({t.group for s in specs for t in s.all_tools()})
     enabled = set(cfg.enabled_groups)
 
     # The provider HTTP clients are created eagerly by register_all (below) so that
