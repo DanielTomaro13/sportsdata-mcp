@@ -31,6 +31,22 @@ class AuthStaticQuery(BaseModel):
     env: str | None = None
 
 
+class AuthOAuthRefresh(BaseModel):
+    # Short-lived OAuth access tokens minted from a long-lived refresh token (e.g.
+    # TAB). All secrets come from env vars (preferred) or the config `secrets`
+    # block — never literals in the spec (the DataGolf rule). The token endpoint
+    # MUST be form-encoded (verified live on TAB: JSON bodies are rejected).
+    type: Literal["oauth_refresh"]
+    token_url: str
+    refresh_token_env: str
+    client_id_env: str
+    client_secret_env: str
+    header: str = "Authorization"
+    value_prefix: str = "Bearer "
+    # Refresh this many seconds BEFORE `expires_in` elapses (clock-skew margin).
+    expiry_margin_seconds: int = 60
+
+
 class AuthAFLWMCTok(BaseModel):
     type: Literal["afl_wmctok"]
     mint_url: str
@@ -39,7 +55,7 @@ class AuthAFLWMCTok(BaseModel):
 
 
 AuthSpec = Annotated[
-    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthAFLWMCTok,
+    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthOAuthRefresh | AuthAFLWMCTok,
     Field(discriminator="type"),
 ]
 

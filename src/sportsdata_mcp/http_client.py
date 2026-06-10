@@ -15,10 +15,11 @@ from .auth.afl import AFLTokenProvider
 from .auth.base import AuthProvider
 from .auth.header import StaticHeaderAuthProvider
 from .auth.none import NullAuthProvider
+from .auth.oauth import OAuthRefreshProvider
 from .auth.query import StaticQueryAuthProvider
 from .config import Config
 from .errors import ToolError
-from .spec import AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
+from .spec import AuthOAuthRefresh, AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
 
 log = logging.getLogger("sportsdata_mcp.http")
 
@@ -94,6 +95,8 @@ class HTTPClient:
             provider = StaticHeaderAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthStaticQuery):
             provider = StaticQueryAuthProvider(spec, self._secrets)
+        elif isinstance(spec, AuthOAuthRefresh):
+            provider = OAuthRefreshProvider(spec, self._client, self._secrets)
         elif isinstance(spec, AuthAFLWMCTok):
             provider = AFLTokenProvider(spec, self._client)
         else:

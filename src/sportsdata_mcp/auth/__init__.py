@@ -4,6 +4,7 @@ from .afl import AFLTokenProvider
 from .base import AuthProvider
 from .header import StaticHeaderAuthProvider
 from .none import NullAuthProvider
+from .oauth import OAuthRefreshProvider
 from .query import StaticQueryAuthProvider
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "StaticHeaderAuthProvider",
     "StaticQueryAuthProvider",
     "NullAuthProvider",
+    "OAuthRefreshProvider",
 ]
