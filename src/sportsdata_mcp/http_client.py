@@ -150,7 +150,12 @@ class HTTPClient:
                 ap = self._auth_provider(auth_key)
                 ap.invalidate()
                 name, value = await ap.get()
-                merged_headers[name] = value
+                # Re-inject where the scheme carries it: query param for static_query,
+                # header for everything else.
+                if isinstance(auth_spec, AuthStaticQuery):
+                    merged_params = {**(merged_params or {}), name: value}
+                else:
+                    merged_headers[name] = value
                 continue
             # Transient upstream errors (e.g. NBA/Akamai 429/5xx) — exponential backoff.
             if r.status_code in self._retry_statuses and retries_used < self._max_retries:

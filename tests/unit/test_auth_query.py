@@ -72,3 +72,35 @@ async def test_httpclient_injects_key_into_query_not_headers(monkeypatch):
     # … and NOT leaked into a header
     assert "key" not in seen["headers"]
     await http.aclose()
+
+
+async def test_401_refetch_reinjects_into_query_not_header():
+    """On a 401, a static_query credential must be re-sent as a query param —
+    it previously landed in a header, silently dropping the key from the retry."""
+    import httpx
+
+    from sportsdata_mcp.config import Config
+    from sportsdata_mcp.http_client import HTTPClient
+    from sportsdata_mcp.spec import AuthStaticQuery, Provider
+
+    provider = Provider(
+        id="demo",
+        display_name="Demo",
+        base_urls={"default": "https://api.demo.test"},
+        auth={"default": AuthStaticQuery(type="static_query", param="key", value="s3cret")},
+    )
+    client = HTTPClient(provider, Config())
+    seen: list[tuple[str | None, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(httpx.QueryParams(request.url.query.decode()))
+        seen.append((params.get("key"), request.headers.get("key")))
+        status = 401 if len(seen) == 1 else 200
+        return httpx.Response(status, json={"ok": True}, headers={"content-type": "application/json"})
+
+    client._client._transport = httpx.MockTransport(handler)
+    out = await client.request_json(method="GET", base="default", url="/x")
+    await client.aclose()
+    assert out == {"ok": True}
+    # both attempts carried the key in the QUERY; the retry must not move it to a header
+    assert seen == [("s3cret", None), ("s3cret", None)]

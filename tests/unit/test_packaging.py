@@ -31,3 +31,17 @@ def test_template_is_skipped_by_loader():
     specs = load_all_specs()
     assert all(s.provider.id != "example" for s in specs)
     assert os.path.exists(packaged_specs_dir() / "_template.yaml")
+
+
+def test_version_matches_pyproject():
+    """__version__ and pyproject's version must move together (drifted once:
+    pyproject said 0.2.3 while `sportsdata-mcp version` printed 0.2.1)."""
+    import re
+    from pathlib import Path
+
+    import sportsdata_mcp
+
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    m = re.search(r'^version = "([^"]+)"', pyproject.read_text(), re.M)
+    assert m, "no version in pyproject.toml"
+    assert sportsdata_mcp.__version__ == m.group(1)

@@ -140,6 +140,17 @@ def lint(specs_dir: Path | None = None) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def expand_wildcard_groups(enabled_groups: list[str], specs: list[Spec]) -> list[str]:
+    """Resolve the ``"*"`` wildcard to every group across the given specs.
+
+    Shared by every consumer of ``Config.enabled_groups`` (server, doctor) so the
+    wildcard means the same thing everywhere.
+    """
+    if "*" not in enabled_groups:
+        return enabled_groups
+    return sorted({t.group for s in specs for t in s.all_tools()})
+
+
 def build_provider_index(specs: list[Spec], enabled_groups: set[str]) -> dict[str, list[tuple[str, str]]]:
     """capability_id → [(provider_id, tool_name), …] limited to enabled groups."""
     index: dict[str, list[tuple[str, str]]] = defaultdict(list)

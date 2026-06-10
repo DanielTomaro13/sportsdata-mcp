@@ -19,6 +19,7 @@ from .errors import PersistedQueryNotFoundError, ToolError
 from .http_client import HTTPClient
 from .registry import _build_body, _build_headers, _build_query, _interpolate_path
 from .spec import AuthNone, Dispatcher, Endpoint, Spec
+from .spec_loader import expand_wildcard_groups
 
 Echo = Callable[[str], None]
 
@@ -196,7 +197,7 @@ async def _run_provider(spec: Spec, enabled: set[str], cfg: Config, echo: Echo, 
 
 async def run_doctor(cfg: Config, specs: list[Spec], echo: Echo) -> bool:
     """Probe every enabled group. Returns True when no check failed."""
-    enabled = set(cfg.enabled_groups)
+    enabled = set(expand_wildcard_groups(cfg.enabled_groups, specs))
     if not enabled:
         echo("No groups enabled — nothing to check. Set `enabled_groups` in your config.")
         return True

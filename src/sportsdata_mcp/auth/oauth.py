@@ -117,6 +117,8 @@ class OAuthRefreshProvider:
 
     async def _post_grant(self, grant_fields: dict[str, str]) -> httpx.Response:
         # Form-encoded by contract — TAB's endpoint rejects JSON bodies outright.
+        # Deliberately outside the provider's token-bucket rate limiter: a mint
+        # happens at most once per token lifetime (~hours), not per data request.
         return await self._http.post(
             self._spec.token_url,
             data={**grant_fields, "client_id": self._client_id, "client_secret": self._client_secret},

@@ -137,6 +137,7 @@ capabilities:
     description: "Broadcast schedule (who shows what, when, where)."
   - id: broadcast.channels
     description: "Broadcast channel catalogue."
+    single_provider: true
 
   # ─── Meta (used by the template/example only) ────────────────────────
   - id: sport.example
