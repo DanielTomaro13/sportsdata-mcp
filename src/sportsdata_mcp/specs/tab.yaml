@@ -167,7 +167,23 @@ endpoints:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
       - { name: returnOffers, in: query, type: boolean, description: "Inline bonus-bet offers." }
       - { name: returnPromo, in: query, type: boolean, description: "Inline promotions." }
-    response_hint: "{meetings:[{meetingName, raceType, races:[{raceName, markets:[]}]}]}"
+    response_hint: "{meetings:[{meetingName, raceType, races:[{raceName, meetingDate, _links}]}]}"
+
+  - name: tab_racing_futures_race
+    group: tab.racing
+    capabilities: [racing.futures, racing.race_card]
+    summary: "Racecard for one FUTURES market: futures URLs put the race NAME (not a number) in the race slot, so the integer-typed tab_racing_race cannot reach them."
+    base: default
+    path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceName}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, description: "Meeting date from the futures listing, YYYY-MM-DD." }
+      - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
+      - { name: venueMnemonic, in: path, type: string, default: "Racing Futures", description: 'Futures meeting name, e.g. "Racing Futures", "Greyhound Futures".' }
+      - { name: raceName, in: path, type: string, description: 'Race name from the futures listing, e.g. "Queen Anne Stakes (All In)".' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+      - { name: fixedOdds, in: query, type: boolean, default: true, description: "Include fixed-odds prices (futures are fixed-odds only)." }
+    response_hint: "{raceName, raceStartTime, runners:[{runnerNumber, runnerName, fixedOdds:{returnWin, returnPlace, bettingStatus}}]}"
 
   # ─── tab.sports — sports info-service ──────────────────────────────────
   - name: tab_sports

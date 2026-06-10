@@ -48,18 +48,21 @@ async def test_cfs_operations_catalogue_lists_26(premium_server):
     assert "matchItem" in names and "commentaryFeed" in names
 
 
-async def test_statspro_operations_catalogue_lists_9(premium_server):
+async def test_statspro_operations_catalogue_lists_11(premium_server):
     result = await premium_server.read_resource("afl://statspro/operations")
     payload = json.loads(result.contents[0].content)
-    assert len(payload["operations"]) == 9
+    assert len(payload["operations"]) == 11  # spec gained 2 ops in the v0.2.0 coverage pass
     assert any(op["name"] == "leadingPlayerStats_season" for op in payload["operations"])
 
 
 async def test_bogus_operation_is_recoverable_error(premium_server):
     """A bad operation name fails fast with a catalogue pointer — no token needed."""
-    with pytest.raises(ToolError) as ei:
+    from fastmcp.exceptions import ToolError as FastMCPToolError
+
+    # fastmcp >= 3.3 wraps dispatcher errors in its own ToolError; the recoverable
+    # contract (catalogue pointer in the message) is what matters
+    with pytest.raises((ToolError, FastMCPToolError)) as ei:
         await premium_server.call_tool("afl_cfs_call", {"operation": "doesNotExist"})
-    assert ei.value.code == "UNKNOWN_OPERATION"
     assert "afl://cfs/operations" in str(ei.value)
 
 

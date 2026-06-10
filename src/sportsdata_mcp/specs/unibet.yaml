@@ -125,6 +125,12 @@ dispatchers:
         query_params: [lang, market, channel_id, useCombined]
         query_defaults: {lang: en_AU, market: AU, channel_id: "1", useCombined: "true"}
         summary: 'Match-list for one sport slug (e.g. "basketball", "football").'
+      - name: sport_competitions
+        path: /listView/{sport}/all/all/all/competitions.json
+        path_params: [sport]
+        query_params: [lang, market, channel_id, useCombined]
+        query_defaults: {lang: en_AU, market: AU, channel_id: "1", useCombined: "true"}
+        summary: 'Outright/competition events for one sport slug (premiership winners, futures) — the matches.json route excludes these.'
       - name: sport_category
         path: /category/pre_match_event,selected_pre_match/sport/{sport}.json
         path_params: [sport]
