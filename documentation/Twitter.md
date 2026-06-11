@@ -79,9 +79,9 @@ Flow: `twitter_user_by_username("AFL")` → numeric `id` → `twitter_user_tweet
   (OAuth 2.0 user-context surfaces).
 - **Streaming** (`/2/tweets/search/stream`) — long-lived connections don't fit
   the request/response tool model.
-- **Full-archive search** (`/2/tweets/search/all`, Pro+ only) and
-  followers/following lookups (tier-gated) — add later if a consumer's tier
-  carries them.
+- **Full-archive search** (`/2/tweets/search/all`), **users search**
+  (`/2/users/search`) and followers/following lookups — Pro+/tier-gated; add
+  later if a consumer's tier carries them.
 - Spaces, Lists, Communities, Media upload — not sports-data surfaces.
 
 ## Sports use & cross-provider comparison

@@ -56,6 +56,7 @@ the `*_fp` fixed-point fields.
 | `kalshi_orderbook` | `/markets/{ticker}/orderbook?depth=` | `prediction.market_prices` |
 | `kalshi_trades` | `/markets/trades?ticker=` | `prediction.trades` |
 | `kalshi_candlesticks` | `/series/{seriesTicker}/markets/{ticker}/candlesticks?start_ts=&end_ts=&period_interval=` | `prediction.price_history` |
+| `kalshi_candlesticks_batch` | `/markets/candlesticks?market_tickers=` | `prediction.price_history` |
 
 ## Events & series — group `kalshi.events`
 
@@ -66,6 +67,10 @@ the `*_fp` fixed-point fields.
 | `kalshi_series_list` | `/series?category=` (category required: Sports, Politics, Economics, Financials, Climate and Weather, Entertainment, …) | `prediction.events_list` |
 | `kalshi_series` | `/series/{seriesTicker}` | `prediction.events_list` |
 | `kalshi_milestones` | `/milestones` | — (dated catalysts linked to event tickers) |
+| `kalshi_mve_collections` | `/multivariate_event_collections` | `prediction.events_list` (parlay-style combo products) |
+| `kalshi_mve_collection` | `/multivariate_event_collections/{collectionTicker}` | `prediction.events_list` |
+| `kalshi_structured_targets` | `/structured_targets?page_size=&type=` | — (entity registry: players, companies) |
+| `kalshi_structured_target` | `/structured_targets/{id}` | — |
 
 ## Exchange — group `kalshi.exchange`
 

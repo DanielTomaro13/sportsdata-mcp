@@ -290,8 +290,8 @@ call.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `kalshi.markets` | 5 | Market catalogue + detail, order book, public trades, OHLC candlesticks |
-| `kalshi.events` | 5 | Events, series catalogue (by category), single series, milestones |
+| `kalshi.markets` | 6 | Market catalogue + detail, order book, public trades, OHLC candlesticks (single + batch) |
+| `kalshi.events` | 9 | Events, series catalogue (by category), single series, milestones, MVE combo collections, entity registry |
 | `kalshi.exchange` | 3 | Exchange status, trading schedule, announcements |
 
 The CFTC-regulated US event-contract exchange. **Market data is public — no
@@ -306,7 +306,7 @@ orderbook/trades/candles by ticker. Prices are dollar-denominated.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `polymarket.gamma` | 6 | Markets/events/tags catalogue + site search (the discovery plane) |
+| `polymarket.gamma` | 9 | Markets/events/series/sports/tags catalogue + site search (the discovery plane) |
 | `polymarket.clob` | 6 | Order book, best price, midpoint, spread, price history, CLOB catalogue |
 | `polymarket.data` | 2 | Public trade tape + top holders |
 

@@ -48,6 +48,9 @@ JSON-encoded string — parse it before passing a token id to the CLOB tools.
 | `polymarket_market` | `/markets/{id}` | `prediction.market_detail` |
 | `polymarket_events` | `/events?active=&closed=&order=&slug=&series_id=` | `prediction.events_list` |
 | `polymarket_event` | `/events/{id}` | `prediction.events_list` |
+| `polymarket_series_list` | `/series` | `prediction.events_list` (series → events → markets hierarchy) |
+| `polymarket_series` | `/series/{id}` | `prediction.events_list` |
+| `polymarket_sports` | `/sports` | — (sports metadata: tag ids, resolution links, series) |
 | `polymarket_tags` | `/tags` | — (tag ids feed the `tag_id` filters) |
 | `polymarket_search` | `/public-search?q=` | — |
 
