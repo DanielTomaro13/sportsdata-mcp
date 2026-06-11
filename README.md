@@ -295,8 +295,10 @@ call.
 | `kalshi.exchange` | 3 | Exchange status, trading schedule, announcements |
 
 The CFTC-regulated US event-contract exchange. **Market data is public — no
-key**; Kalshi's RSA-signed API keys are only for the portfolio/trading
-surfaces, which are out of scope (read-only provider). Id chain:
+key required**; optionally set `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY`(`_PATH`)
+and every request is RSA-signed for Kalshi's higher authenticated rate limits
+(needs `pip install "sportsdata-mcp[kalshi-auth]"`). Trading surfaces stay out
+of scope (read-only provider). Id chain:
 `kalshi_series_list(category)` → `kalshi_events` → `kalshi_markets` →
 orderbook/trades/candles by ticker. Prices are dollar-denominated.
 

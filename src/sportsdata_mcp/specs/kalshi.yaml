@@ -4,10 +4,11 @@ spec_version: 1
 # One host serves the whole read surface: api.elections.kalshi.com/trade-api/v2.
 #
 # Market DATA is public — every endpoint below works anonymously (verified live
-# 2026-06-11). API keys (key id + RSA-signed requests) exist only for the
-# portfolio/trading surfaces, which are deliberately OUT OF SCOPE for this
-# read-only provider (the repo-wide no-money invariant) — so there are no
-# secrets to configure.
+# 2026-06-11). An API key is OPTIONAL: set KALSHI_API_KEY_ID plus
+# KALSHI_PRIVATE_KEY (PEM text) or KALSHI_PRIVATE_KEY_PATH and every request is
+# RSA-PSS-signed, which buys Kalshi's higher authenticated rate limits. Without
+# them the provider runs anonymously — never an error. The portfolio/trading
+# surfaces the key also unlocks stay OUT OF SCOPE (repo-wide no-money invariant).
 #
 # The id chain: series (e.g. KXNBA) → events (series + date/strike,
 # e.g. KXNBA-26...) → markets (event + outcome leg). Prices are in dollars
@@ -26,7 +27,10 @@ provider:
     Accept: "application/json"
   auth:
     default:
-      type: none
+      type: kalshi_rsa
+      key_id_env: KALSHI_API_KEY_ID
+      private_key_env: KALSHI_PRIVATE_KEY
+      private_key_path_env: KALSHI_PRIVATE_KEY_PATH
   defaults:
     rate_limit_rps: 5
     request_timeout_seconds: 30

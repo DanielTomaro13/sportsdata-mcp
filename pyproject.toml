@@ -1,6 +1,6 @@
 [project]
 name = "sportsdata-mcp"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server for sports-data APIs (bookmakers, league data, aggregators). Capability-tag system enables cross-provider composition."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,11 +27,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Kalshi's optional authenticated tier (RSA request signing). Reads work without it.
+kalshi-auth = [
+  "cryptography>=42",
+]
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
   "respx>=0.21",
   "ruff>=0.4",
+  "cryptography>=42",
 ]
 
 [project.scripts]

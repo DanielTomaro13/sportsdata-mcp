@@ -15,11 +15,12 @@ from .auth.afl import AFLTokenProvider
 from .auth.base import AuthProvider
 from .auth.header import StaticHeaderAuthProvider
 from .auth.none import NullAuthProvider
+from .auth.kalshi import KalshiRSASigner
 from .auth.oauth import OAuthRefreshProvider
 from .auth.query import StaticQueryAuthProvider
 from .config import Config
 from .errors import ToolError
-from .spec import AuthOAuthRefresh, AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
+from .spec import AuthKalshiRSA, AuthOAuthRefresh, AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
 
 log = logging.getLogger("sportsdata_mcp.http")
 
@@ -97,6 +98,8 @@ class HTTPClient:
             provider = StaticQueryAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthOAuthRefresh):
             provider = OAuthRefreshProvider(spec, self._client, self._secrets)
+        elif isinstance(spec, AuthKalshiRSA):
+            provider = KalshiRSASigner(spec, self._secrets)
         elif isinstance(spec, AuthAFLWMCTok):
             provider = AFLTokenProvider(spec, self._client)
         else:
@@ -120,16 +123,23 @@ class HTTPClient:
         auth_spec = self._provider.auth.get(auth_key)
         needs_auth = auth_spec is not None and not isinstance(auth_spec, AuthNone)
         auth_query: dict[str, str] = {}
+        signer: KalshiRSASigner | None = None
 
         if needs_auth:
             ap = self._auth_provider(auth_key)
-            name, value = await ap.get()
-            # static_query rides in the query string (e.g. Data Golf ?key=); everything
-            # else is a header.
-            if isinstance(auth_spec, AuthStaticQuery):
-                auth_query[name] = value
+            if isinstance(ap, KalshiRSASigner):
+                # Per-request signer (timestamp in the signature) — headers are
+                # computed fresh on every attempt inside the loop below. Inactive
+                # (no credentials) signs nothing: the request stays anonymous.
+                signer = ap
             else:
-                merged_headers[name] = value
+                name, value = await ap.get()
+                # static_query rides in the query string (e.g. Data Golf ?key=);
+                # everything else is a header.
+                if isinstance(auth_spec, AuthStaticQuery):
+                    auth_query[name] = value
+                else:
+                    merged_headers[name] = value
 
         merged_params = {**(params or {}), **auth_query} if auth_query else params
 
@@ -141,10 +151,14 @@ class HTTPClient:
             await self._bucket.acquire()
             if self._strip_cookies:
                 self._client.cookies.clear()
+            attempt_headers = merged_headers
+            if signer is not None:
+                attempt_headers = {**merged_headers, **signer.sign_request(method, httpx.URL(full_url).path)}
             log.info("→ %s %s (provider=%s, auth=%s)", method, full_url, self._provider.id, auth_key)
-            r = await self._client.request(method, full_url, params=merged_params, headers=merged_headers, json=json_body)
+            r = await self._client.request(method, full_url, params=merged_params, headers=attempt_headers, json=json_body)
             # A stale credential surfaces as 401 — refetch once and retry immediately.
-            if r.status_code == 401 and needs_auth and not auth_refetched:
+            # (Signers re-sign every attempt, so a 401 retry just gets a fresh signature.)
+            if r.status_code == 401 and needs_auth and signer is None and not auth_refetched:
                 auth_refetched = True
                 log.warning("auth invalidated on 401 (provider=%s, auth=%s); refetching", self._provider.id, auth_key)
                 ap = self._auth_provider(auth_key)

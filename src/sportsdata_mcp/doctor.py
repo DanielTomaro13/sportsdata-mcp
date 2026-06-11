@@ -158,6 +158,13 @@ async def _run_provider(spec: Spec, enabled: set[str], cfg: Config, echo: Echo, 
         for key in sorted(auth_keys):
             echo(f"[{provider.id}/auth:{key}] minting credential")
             try:
+                # Optional schemes (e.g. Kalshi RSA) construct inactive without
+                # credentials — anonymous mode is valid, so skip rather than fail.
+                ap = http._auth_provider(key)
+                if getattr(ap, "active", True) is False:
+                    echo(f"  {_DIM}→ SKIP: optional auth not configured — running anonymous{_RESET}")
+                    res.skipped += 1
+                    continue
                 name, _value = await http.mint_auth(key)
                 echo(f"  {_GREEN}→ token acquired ({name}){_RESET}")
                 res.ok += 1

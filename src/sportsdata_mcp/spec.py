@@ -56,6 +56,20 @@ class AuthOAuthRefresh(BaseModel):
     expiry_margin_seconds: int = 60
 
 
+class AuthKalshiRSA(BaseModel):
+    # Kalshi's authenticated tier: every request carries an RSA-PSS signature over
+    # timestamp+method+path (KALSHI-ACCESS-KEY / -SIGNATURE / -TIMESTAMP headers).
+    # OPTIONAL BY DESIGN: Kalshi market data is public — a key only raises rate
+    # limits — so when the env vars are unset the provider runs anonymously
+    # instead of failing. Secrets are env-only (the DataGolf rule); the private
+    # key is supplied as PEM text (private_key_env) or a file path
+    # (private_key_path_env), whichever is set.
+    type: Literal["kalshi_rsa"]
+    key_id_env: str
+    private_key_env: str | None = None
+    private_key_path_env: str | None = None
+
+
 class AuthAFLWMCTok(BaseModel):
     type: Literal["afl_wmctok"]
     mint_url: str
@@ -64,7 +78,7 @@ class AuthAFLWMCTok(BaseModel):
 
 
 AuthSpec = Annotated[
-    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthOAuthRefresh | AuthAFLWMCTok,
+    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthOAuthRefresh | AuthKalshiRSA | AuthAFLWMCTok,
     Field(discriminator="type"),
 ]
 
