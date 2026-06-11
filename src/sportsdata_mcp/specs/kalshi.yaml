@@ -1,0 +1,204 @@
+spec_version: 1
+
+# Kalshi (kalshi.com) — the CFTC-regulated US prediction-market exchange.
+# One host serves the whole read surface: api.elections.kalshi.com/trade-api/v2.
+#
+# Market DATA is public — every endpoint below works anonymously (verified live
+# 2026-06-11). API keys (key id + RSA-signed requests) exist only for the
+# portfolio/trading surfaces, which are deliberately OUT OF SCOPE for this
+# read-only provider (the repo-wide no-money invariant) — so there are no
+# secrets to configure.
+#
+# The id chain: series (e.g. KXNBA) → events (series + date/strike,
+# e.g. KXNBA-26...) → markets (event + outcome leg). Prices are in dollars
+# (the *_dollars fields; older cent-integer fields are being phased out).
+# Discovery: kalshi_markets / kalshi_events list-first, then drill into
+# orderbook / trades / candlesticks by ticker.
+
+provider:
+  id: kalshi
+  display_name: "Kalshi"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Kalshi.md"
+  base_urls:
+    default: https://api.elections.kalshi.com/trade-api/v2
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── kalshi.markets — markets, quotes, trades, candles ────────────────
+  - name: kalshi_markets
+    group: kalshi.markets
+    capabilities: [prediction.markets_list]
+    summary: "Prediction-market catalogue with current quotes — filter by event/series ticker or status. Paginated by cursor."
+    base: default
+    path: /markets
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size (1-1000)." }
+      - { name: cursor, in: query, type: string, description: "Pagination cursor from the previous page." }
+      - { name: event_ticker, in: query, type: string, description: "Filter to one event's markets." }
+      - { name: series_ticker, in: query, type: string, description: "Filter to one series' markets." }
+      - { name: status, in: query, type: string, description: "Comma-separated: unopened, open, closed, settled." }
+      - { name: tickers, in: query, type: string_csv, description: "Specific market ticker(s)." }
+    response_hint: "{cursor, markets:[{ticker, event_ticker, market_type, title, status, yes_bid_dollars, yes_ask_dollars, no_bid_dollars, no_ask_dollars, last_price_dollars, volume_fp, volume_24h_fp, open_interest_fp, liquidity_dollars, open_time, close_time, expiration_time, rules_primary}]}"
+    examples:
+      - description: "First page of open markets"
+        params: { limit: 5, status: "open" }
+
+  - name: kalshi_market
+    group: kalshi.markets
+    capabilities: [prediction.market_detail]
+    summary: "One market's full detail by ticker — quotes, volume, rules, strike, timing."
+    base: default
+    path: /markets/{ticker}
+    auth: default
+    params:
+      - { name: ticker, in: path, type: string, required: true, description: "Market ticker (from kalshi_markets)." }
+    response_hint: "{market:{ticker, event_ticker, title, yes_sub_title, no_sub_title, status, result, yes_bid_dollars, yes_ask_dollars, last_price_dollars, volume_fp, open_interest_fp, rules_primary, rules_secondary, strike_type, custom_strike, open_time, close_time, expiration_time}}"
+
+  - name: kalshi_orderbook
+    group: kalshi.markets
+    capabilities: [prediction.market_prices]
+    summary: "Order book for one market — resting yes/no bids by price level (dollar-denominated)."
+    base: default
+    path: /markets/{ticker}/orderbook
+    auth: default
+    params:
+      - { name: ticker, in: path, type: string, required: true, description: "Market ticker." }
+      - { name: depth, in: query, type: integer, description: "Max price levels per side." }
+    response_hint: "{orderbook_fp:{yes_dollars:[[price, size], …], no_dollars:[[price, size], …]}}  (empty arrays when nothing is resting)"
+
+  - name: kalshi_trades
+    group: kalshi.markets
+    capabilities: [prediction.trades]
+    summary: "Recent public trades, optionally for one market ticker. Paginated by cursor."
+    base: default
+    path: /markets/trades
+    auth: default
+    params:
+      - { name: ticker, in: query, type: string, description: "Filter to one market." }
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size (1-1000)." }
+      - { name: cursor, in: query, type: string, description: "Pagination cursor." }
+      - { name: min_ts, in: query, type: integer, description: "Unix-seconds lower bound." }
+      - { name: max_ts, in: query, type: integer, description: "Unix-seconds upper bound." }
+    response_hint: "{cursor, trades:[{trade_id, ticker, count, yes_price, no_price, taker_side, created_time}]}"
+
+  - name: kalshi_candlesticks
+    group: kalshi.markets
+    capabilities: [prediction.price_history]
+    summary: "OHLC price candlesticks for one market over a time window (1m/1h/1d periods)."
+    base: default
+    path: /series/{seriesTicker}/markets/{ticker}/candlesticks
+    auth: default
+    params:
+      - { name: seriesTicker, in: path, type: string, required: true, description: "Series ticker (the market ticker's prefix before the first '-')." }
+      - { name: ticker, in: path, type: string, required: true, description: "Market ticker." }
+      - { name: start_ts, in: query, type: integer, required: true, description: "Window start (unix seconds)." }
+      - { name: end_ts, in: query, type: integer, required: true, description: "Window end (unix seconds)." }
+      - { name: period_interval, in: query, type: integer, default: 60, description: "Candle width in minutes: 1, 60, or 1440." }
+    response_hint: "{ticker, candlesticks:[{end_period_ts, yes_bid, yes_ask, price, volume, open_interest}]}"
+
+  # ─── kalshi.events — events, series, milestones ───────────────────────
+  - name: kalshi_events
+    group: kalshi.events
+    capabilities: [prediction.events_list]
+    summary: "Event catalogue (an event groups related markets) — filter by series or status. Paginated by cursor."
+    base: default
+    path: /events
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size (1-200)." }
+      - { name: cursor, in: query, type: string, description: "Pagination cursor." }
+      - { name: status, in: query, type: string, description: "Comma-separated: unopened, open, closed, settled." }
+      - { name: series_ticker, in: query, type: string, description: "Filter to one series." }
+      - { name: with_nested_markets, in: query, type: boolean, description: "Embed each event's markets in the response." }
+    response_hint: "{cursor, events:[{event_ticker, series_ticker, title, sub_title, category, mutually_exclusive, strike_period}], milestones}"
+    examples:
+      - description: "First page of open events"
+        params: { limit: 5, status: "open" }
+
+  - name: kalshi_event
+    group: kalshi.events
+    capabilities: [prediction.events_list]
+    summary: "One event by ticker, optionally with its markets embedded."
+    base: default
+    path: /events/{eventTicker}
+    auth: default
+    params:
+      - { name: eventTicker, in: path, type: string, required: true, description: "Event ticker (from kalshi_events or a market's event_ticker)." }
+      - { name: with_nested_markets, in: query, type: boolean, default: true, description: "Embed the event's markets." }
+    response_hint: "{event:{event_ticker, series_ticker, title, category, mutually_exclusive, markets:[…]}, markets}"
+
+  - name: kalshi_series_list
+    group: kalshi.events
+    capabilities: [prediction.events_list]
+    summary: "All series in a category (Sports, Politics, Economics, Financials, Climate and Weather, Entertainment, …) — the top of the id chain."
+    base: default
+    path: /series
+    auth: default
+    params:
+      - { name: category, in: query, type: string, required: true, description: "Series category (e.g. Sports)." }
+      - { name: include_product_metadata, in: query, type: boolean, description: "Embed product metadata." }
+    response_hint: "{series:[{ticker, title, category, frequency, tags, settlement_sources, contract_url}]}"
+    examples:
+      - description: "Every sports series"
+        params: { category: "Sports" }
+
+  - name: kalshi_series
+    group: kalshi.events
+    capabilities: [prediction.events_list]
+    summary: "One series by ticker — title, category, settlement sources, fee structure."
+    base: default
+    path: /series/{seriesTicker}
+    auth: default
+    params:
+      - { name: seriesTicker, in: path, type: string, required: true, description: "Series ticker (e.g. KXNBA)." }
+    response_hint: "{series:{ticker, title, category, frequency, tags, settlement_sources, contract_url, fee_type}}"
+
+  - name: kalshi_milestones
+    group: kalshi.events
+    summary: "Milestones — dated catalysts (data releases, games, decisions) linked to the event tickers they resolve."
+    base: default
+    path: /milestones
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size." }
+      - { name: cursor, in: query, type: string, description: "Pagination cursor." }
+      - { name: category, in: query, type: string, description: "Filter by category." }
+      - { name: minimum_start_date, in: query, type: string, description: "ISO date lower bound." }
+    response_hint: "{cursor, milestones:[{id, category, details, end_date, primary_event_tickers, related_event_tickers}]}"
+
+  # ─── kalshi.exchange — status / schedule / announcements ─────────────
+  - name: kalshi_exchange_status
+    group: kalshi.exchange
+    summary: "Is the exchange up and trading right now."
+    base: default
+    path: /exchange/status
+    auth: default
+    response_hint: "{exchange_active, trading_active}"
+
+  - name: kalshi_exchange_schedule
+    group: kalshi.exchange
+    summary: "Standard trading hours + maintenance windows."
+    base: default
+    path: /exchange/schedule
+    auth: default
+    response_hint: "{schedule:{standard_hours, maintenance_windows}}"
+
+  - name: kalshi_exchange_announcements
+    group: kalshi.exchange
+    summary: "Active exchange-wide announcements."
+    base: default
+    path: /exchange/announcements
+    auth: default
+    response_hint: "{announcements:[{type, message, delivery_time, status}]}"

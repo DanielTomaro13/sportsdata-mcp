@@ -1,0 +1,245 @@
+spec_version: 1
+
+# Polymarket (polymarket.com) — the largest crypto prediction market. Three
+# public read hosts, NO auth for any of them:
+#   * gamma-api.polymarket.com — market/event/tag catalogue ("Gamma", the
+#     discovery + analytics API the website reads).
+#   * clob.polymarket.com — the CLOB price plane: order books, best prices,
+#     midpoints, spreads, price history. Read endpoints are open; the L1/L2
+#     wallet keys the trading SDKs need are for ORDER PLACEMENT only, which is
+#     deliberately OUT OF SCOPE here (repo-wide no-money invariant).
+#   * data-api.polymarket.com — public trade tape + holder analytics.
+#
+# GEO-GATED: Polymarket drops connections at the network edge from restricted
+# jurisdictions (observed live: Australian IPs time out on connect for every
+# host, including the website). From a blocked region these tools fail with
+# TRANSPORT_ERROR / doctor FAILs — run from an unrestricted region (e.g. US
+# cloud; GitHub CI runners reach it) or a VPN. Spec written from the official
+# docs (docs.polymarket.com) + Polymarket's own agent-skills reference;
+# response shapes are verified by the CI contract job from US runners.
+#
+# The id chain: event (e.g. "nba-finals-2026") → markets (binary questions,
+# each with two clobTokenIds = YES/NO outcome tokens) → CLOB quotes by
+# token_id. Gamma list responses are TOP-LEVEL ARRAYS.
+
+provider:
+  id: polymarket
+  display_name: "Polymarket"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Polymarket.md"
+  base_urls:
+    default: https://gamma-api.polymarket.com
+    clob: https://clob.polymarket.com
+    data: https://data-api.polymarket.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── polymarket.gamma — discovery: markets, events, tags ──────────────
+  - name: polymarket_markets
+    group: polymarket.gamma
+    capabilities: [prediction.markets_list]
+    summary: "Market catalogue with current outcome prices — filter/sort by activity, volume, liquidity, tag or slug."
+    base: default
+    path: /markets
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 50, description: "Page size." }
+      - { name: offset, in: query, type: integer, description: "Pagination offset." }
+      - { name: order, in: query, type: string, description: "Sort key (e.g. volume24hr, liquidity, endDate)." }
+      - { name: ascending, in: query, type: boolean, description: "Sort direction (default false with `order`)." }
+      - { name: active, in: query, type: boolean, description: "Only active markets." }
+      - { name: closed, in: query, type: boolean, description: "Only (or exclude with false) closed markets." }
+      - { name: archived, in: query, type: boolean, description: "Include archived." }
+      - { name: slug, in: query, type: string, description: "Exact market slug." }
+      - { name: tag_id, in: query, type: integer, description: "Filter by tag id (see polymarket_tags)." }
+      - { name: clob_token_ids, in: query, type: string, description: "Filter by CLOB token id." }
+      - { name: condition_ids, in: query, type: string, description: "Filter by condition id." }
+      - { name: liquidity_num_min, in: query, type: number, description: "Min liquidity." }
+      - { name: volume_num_min, in: query, type: number, description: "Min volume." }
+      - { name: end_date_min, in: query, type: string, description: "ISO date — markets ending after this." }
+      - { name: end_date_max, in: query, type: string, description: "ISO date — markets ending before this." }
+    response_hint: "[{id, question, slug, conditionId, clobTokenIds, outcomes, outcomePrices, volumeNum, liquidityNum, volume24hr, endDate, active, closed, events:[…]}]  (top-level array)"
+    examples:
+      - description: "Most-traded active markets"
+        params: { limit: 5, active: true, closed: false, order: "volume24hr", ascending: false }
+
+  - name: polymarket_market
+    group: polymarket.gamma
+    capabilities: [prediction.market_detail]
+    summary: "One market's full detail by Gamma id — question, outcomes + prices, CLOB token ids, volume/liquidity, resolution source."
+    base: default
+    path: /markets/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Gamma market id (from polymarket_markets)." }
+    response_hint: "{id, question, description, slug, conditionId, clobTokenIds, outcomes, outcomePrices, volumeNum, liquidityNum, endDate, resolutionSource, events:[…]}"
+
+  - name: polymarket_events
+    group: polymarket.gamma
+    capabilities: [prediction.events_list]
+    summary: "Event catalogue (an event groups related markets, e.g. one game or election) with nested markets."
+    base: default
+    path: /events
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 25, description: "Page size." }
+      - { name: offset, in: query, type: integer, description: "Pagination offset." }
+      - { name: order, in: query, type: string, description: "Sort key (e.g. volume24hr, liquidity, endDate)." }
+      - { name: ascending, in: query, type: boolean, description: "Sort direction." }
+      - { name: active, in: query, type: boolean, description: "Only active events." }
+      - { name: closed, in: query, type: boolean, description: "Only (or exclude with false) closed events." }
+      - { name: archived, in: query, type: boolean, description: "Include archived." }
+      - { name: slug, in: query, type: string, description: "Exact event slug (e.g. from a polymarket.com/event/... URL)." }
+      - { name: tag_id, in: query, type: integer, description: "Filter by tag id." }
+      - { name: series_id, in: query, type: integer, description: "Filter by series id." }
+      - { name: liquidity_min, in: query, type: number, description: "Min liquidity." }
+      - { name: volume_min, in: query, type: number, description: "Min volume." }
+      - { name: end_date_min, in: query, type: string, description: "ISO date — events ending after this." }
+      - { name: end_date_max, in: query, type: string, description: "ISO date — events ending before this." }
+    response_hint: "[{id, title, slug, description, volume, liquidity, endDate, tags, markets:[{id, question, clobTokenIds, outcomePrices}]}]  (top-level array)"
+    examples:
+      - description: "Most-traded active events"
+        params: { limit: 5, active: true, closed: false, order: "volume24hr", ascending: false }
+
+  - name: polymarket_event
+    group: polymarket.gamma
+    capabilities: [prediction.events_list]
+    summary: "One event by Gamma id, with all its markets."
+    base: default
+    path: /events/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Gamma event id (from polymarket_events)." }
+    response_hint: "{id, title, slug, description, volume, liquidity, endDate, tags, markets:[…]}"
+
+  - name: polymarket_tags
+    group: polymarket.gamma
+    summary: "Tag catalogue (Sports, Politics, Crypto, NBA, …) — tag ids feed the tag_id filters."
+    base: default
+    path: /tags
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size." }
+      - { name: offset, in: query, type: integer, description: "Pagination offset." }
+    response_hint: "[{id, label, slug, forceShow, …}]  (top-level array)"
+
+  - name: polymarket_search
+    group: polymarket.gamma
+    summary: "Site-wide search over events/markets/profiles by free-text query."
+    base: default
+    path: /public-search
+    auth: default
+    params:
+      - { name: q, in: query, type: string, required: true, description: "Search text (team, person, topic)." }
+      - { name: limit_per_type, in: query, type: integer, description: "Max results per result type." }
+      - { name: events_status, in: query, type: string, description: "Filter events by status (e.g. active)." }
+    response_hint: "{events:[…], tags:[…], profiles:[…]}"
+
+  # ─── polymarket.clob — order books, prices, history ───────────────────
+  - name: polymarket_book
+    group: polymarket.clob
+    capabilities: [prediction.market_prices]
+    summary: "Full order book (bids + asks with sizes) for one outcome token."
+    base: clob
+    path: /book
+    auth: default
+    params:
+      - { name: token_id, in: query, type: string, required: true, description: "CLOB token id (one entry of a market's clobTokenIds)." }
+    response_hint: "{market, asset_id, bids:[{price, size}], asks:[{price, size}], tick_size, neg_risk, timestamp}"
+
+  - name: polymarket_price
+    group: polymarket.clob
+    capabilities: [prediction.market_prices]
+    summary: "Best price for one outcome token on one side of the book."
+    base: clob
+    path: /price
+    auth: default
+    params:
+      - { name: token_id, in: query, type: string, required: true, description: "CLOB token id." }
+      - { name: side, in: query, type: string, required: true, enum: [buy, sell], description: "Which side's best price." }
+    response_hint: "{price}"
+
+  - name: polymarket_midpoint
+    group: polymarket.clob
+    capabilities: [prediction.market_prices]
+    summary: "Midpoint (between best bid and best ask) for one outcome token."
+    base: clob
+    path: /midpoint
+    auth: default
+    params:
+      - { name: token_id, in: query, type: string, required: true, description: "CLOB token id." }
+    response_hint: "{mid}"
+
+  - name: polymarket_spread
+    group: polymarket.clob
+    capabilities: [prediction.market_prices]
+    summary: "Bid-ask spread for one outcome token."
+    base: clob
+    path: /spread
+    auth: default
+    params:
+      - { name: token_id, in: query, type: string, required: true, description: "CLOB token id." }
+    response_hint: "{spread}"
+
+  - name: polymarket_price_history
+    group: polymarket.clob
+    capabilities: [prediction.price_history]
+    summary: "Historical price series for one outcome token — by named interval or an explicit ts window."
+    base: clob
+    path: /prices-history
+    auth: default
+    params:
+      - { name: market, in: query, type: string, required: true, description: "CLOB token id (the API calls this param `market`)." }
+      - { name: interval, in: query, type: string, enum: [1h, 6h, 1d, 1w, 1m, max], description: "Named lookback window (alternative to startTs/endTs)." }
+      - { name: startTs, in: query, type: integer, description: "Window start (unix seconds)." }
+      - { name: endTs, in: query, type: integer, description: "Window end (unix seconds)." }
+      - { name: fidelity, in: query, type: integer, description: "Resolution in minutes." }
+    response_hint: "{history:[{t, p}]}  (unix seconds, price 0-1)"
+
+  - name: polymarket_clob_markets
+    group: polymarket.clob
+    capabilities: [prediction.markets_list]
+    summary: "CLOB market catalogue (condition ids, token pairs, tick sizes) — cursor-paginated; the trading-plane view of the same markets."
+    base: clob
+    path: /markets
+    auth: default
+    params:
+      - { name: next_cursor, in: query, type: string, description: "Pagination cursor ('' first page, 'LTE=' = end)." }
+    response_hint: "{limit, count, next_cursor, data:[{condition_id, question, market_slug, tokens:[{token_id, outcome}], minimum_tick_size, active, closed}]}"
+
+  # ─── polymarket.data — public trade tape + holders ────────────────────
+  - name: polymarket_trades
+    group: polymarket.data
+    capabilities: [prediction.trades]
+    summary: "Public trade tape — recent fills, optionally for one market (condition id) or user."
+    base: data
+    path: /trades
+    auth: default
+    params:
+      - { name: market, in: query, type: string, description: "Condition id (a market's conditionId)." }
+      - { name: user, in: query, type: string, description: "Filter by wallet address." }
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size (max 500)." }
+      - { name: offset, in: query, type: integer, description: "Pagination offset." }
+      - { name: side, in: query, type: string, enum: [BUY, SELL], description: "Taker side filter." }
+    response_hint: "[{proxyWallet, side, asset, conditionId, size, price, timestamp, title, outcome}]  (top-level array)"
+
+  - name: polymarket_holders
+    group: polymarket.data
+    summary: "Top holders of a market's outcome tokens."
+    base: data
+    path: /holders
+    auth: default
+    params:
+      - { name: market, in: query, type: string, required: true, description: "Condition id." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Max holders per token." }
+    response_hint: "[{token, holders:[{proxyWallet, amount, name, …}]}]  (top-level array)"

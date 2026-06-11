@@ -286,6 +286,35 @@ with `mlb_teams` / `mlb_schedule` / `mlb_player_search`, then drill into a game 
 player. Most tools accept the API's `hydrate` string to embed related objects in one
 call.
 
+### Kalshi — `kalshi.com` (prediction markets, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `kalshi.markets` | 5 | Market catalogue + detail, order book, public trades, OHLC candlesticks |
+| `kalshi.events` | 5 | Events, series catalogue (by category), single series, milestones |
+| `kalshi.exchange` | 3 | Exchange status, trading schedule, announcements |
+
+The CFTC-regulated US event-contract exchange. **Market data is public — no
+key**; Kalshi's RSA-signed API keys are only for the portfolio/trading
+surfaces, which are out of scope (read-only provider). Id chain:
+`kalshi_series_list(category)` → `kalshi_events` → `kalshi_markets` →
+orderbook/trades/candles by ticker. Prices are dollar-denominated.
+
+### Polymarket — `polymarket.com` (prediction markets, no key, geo-gated)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `polymarket.gamma` | 6 | Markets/events/tags catalogue + site search (the discovery plane) |
+| `polymarket.clob` | 6 | Order book, best price, midpoint, spread, price history, CLOB catalogue |
+| `polymarket.data` | 2 | Public trade tape + top holders |
+
+The largest crypto prediction market. **All read endpoints are anonymous** —
+the wallet keys Polymarket's SDKs use are for order placement only (out of
+scope). ⚠️ **Geo-gated**: Polymarket drops connections at the network edge
+from restricted jurisdictions (verified: AU IPs time out on every host) — run
+from an unrestricted region or VPN. Flow: `polymarket_events` → a market's
+`clobTokenIds` → `polymarket_book` / `polymarket_price_history`.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.

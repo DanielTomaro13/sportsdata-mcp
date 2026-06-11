@@ -100,6 +100,13 @@ CONTRACTS: list[Contract] = [
     Contract("datagolf_player_list", {}, list_at="", item_keys=("dg_id", "player_name")),
     Contract("datagolf_approach_skill", {}, ("last_updated", "time_period", "data"), "data", ("dg_id", "player_name")),
     Contract("datagolf_hist_results_event_list", {}, list_at="", item_keys=("event_id", "event_name", "calendar_year", "tour")),
+    # ── Kalshi (api.elections.kalshi.com — public market data) ──
+    Contract("kalshi_markets", {"limit": 2}, ("cursor", "markets"), "markets", ("ticker", "event_ticker", "title", "status")),
+    Contract("kalshi_series_list", {"category": "Sports"}, ("series",), "series", ("ticker", "title", "category")),
+    Contract("kalshi_exchange_status", {}, ("exchange_active", "trading_active")),
+    # ── Polymarket (geo-gated: skips where edge-blocked, verifies from US runners) ──
+    Contract("polymarket_markets", {"limit": 2, "active": True, "closed": False}, list_at="", item_keys=("id", "question", "slug")),
+    Contract("polymarket_events", {"limit": 2, "active": True, "closed": False}, list_at="", item_keys=("id", "title", "slug")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

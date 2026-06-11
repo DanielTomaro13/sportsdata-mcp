@@ -139,6 +139,20 @@ capabilities:
     description: "Broadcast channel catalogue."
     single_provider: true
 
+  # ─── Prediction markets (Polymarket, Kalshi) ─────────────────────────
+  - id: prediction.markets_list
+    description: "Catalogue of prediction markets (binary/event contracts) with current quotes."
+  - id: prediction.market_detail
+    description: "One prediction market's full detail — question, rules, quotes, volume, expiry."
+  - id: prediction.events_list
+    description: "Prediction-market events/series grouping related markets."
+  - id: prediction.market_prices
+    description: "Order book / best bid-ask quotes for one prediction market."
+  - id: prediction.price_history
+    description: "Historical price series (trades-derived candles or ticks) for one prediction market."
+  - id: prediction.trades
+    description: "Recent public trades on a prediction market."
+
   # ─── Meta (used by the template/example only) ────────────────────────
   - id: sport.example
     description: "Placeholder capability for the template spec and tests; not a real question."
