@@ -103,3 +103,10 @@ def test_python_type_mapping():
     assert _python_type(Param(name="a", **{"in": "query"}, type="boolean")) is bool
     assert _python_type(Param(name="a", **{"in": "query"}, type="string_csv")) is list
     assert _python_type(Param(name="a", **{"in": "body"}, type="object")) is dict
+
+
+def test_build_query_api_name_maps_wire_name():
+    """`api_name` carries the wire name when it isn't a valid Python identifier
+    (X's `tweet.fields`); the signature param stays `tweet_fields`."""
+    ep = _ep([{"name": "tweet_fields", "in": "query", "type": "string", "api_name": "tweet.fields"}])
+    assert _build_query(ep, {"tweet_fields": "created_at,lang"}) == {"tweet.fields": "created_at,lang"}

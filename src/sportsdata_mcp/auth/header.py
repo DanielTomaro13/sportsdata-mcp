@@ -26,6 +26,8 @@ class StaticHeaderAuthProvider:
             self._value = spec.value
         else:
             raise AuthMissingError(f"auth.static_header for header '{spec.header}' has neither `value` nor `env`")
+        # e.g. "Bearer " so the env var carries the bare token (X/Twitter).
+        self._value = spec.value_prefix + self._value
         self._header = spec.header
 
     async def get(self) -> tuple[str, str]:

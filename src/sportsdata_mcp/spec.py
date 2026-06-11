@@ -20,6 +20,9 @@ class AuthStaticHeader(BaseModel):
     header: str
     value: str | None = None
     env: str | None = None
+    # Prepended to the resolved value — e.g. "Bearer " so the env var holds the
+    # bare token (X/Twitter), not the header syntax.
+    value_prefix: str = ""
 
 
 class AuthStaticQuery(BaseModel):
@@ -145,6 +148,14 @@ class Param(BaseModel):
     default: object | None = None
     description: str = ""
     enum: list[object] | None = None
+    # Wire name when it differs from `name` — `name` must be a valid Python
+    # identifier (it becomes the tool's signature param), but some APIs use names
+    # that aren't (X's `tweet.fields`). Query/header building sends `api_name`.
+    api_name: str | None = None
+
+    @property
+    def wire_name(self) -> str:
+        return self.api_name or self.name
 
 
 class Example(BaseModel):

@@ -107,6 +107,9 @@ CONTRACTS: list[Contract] = [
     # ── Polymarket (geo-gated: skips where edge-blocked, verifies from US runners) ──
     Contract("polymarket_markets", {"limit": 2, "active": True, "closed": False}, list_at="", item_keys=("id", "question", "slug")),
     Contract("polymarket_events", {"limit": 2, "active": True, "closed": False}, list_at="", item_keys=("id", "title", "slug")),
+    # ── X/Twitter (needs X_BEARER_TOKEN → skips without one) ──
+    Contract("twitter_user_by_username", {"username": "NBA"}, ("data",)),
+    Contract("twitter_trends", {"woeid": 1}, ("data",)),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

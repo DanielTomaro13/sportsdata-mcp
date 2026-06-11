@@ -73,3 +73,14 @@ async def test_httpclient_injects_secret_from_config(monkeypatch):
     assert out == {"ok": True}
     assert seen.get("x-api-key") == "secret-xyz"
     await http.aclose()
+
+
+async def test_value_prefix_prepended(monkeypatch):
+    """value_prefix turns a bare env token into header syntax (Bearer <token>)."""
+    from sportsdata_mcp.auth.header import StaticHeaderAuthProvider
+    from sportsdata_mcp.spec import AuthStaticHeader
+
+    monkeypatch.setenv("TEST_X_BEARER", "tok123")
+    spec = AuthStaticHeader(type="static_header", header="Authorization", env="TEST_X_BEARER", value_prefix="Bearer ")
+    name, value = await StaticHeaderAuthProvider(spec).get()
+    assert (name, value) == ("Authorization", "Bearer tok123")

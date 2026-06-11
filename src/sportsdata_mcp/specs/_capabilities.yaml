@@ -153,6 +153,23 @@ capabilities:
   - id: prediction.trades
     description: "Recent public trades on a prediction market."
 
+  # ─── Social (X/Twitter) ──────────────────────────────────────────────
+  - id: social.post_search
+    description: "Search public social posts by query (teams, players, breaking news)."
+    single_provider: true
+  - id: social.post_detail
+    description: "One or more social posts by id, with engagement metrics."
+    single_provider: true
+  - id: social.user_profile
+    description: "A social account's public profile and follower metrics."
+    single_provider: true
+  - id: social.user_timeline
+    description: "A social account's recent posts (club news, insider feeds)."
+    single_provider: true
+  - id: social.trends
+    description: "Trending topics by location."
+    single_provider: true
+
   # ─── Meta (used by the template/example only) ────────────────────────
   - id: sport.example
     description: "Placeholder capability for the template spec and tests; not a real question."

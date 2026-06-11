@@ -84,7 +84,7 @@ def _build_query(ep: Endpoint, kwargs: dict) -> dict:
         value = kwargs.get(p.name)
         if value is None:
             continue
-        out[p.name] = _encode_query_value(p, value)
+        out[p.wire_name] = _encode_query_value(p, value)
     return out
 
 
@@ -96,7 +96,7 @@ def _build_headers(ep: Endpoint, kwargs: dict) -> dict:
         value = kwargs.get(p.name)
         if value is None:
             continue
-        out[p.name] = str(value)
+        out[p.wire_name] = str(value)
     return out
 
 

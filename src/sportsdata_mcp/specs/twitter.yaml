@@ -1,0 +1,258 @@
+spec_version: 1
+
+# X (Twitter) — the X API v2 read surface, app-only Bearer auth. One host:
+# api.x.com. REQUIRES A KEY: there is no anonymous tier — every request needs
+# a Bearer token from a developer-portal project (https://developer.x.com).
+#
+# The token resolves env-first (X_BEARER_TOKEN), then the config `secrets:`
+# block — so the operator can ship a deployment-wide token (everyone using that
+# server rides it), and anyone running their own server plugs in their own.
+# The env var holds the BARE token; the `Bearer ` prefix is added by the
+# auth scheme (value_prefix).
+#
+# Read-only by design: search, lookups, timelines, counts, trends, usage.
+# Posting, DMs, likes/follows management and user-context (OAuth 2.0
+# Authorization Code) surfaces are out of scope. Mind your tier's caps:
+# X rate-limits per 15-minute window per endpoint, and monthly post-read
+# caps apply (check twitter_usage) — the conservative throttle below is
+# deliberate.
+#
+# X param names like `tweet.fields` aren't valid Python identifiers, so tools
+# take `tweet_fields`/`user_fields`/... and the spec maps them via `api_name`.
+# Useful defaults are baked in so calls return rich objects out of the box.
+
+provider:
+  id: twitter
+  display_name: "X (Twitter)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Twitter.md"
+  base_urls:
+    default: https://api.x.com
+  default_headers:
+    User-Agent: "sportsdata-mcp/0.1"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: Authorization
+      env: X_BEARER_TOKEN
+      value_prefix: "Bearer "
+  defaults:
+    rate_limit_rps: 0.5
+    burst: 3
+    request_timeout_seconds: 30
+    retry_statuses: [500, 502, 503, 504]   # never auto-retry 429: windows are 15 min
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  # ─── twitter.tweets — search, counts, lookup, engagement ──────────────
+  - name: twitter_search_recent
+    group: twitter.tweets
+    capabilities: [social.post_search]
+    summary: "Search posts from the last 7 days with X's query operators (e.g. '\"Lakers\" lang:en -is:retweet')."
+    base: default
+    path: /2/tweets/search/recent
+    auth: default
+    params:
+      - { name: query, in: query, type: string, required: true, description: "Search query with operators (from:user, lang:en, -is:retweet, #tag, \"phrase\")." }
+      - { name: max_results, in: query, type: integer, default: 10, description: "Results per page (10-100)." }
+      - { name: start_time, in: query, type: string, description: "ISO 8601 lower bound (within the last 7 days)." }
+      - { name: end_time, in: query, type: string, description: "ISO 8601 upper bound." }
+      - { name: since_id, in: query, type: string, description: "Only posts newer than this id." }
+      - { name: sort_order, in: query, type: string, enum: [recency, relevancy], description: "Result ordering (default recency)." }
+      - { name: next_token, in: query, type: string, description: "Pagination token from meta.next_token." }
+      - { name: tweet_fields, in: query, type: string, api_name: tweet.fields, default: "created_at,author_id,public_metrics,lang", description: "Post fields to include (CSV)." }
+      - { name: expansions, in: query, type: string, default: "author_id", description: "Related objects to embed (CSV)." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "username,name,verified,public_metrics", description: "User fields for expanded authors (CSV)." }
+    response_hint: "{data:[{id, text, created_at, author_id, lang, public_metrics:{retweet_count, reply_count, like_count, impression_count}}], includes:{users:[…]}, meta:{result_count, newest_id, next_token}}"
+
+  - name: twitter_tweet_counts
+    group: twitter.tweets
+    capabilities: [social.post_search]
+    summary: "Post volume over time for a query (last 7 days) — the cheap way to gauge buzz without reading posts."
+    base: default
+    path: /2/tweets/counts/recent
+    auth: default
+    params:
+      - { name: query, in: query, type: string, required: true, description: "Same operator syntax as search." }
+      - { name: granularity, in: query, type: string, default: hour, enum: [minute, hour, day], description: "Bucket size." }
+      - { name: start_time, in: query, type: string, description: "ISO 8601 lower bound." }
+      - { name: end_time, in: query, type: string, description: "ISO 8601 upper bound." }
+    response_hint: "{data:[{start, end, tweet_count}], meta:{total_tweet_count}}"
+
+  - name: twitter_tweets
+    group: twitter.tweets
+    capabilities: [social.post_detail]
+    summary: "Batch post lookup by ids (up to 100) with engagement metrics."
+    base: default
+    path: /2/tweets
+    auth: default
+    params:
+      - { name: ids, in: query, type: string_csv, required: true, description: "Post id(s), up to 100." }
+      - { name: tweet_fields, in: query, type: string, api_name: tweet.fields, default: "created_at,author_id,public_metrics,lang", description: "Post fields (CSV)." }
+      - { name: expansions, in: query, type: string, default: "author_id", description: "Related objects (CSV)." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "username,name,verified", description: "User fields (CSV)." }
+    response_hint: "{data:[{id, text, created_at, author_id, public_metrics}], includes:{users:[…]}}"
+
+  - name: twitter_tweet
+    group: twitter.tweets
+    capabilities: [social.post_detail]
+    summary: "One post by id."
+    base: default
+    path: /2/tweets/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Post id." }
+      - { name: tweet_fields, in: query, type: string, api_name: tweet.fields, default: "created_at,author_id,public_metrics,lang", description: "Post fields (CSV)." }
+      - { name: expansions, in: query, type: string, default: "author_id", description: "Related objects (CSV)." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "username,name,verified", description: "User fields (CSV)." }
+    response_hint: "{data:{id, text, created_at, author_id, public_metrics}, includes:{users:[…]}}"
+
+  - name: twitter_quote_tweets
+    group: twitter.tweets
+    capabilities: [social.post_detail]
+    summary: "Posts quoting a given post."
+    base: default
+    path: /2/tweets/{id}/quote_tweets
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Quoted post id." }
+      - { name: max_results, in: query, type: integer, default: 10, description: "Results per page (10-100)." }
+      - { name: pagination_token, in: query, type: string, description: "Pagination token." }
+      - { name: tweet_fields, in: query, type: string, api_name: tweet.fields, default: "created_at,author_id,public_metrics", description: "Post fields (CSV)." }
+    response_hint: "{data:[{id, text, author_id, public_metrics}], meta:{result_count, next_token}}"
+
+  - name: twitter_retweeted_by
+    group: twitter.tweets
+    summary: "Users who reposted a given post."
+    base: default
+    path: /2/tweets/{id}/retweeted_by
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Post id." }
+      - { name: max_results, in: query, type: integer, default: 10, description: "Results per page (1-100)." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "username,name,verified,public_metrics", description: "User fields (CSV)." }
+    response_hint: "{data:[{id, username, name, verified, public_metrics}], meta:{result_count}}"
+
+  - name: twitter_liking_users
+    group: twitter.tweets
+    summary: "Users who liked a given post."
+    base: default
+    path: /2/tweets/{id}/liking_users
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Post id." }
+      - { name: max_results, in: query, type: integer, default: 10, description: "Results per page (1-100)." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "username,name,verified", description: "User fields (CSV)." }
+    response_hint: "{data:[{id, username, name}], meta:{result_count}}"
+
+  # ─── twitter.users — profiles + timelines ─────────────────────────────
+  - name: twitter_user_by_username
+    group: twitter.users
+    capabilities: [social.user_profile]
+    summary: "One account's public profile by @handle (without the @)."
+    base: default
+    path: /2/users/by/username/{username}
+    auth: default
+    params:
+      - { name: username, in: path, type: string, required: true, description: "Handle without the @ (e.g. NBA, AFL, wojespn)." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "created_at,description,public_metrics,verified", description: "User fields (CSV)." }
+    response_hint: "{data:{id, username, name, description, verified, public_metrics:{followers_count, following_count, tweet_count}}}"
+    examples:
+      - description: "The NBA's official account"
+        params: { username: "NBA" }
+
+  - name: twitter_users_by_usernames
+    group: twitter.users
+    capabilities: [social.user_profile]
+    summary: "Batch profile lookup by handles (up to 100)."
+    base: default
+    path: /2/users/by
+    auth: default
+    params:
+      - { name: usernames, in: query, type: string_csv, required: true, description: "Handle(s) without the @, up to 100." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "created_at,description,public_metrics,verified", description: "User fields (CSV)." }
+    response_hint: "{data:[{id, username, name, public_metrics}]}"
+
+  - name: twitter_user
+    group: twitter.users
+    capabilities: [social.user_profile]
+    summary: "One account by numeric user id."
+    base: default
+    path: /2/users/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Numeric user id." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "created_at,description,public_metrics,verified", description: "User fields (CSV)." }
+    response_hint: "{data:{id, username, name, description, public_metrics}}"
+
+  - name: twitter_users
+    group: twitter.users
+    capabilities: [social.user_profile]
+    summary: "Batch account lookup by numeric ids (up to 100)."
+    base: default
+    path: /2/users
+    auth: default
+    params:
+      - { name: ids, in: query, type: string_csv, required: true, description: "Numeric user id(s), up to 100." }
+      - { name: user_fields, in: query, type: string, api_name: user.fields, default: "username,name,public_metrics", description: "User fields (CSV)." }
+    response_hint: "{data:[{id, username, name, public_metrics}]}"
+
+  - name: twitter_user_tweets
+    group: twitter.users
+    capabilities: [social.user_timeline]
+    summary: "An account's recent posts (club announcements, insider news). Resolve the id with twitter_user_by_username first."
+    base: default
+    path: /2/users/{id}/tweets
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Numeric user id." }
+      - { name: max_results, in: query, type: integer, default: 10, description: "Results per page (5-100)." }
+      - { name: exclude, in: query, type: string, description: "CSV of retweets and/or replies to drop." }
+      - { name: since_id, in: query, type: string, description: "Only posts newer than this id." }
+      - { name: start_time, in: query, type: string, description: "ISO 8601 lower bound." }
+      - { name: end_time, in: query, type: string, description: "ISO 8601 upper bound." }
+      - { name: pagination_token, in: query, type: string, description: "Pagination token." }
+      - { name: tweet_fields, in: query, type: string, api_name: tweet.fields, default: "created_at,public_metrics,lang", description: "Post fields (CSV)." }
+    response_hint: "{data:[{id, text, created_at, public_metrics}], meta:{result_count, newest_id, next_token}}"
+
+  - name: twitter_user_mentions
+    group: twitter.users
+    capabilities: [social.user_timeline]
+    summary: "Recent posts mentioning an account."
+    base: default
+    path: /2/users/{id}/mentions
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Numeric user id." }
+      - { name: max_results, in: query, type: integer, default: 10, description: "Results per page (5-100)." }
+      - { name: since_id, in: query, type: string, description: "Only posts newer than this id." }
+      - { name: pagination_token, in: query, type: string, description: "Pagination token." }
+      - { name: tweet_fields, in: query, type: string, api_name: tweet.fields, default: "created_at,author_id,public_metrics", description: "Post fields (CSV)." }
+    response_hint: "{data:[{id, text, created_at, author_id, public_metrics}], meta:{result_count}}"
+
+  # ─── twitter.trends — trending topics + project usage ─────────────────
+  - name: twitter_trends
+    group: twitter.trends
+    capabilities: [social.trends]
+    summary: "Trending topics for a location by WOEID (1 = worldwide, 23424977 = US, 23424748 = Australia, 23424975 = UK)."
+    base: default
+    path: /2/trends/by/woeid/{woeid}
+    auth: default
+    params:
+      - { name: woeid, in: path, type: integer, required: true, description: "Where-On-Earth id of the location." }
+      - { name: max_trends, in: query, type: integer, description: "Max trends to return." }
+    response_hint: "{data:[{trend_name, tweet_count}]}"
+    examples:
+      - description: "Worldwide trends"
+        params: { woeid: 1 }
+
+  - name: twitter_usage
+    group: twitter.trends
+    summary: "This project's post-read usage against its monthly cap — check before burning quota."
+    base: default
+    path: /2/usage/tweets
+    auth: default
+    params:
+      - { name: days, in: query, type: integer, description: "Days of daily usage to include (1-90)." }
+    response_hint: "{data:{cap_reset_day, project_cap, project_usage, daily_project_usage}}"

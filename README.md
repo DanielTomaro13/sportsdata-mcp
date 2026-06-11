@@ -317,6 +317,23 @@ from restricted jurisdictions (verified: AU IPs time out on every host) — run
 from an unrestricted region or VPN. Flow: `polymarket_events` → a market's
 `clobTokenIds` → `polymarket_book` / `polymarket_price_history`.
 
+### X (Twitter) — `api.x.com` (needs a Bearer token)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `twitter.tweets` | 7 | 7-day search, volume counts, post lookup (batch + single), quote/repost/like engagement |
+| `twitter.users` | 6 | Profile lookup (handle/id, batch), user timelines, mentions |
+| `twitter.trends` | 2 | Trends by location (WOEID) + project usage/cap monitor |
+
+The X API v2 read surface — **no anonymous tier**, so a Bearer token is
+required: env `X_BEARER_TOKEN` first (an operator can ship a deployment-wide
+token for all its users), then the config `secrets:` block (each user their
+own). The env var holds the bare token; the spec adds `Bearer `. Mind your
+tier's monthly read cap (`twitter_usage`); the spec throttles ~0.5 req/s and
+never auto-retries 429s. Write/user-context surfaces (posting, DMs, follows)
+are out of scope. Flow: `twitter_user_by_username("AFL")` → id →
+`twitter_user_tweets`; search with X operators (`"Storm" lang:en -is:retweet`).
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.
