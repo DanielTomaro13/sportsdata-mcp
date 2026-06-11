@@ -104,6 +104,7 @@ CONTRACTS: list[Contract] = [
     Contract("kalshi_markets", {"limit": 2}, ("cursor", "markets"), "markets", ("ticker", "event_ticker", "title", "status")),
     Contract("kalshi_series_list", {"category": "Sports"}, ("series",), "series", ("ticker", "title", "category")),
     Contract("kalshi_exchange_status", {}, ("exchange_active", "trading_active")),
+    Contract("kalshi_structured_targets", {"page_size": 2}, ("cursor", "structured_targets"), "structured_targets", ("id", "name", "type")),
     # ── Polymarket (geo-gated: skips where edge-blocked, verifies from US runners) ──
     Contract("polymarket_markets", {"limit": 2, "active": True, "closed": False}, list_at="", item_keys=("id", "question", "slug")),
     Contract("polymarket_events", {"limit": 2, "active": True, "closed": False}, list_at="", item_keys=("id", "title", "slug")),

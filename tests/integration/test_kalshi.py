@@ -40,8 +40,21 @@ def _payload(result):
 
 async def test_kalshi_tools_registered(kalshi_server):
     names = {t.name for t in await kalshi_server.list_tools()}
-    assert {"kalshi_markets", "kalshi_market", "kalshi_orderbook", "kalshi_trades", "kalshi_candlesticks"} <= names
+    assert {
+        "kalshi_markets",
+        "kalshi_market",
+        "kalshi_orderbook",
+        "kalshi_trades",
+        "kalshi_candlesticks",
+        "kalshi_candlesticks_batch",
+    } <= names
     assert {"kalshi_events", "kalshi_event", "kalshi_series_list", "kalshi_series", "kalshi_milestones"} <= names
+    assert {
+        "kalshi_mve_collections",
+        "kalshi_mve_collection",
+        "kalshi_structured_targets",
+        "kalshi_structured_target",
+    } <= names
     assert {"kalshi_exchange_status", "kalshi_exchange_schedule", "kalshi_exchange_announcements"} <= names
 
 

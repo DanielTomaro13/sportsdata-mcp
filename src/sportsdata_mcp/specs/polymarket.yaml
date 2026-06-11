@@ -133,6 +133,41 @@ endpoints:
       - { name: offset, in: query, type: integer, description: "Pagination offset." }
     response_hint: "[{id, label, slug, forceShow, …}]  (top-level array)"
 
+  - name: polymarket_series_list
+    group: polymarket.gamma
+    capabilities: [prediction.events_list]
+    summary: "Series catalogue — a series groups recurring events (e.g. a league's season of games); the top of Gamma's series → events → markets hierarchy."
+    base: default
+    path: /series
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 25, description: "Page size." }
+      - { name: offset, in: query, type: integer, description: "Pagination offset." }
+      - { name: order, in: query, type: string, description: "Sort key (e.g. volume24hr, liquidity)." }
+      - { name: ascending, in: query, type: boolean, description: "Sort direction." }
+      - { name: slug, in: query, type: string, description: "Exact series slug." }
+      - { name: closed, in: query, type: boolean, description: "Only (or exclude with false) closed series." }
+    response_hint: "[{id, title, slug, seriesType, recurrence, active, closed, volume, liquidity, events:[…]}]  (top-level array)"
+
+  - name: polymarket_series
+    group: polymarket.gamma
+    capabilities: [prediction.events_list]
+    summary: "One series by Gamma id, with its events."
+    base: default
+    path: /series/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Gamma series id (from polymarket_series_list or an event's series)." }
+    response_hint: "{id, title, slug, seriesType, recurrence, events:[…]}"
+
+  - name: polymarket_sports
+    group: polymarket.gamma
+    summary: "Sports metadata catalogue — each sport with its tag ids, league/resolution links and series, the entry point for sports markets (feed tag_id into polymarket_markets/polymarket_events)."
+    base: default
+    path: /sports
+    auth: default
+    response_hint: "[{sport, image, resolution, ordering, tags, series}]  (top-level array)"
+
   - name: polymarket_search
     group: polymarket.gamma
     summary: "Site-wide search over events/markets/profiles by free-text query."

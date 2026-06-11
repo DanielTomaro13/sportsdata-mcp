@@ -241,7 +241,8 @@ endpoints:
     auth: default
     params:
       - { name: woeid, in: path, type: integer, required: true, description: "Where-On-Earth id of the location." }
-      - { name: max_trends, in: query, type: integer, description: "Max trends to return." }
+      - { name: max_trends, in: query, type: integer, description: "Max trends to return (1-50, default 20)." }
+      - { name: trend_fields, in: query, type: string, api_name: trend.fields, default: "trend_name,tweet_count", description: "Trend fields to include (CSV) — tweet_count is omitted unless requested." }
     response_hint: "{data:[{trend_name, tweet_count}]}"
     examples:
       - description: "Worldwide trends"
@@ -254,5 +255,6 @@ endpoints:
     path: /2/usage/tweets
     auth: default
     params:
-      - { name: days, in: query, type: integer, description: "Days of daily usage to include (1-90)." }
+      - { name: days, in: query, type: integer, description: "Days of daily usage to include (1-90, default 7)." }
+      - { name: usage_fields, in: query, type: string, api_name: usage.fields, description: "Usage fields to include (CSV: cap_reset_day, daily_project_usage, daily_client_app_usage, project_cap, project_id, project_usage)." }
     response_hint: "{data:{cap_reset_day, project_cap, project_usage, daily_project_usage}}"

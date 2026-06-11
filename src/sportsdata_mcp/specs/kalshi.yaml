@@ -112,6 +112,20 @@ endpoints:
       - { name: period_interval, in: query, type: integer, default: 60, description: "Candle width in minutes: 1, 60, or 1440." }
     response_hint: "{ticker, candlesticks:[{end_period_ts, yes_bid, yes_ask, price, volume, open_interest}]}"
 
+  - name: kalshi_candlesticks_batch
+    group: kalshi.markets
+    capabilities: [prediction.price_history]
+    summary: "OHLC candlesticks for MANY markets in one call — pass the tickers as a list."
+    base: default
+    path: /markets/candlesticks
+    auth: default
+    params:
+      - { name: market_tickers, in: query, type: string_csv, required: true, description: "Market ticker(s)." }
+      - { name: start_ts, in: query, type: integer, required: true, description: "Window start (unix seconds)." }
+      - { name: end_ts, in: query, type: integer, required: true, description: "Window end (unix seconds)." }
+      - { name: period_interval, in: query, type: integer, default: 60, description: "Candle width in minutes: 1, 60, or 1440." }
+    response_hint: "{markets:[{market_ticker, candlesticks:[{end_period_ts, price, volume, open_interest}]}]}"
+
   # ─── kalshi.events — events, series, milestones ───────────────────────
   - name: kalshi_events
     group: kalshi.events
@@ -181,6 +195,53 @@ endpoints:
       - { name: category, in: query, type: string, description: "Filter by category." }
       - { name: minimum_start_date, in: query, type: string, description: "ISO date lower bound." }
     response_hint: "{cursor, milestones:[{id, category, details, end_date, primary_event_tickers, related_event_tickers}]}"
+
+  - name: kalshi_mve_collections
+    group: kalshi.events
+    capabilities: [prediction.events_list]
+    summary: "Multivariate event collections — the parlay-style combo products that many KXMVE* markets belong to (a market's mve_collection_ticker points here)."
+    base: default
+    path: /multivariate_event_collections
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size." }
+      - { name: cursor, in: query, type: string, description: "Pagination cursor." }
+      - { name: status, in: query, type: string, description: "Filter: open, closed, settled." }
+      - { name: series_ticker, in: query, type: string, description: "Filter to one series." }
+    response_hint: "{cursor, multivariate_contracts:[{collection_ticker, series_ticker, title, description, is_ordered, is_all_yes, size_min, size_max, associated_event_tickers, open_date, close_date}]}"
+
+  - name: kalshi_mve_collection
+    group: kalshi.events
+    capabilities: [prediction.events_list]
+    summary: "One multivariate event collection by ticker."
+    base: default
+    path: /multivariate_event_collections/{collectionTicker}
+    auth: default
+    params:
+      - { name: collectionTicker, in: path, type: string, required: true, description: "Collection ticker (a market's mve_collection_ticker)." }
+    response_hint: "{multivariate_contract:{collection_ticker, series_ticker, title, description, associated_events, associated_event_tickers}}"
+
+  - name: kalshi_structured_targets
+    group: kalshi.events
+    summary: "Structured targets — Kalshi's entity registry (players, companies, people) that markets resolve against. Paginated by cursor; page size via page_size."
+    base: default
+    path: /structured_targets
+    auth: default
+    params:
+      - { name: page_size, in: query, type: integer, default: 100, description: "Page size (the API ignores 'limit' here)." }
+      - { name: cursor, in: query, type: string, description: "Pagination cursor." }
+      - { name: type, in: query, type: string, description: "Entity type filter (e.g. basketball_player, soccer_player, company, actor)." }
+    response_hint: "{cursor, structured_targets:[{id, name, type, details, source_ids, last_updated_ts}]}"
+
+  - name: kalshi_structured_target
+    group: kalshi.events
+    summary: "One structured target (entity) by id."
+    base: default
+    path: /structured_targets/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: string, required: true, description: "Structured-target id." }
+    response_hint: "{structured_target:{id, name, type, details, source_ids}}"
 
   # ─── kalshi.exchange — status / schedule / announcements ─────────────
   - name: kalshi_exchange_status
