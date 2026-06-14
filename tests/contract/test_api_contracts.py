@@ -120,6 +120,7 @@ CONTRACTS: list[Contract] = [
     Contract("laliga_competitions", {}, ("competitions",), "competitions", ("id", "slug", "opta_id")),
     Contract("laliga_standing", {"slug": "laliga-easports-2025"}, ("total", "standings"), "standings", ("position", "points", "team")),
     Contract("laliga_players_stats", {"slug": "laliga-easports-2025", "limit": 5}, ("total", "player_stats"), "player_stats", ("slug", "opta_id", "stats")),
+    Contract("laliga_matches", {"subscription": "laliga-easports-2025", "competition": "primera-division", "gameweek": 1, "limit": 10}, ("total", "matches"), "matches", ("slug", "home_team", "away_team", "competition")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

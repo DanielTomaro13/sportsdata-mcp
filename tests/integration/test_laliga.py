@@ -89,18 +89,27 @@ async def test_standing_live(laliga_server):
 
 
 @pytest.mark.live
-async def test_team_and_squad_live(laliga_server):
-    """The season team list resolves; a stable club's squad lists players.
-
-    (Drill a known club rather than teams[0] — a newly-promoted side can have an
-    empty squad early in the season.)"""
+async def test_team_directory_and_squad_live(laliga_server):
+    """The global team directory paginates; a club's squad lists players."""
     try:
-        teams = _payload(await laliga_server.call_tool("laliga_teams", {"subscription": SUB}))
+        teams = _payload(await laliga_server.call_tool("laliga_teams", {"limit": 10}))
         squad = _payload(await laliga_server.call_tool("laliga_squad", {"slug": "real-madrid", "subscription": SUB}))
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"laliga unavailable: {e}")
     assert teams["teams"] and "slug" in teams["teams"][0] and "name" in teams["teams"][0]
     assert squad["squads"] and "person" in squad["squads"][0]
+
+
+@pytest.mark.live
+async def test_subscription_carries_season_teams_live(laliga_server):
+    """laliga_subscription embeds the 20 season teams (the season-scoped source,
+    unlike the global laliga_teams directory)."""
+    try:
+        sub = _payload(await laliga_server.call_tool("laliga_subscription", {"slug": SUB}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"laliga unavailable: {e}")
+    teams = sub["subscription"].get("teams")
+    assert isinstance(teams, list) and len(teams) == 20
 
 
 @pytest.mark.live
@@ -118,12 +127,21 @@ async def test_players_stats_and_profile_live(laliga_server):
 
 @pytest.mark.live
 async def test_matches_and_detail_live(laliga_server):
-    """The matches feed resolves; a match slug drills into detail."""
+    """A real LALIGA matchweek (competition=primera-division) resolves; a match drills into detail.
+
+    (competition= is the real filter — subscription= alone returns a mixed bag.)"""
     try:
-        ms = _payload(await laliga_server.call_tool("laliga_matches", {"subscription": SUB, "limit": 5}))
+        ms = _payload(
+            await laliga_server.call_tool(
+                "laliga_matches",
+                {"subscription": SUB, "competition": "primera-division", "gameweek": 1, "limit": 10},
+            )
+        )
         mslug = ms["matches"][0]["slug"]
         detail = _payload(await laliga_server.call_tool("laliga_match", {"slug": mslug}))
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"laliga unavailable: {e}")
-    assert ms["matches"] and "home_team" in ms["matches"][0]
+    # a real La Liga matchweek is 10 matches, all primera-division
+    assert len(ms["matches"]) == 10
+    assert all(m["competition"]["slug"] == "primera-division" for m in ms["matches"])
     assert detail["match"]["slug"] == mslug

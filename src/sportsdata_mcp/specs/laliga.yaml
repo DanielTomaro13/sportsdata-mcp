@@ -84,13 +84,13 @@ endpoints:
   - name: laliga_subscription
     group: laliga.core
     capabilities: [ref.seasons]
-    summary: "One season instance by slug — competition, year, season name, current gameweek, teams, rounds."
+    summary: "One season instance by slug — competition, year, season name, current gameweek, rounds, and `teams` (the authoritative 20 teams in that season — use this, not laliga_teams, for a season roster)."
     base: default
     path: /api/v1/subscriptions/{slug}
     auth: default
     params:
       - { name: slug, in: path, type: string, required: true, description: "Subscription slug (e.g. laliga-easports-2025 = 2025/26)." }
-    response_hint: "{subscription:{id, slug, name, competition, season, season_name, year, current_gameweek, teams, rounds}}"
+    response_hint: "{subscription:{id, slug, name, competition, season, season_name, year, current_gameweek, teams:[20 season teams], rounds}}"
 
   - name: laliga_standing
     group: laliga.core
@@ -120,16 +120,17 @@ endpoints:
   - name: laliga_teams
     group: laliga.teams
     capabilities: [ref.teams]
-    summary: "Teams in a season (pass subscription=). Each: slug, name, nickname, shortname, shield, opta_id."
+    summary: "Global team directory across all competitions (~1541), paginated — use it to resolve a team's slug/id/opta_id. NOTE: NOT season-scoped; for the 20 teams in a season read laliga_standing or laliga_subscription (its embedded `teams`)."
     base: default
     path: /api/v1/teams
     auth: default
     params:
-      - { name: subscription, in: query, type: string, description: "Subscription slug to scope to a season (e.g. laliga-easports-2025)." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+      - { name: offset, in: query, type: integer, default: 0, description: "Pagination offset (total ~1541)." }
     response_hint: "{total, teams:[{id, slug, name, nickname, shortname, boundname, shield, competitions}]}  (opta_id present on most; join via it where available)"
     examples:
-      - description: "2025/26 teams"
-        params: { subscription: "laliga-easports-2025" }
+      - description: "First page of the team directory"
+        params: { limit: 20 }
 
   - name: laliga_team
     group: laliga.teams
@@ -145,13 +146,13 @@ endpoints:
   - name: laliga_squad
     group: laliga.teams
     capabilities: [ref.players]
-    summary: "A club's squad for a season — each entry has person (name, date_of_birth, country, height), photos, position id, shirt_number, opta_id, loan status."
+    summary: "A club's CURRENT squad — each entry has person (name, date_of_birth, country, height), photos, position id, shirt_number, opta_id, loan status. (The subscription arg is required by the API but the roster returned is the current one, not season-historical.)"
     base: default
     path: /api/v1/teams/{slug}/squad
     auth: default
     params:
       - { name: slug, in: path, type: string, required: true, description: "Team slug (e.g. real-madrid)." }
-      - { name: subscription, in: query, type: string, required: true, description: "Subscription slug (e.g. laliga-easports-2025)." }
+      - { name: subscription, in: query, type: string, required: true, description: "Subscription slug (required by the API; e.g. laliga-easports-2025)." }
     response_hint: "{total, squads:[{id, opta_id, person:{name, date_of_birth, country, height}, photos, position, shirt_number, role, current, loan}]}"
 
   # ─── laliga.players — season player stats + profiles ──────────────────
@@ -197,26 +198,28 @@ endpoints:
   - name: laliga_matches
     group: laliga.matches
     capabilities: [sport.fixtures_by_date]
-    summary: "Matches feed — pass subscription= to scope to a season. Each: slug, name, home_team, away_team, date, time, venue, status, gameweek. Paginated (large total)."
+    summary: "Matches feed. IMPORTANT: pass competition= to get a competition's matches — subscription= alone returns a mixed bag (incl. World Cup placeholders). competition=primera-division gives the 380 LALIGA EA SPORTS matches; add gameweek= for one matchweek (10)."
     base: default
     path: /api/v1/matches
     auth: default
     params:
-      - { name: subscription, in: query, type: string, description: "Subscription slug to scope to a season (e.g. laliga-easports-2025)." }
+      - { name: subscription, in: query, type: string, description: "Subscription slug = the season (e.g. laliga-easports-2025)." }
+      - { name: competition, in: query, type: string, description: "Competition slug to filter to — REQUIRED for real LaLiga matches (primera-division, segunda-division, primera-division-femenina)." }
+      - { name: gameweek, in: query, type: integer, description: "Matchweek number (use with competition for a single round = 10 matches)." }
       - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
       - { name: offset, in: query, type: integer, default: 0, description: "Pagination offset." }
-    response_hint: "{total, matches:[{id, slug, name, opta_id, home_team, away_team, competition, season, gameweek, date, time, venue, status}]}"
+    response_hint: "{total, matches:[{id, slug, name, opta_id, home_team, away_team, competition, season, gameweek, date, time, venue, status}]}  (status FullTime/PreMatch/…)"
     examples:
-      - description: "2025/26 matches (first page)"
-        params: { subscription: "laliga-easports-2025", limit: 10 }
+      - description: "2025/26 LALIGA matchweek 1 (10 matches)"
+        params: { subscription: "laliga-easports-2025", competition: "primera-division", gameweek: 1, limit: 10 }
 
   - name: laliga_match
     group: laliga.matches
     capabilities: [sport.match_detail]
-    summary: "One match by SLUG (from laliga_matches; the long temporada-… slug, not the numeric id which 404s)."
+    summary: "One match by SLUG (from laliga_matches; the long temporada-… slug, not the numeric id which 404s). For a played match adds scores + formations."
     base: default
     path: /api/v1/matches/{slug}
     auth: default
     params:
       - { name: slug, in: path, type: string, required: true, description: "Match slug (from laliga_matches.matches[].slug)." }
-    response_hint: "{match:{id, slug, name, opta_id, home_team, away_team, competition, season, gameweek, date, venue, attempt_official}}"
+    response_hint: "{match:{id, slug, name, home_team, away_team, home_score, away_score, home_formation, away_formation, competition, gameweek, date, status, attempt, ball}}"

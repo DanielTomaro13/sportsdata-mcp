@@ -71,9 +71,18 @@ laliga_standing(slug)                      →  the league table
 
 | Tool | Path | Capability |
 |---|---|---|
-| `laliga_teams` | `/api/v1/teams?subscription=` | `ref.teams` |
+| `laliga_teams` | `/api/v1/teams?limit=&offset=` | `ref.teams` |
 | `laliga_team` | `/api/v1/teams/{slug}` | `ref.teams` |
 | `laliga_squad` | `/api/v1/teams/{slug}/squad?subscription=` | `ref.players` |
+
+> **Scoping gotcha.** The `/api/v1/teams` and `/api/v1/matches` feeds and the squad
+> roster are **not reliably season-scoped** — `laliga_teams` is a global directory
+> (~1541 teams across all competitions, paginated) for resolving a team's
+> slug/id/opta_id, and a squad returns the club's *current* roster regardless of the
+> `subscription` passed. **For a season's actual data use the `/subscriptions/{slug}/…`
+> path tools:** `laliga_standing` and `laliga_subscription` (its embedded `teams`) give
+> the 20 teams; `laliga_players_stats` gives that season's players; `laliga_matches`
+> needs `competition=` (see below).
 
 ## Players — group `laliga.players`
 
@@ -93,11 +102,15 @@ stat names: `goals`, `goal_assists`, `appearances`, `time_played`, `clean_sheets
 
 | Tool | Path | Capability |
 |---|---|---|
-| `laliga_matches` | `/api/v1/matches?subscription=&limit=&offset=` | `sport.fixtures_by_date` |
+| `laliga_matches` | `/api/v1/matches?subscription=&competition=&gameweek=` | `sport.fixtures_by_date` |
 | `laliga_match` | `/api/v1/matches/{slug}` | `sport.match_detail` |
 
-The matches feed is large (paginated). `laliga_match` is keyed by the long
-`temporada-…` **slug** (the numeric `id` 404s).
+**Pass `competition=` to get real LaLiga matches.** `subscription=` alone returns
+a mixed bag (4581 rows, dominated by FIFA World Cup placeholders);
+`competition=primera-division` filters to the **380** LALIGA EA SPORTS matches, and
+adding `gameweek=N` returns one matchweek (10). `laliga_match` is keyed by the long
+`temporada-…` **slug** (the numeric `id` 404s) and, for a played match, carries
+`home_score`/`away_score` + `home_formation`/`away_formation`.
 
 ## Not modelled
 
