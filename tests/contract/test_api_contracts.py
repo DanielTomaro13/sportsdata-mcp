@@ -121,6 +121,11 @@ CONTRACTS: list[Contract] = [
     Contract("laliga_standing", {"slug": "laliga-easports-2025"}, ("total", "standings"), "standings", ("position", "points", "team")),
     Contract("laliga_players_stats", {"slug": "laliga-easports-2025", "limit": 5}, ("total", "player_stats"), "player_stats", ("slug", "opta_id", "stats")),
     Contract("laliga_matches", {"subscription": "laliga-easports-2025", "competition": "primera-division", "gameweek": 1, "limit": 10}, ("total", "matches"), "matches", ("slug", "home_team", "away_team", "competition")),
+    # ── Serie A (api-sdp.legaseriea.it — public no-auth; global, runs in CI) ──
+    Contract("seriea_competitions", {}, ("competitions",), "competitions", ("competitionId", "name")),
+    Contract("seriea_seasons", {}, ("seasons",), "seasons", ("seasonId", "seasonName")),
+    Contract("seriea_standings", {"seasonId": "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a"}, ("standings",), "standings", ("type", "teams")),
+    Contract("seriea_matches", {"seasonId": "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a"}, ("matches",), "matches", ("matchId", "home", "away", "status")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

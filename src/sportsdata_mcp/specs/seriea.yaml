@@ -1,0 +1,134 @@
+spec_version: 1
+
+# Serie A (Lega Serie A) — the public "SDP" (Sports Data Platform) JSON API behind
+# legaseriea.it, read directly. NO AUTH (just a normal User-Agent). Unofficial +
+# undocumented. Re-probed live 2026-06-15. Underlying stats are Opta.
+#
+# Host: api-sdp.legaseriea.it/v1/serie-a/football. Add locale=en-GB for English
+# labels (baked as a default on every tool).
+#
+# Ids are opaque SDP strings carrying a literal `::`, e.g.
+#   season:  serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a
+#   team:    serie-a::Football_Team::3294993c79b14d918ccdc78da0fb90c5
+# The `::` is sent as-is in the path (verified live — the server accepts it; the
+# engine needs no special encoding). Every entity also carries a raw `opta:*`
+# providerId; join on the SDP id.
+#
+# The Serie A COMPETITION id is fixed, so it's baked into seriea_seasons — the
+# model only ever supplies a seasonId (discovered from seriea_seasons; 41 seasons,
+# 1986/87 → 2026/27; seasonName like "2025/2026", starting year 2025 = 2025/26).
+# Unlike PL/La Liga there is NO squad endpoint — the player-stats feed returns
+# identity AND stats in one call. There is also no single-match / rounds endpoint;
+# match data (scores, matchday, stadium) lives in the matches feed.
+
+provider:
+  id: seriea
+  display_name: "Serie A (legaseriea.it)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/SerieA.md"
+  base_urls:
+    default: https://api-sdp.legaseriea.it/v1/serie-a/football
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── seriea.core — competitions + season catalogue ────────────────────
+  - name: seriea_competitions
+    group: seriea.core
+    capabilities: [sport.competitions_list]
+    summary: "All Lega Serie A competitions (Serie A, Coppa Italia, Super Cup, Primavera, …), each with its SDP competitionId."
+    base: default
+    path: /competitions
+    auth: default
+    params:
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{competitions:[{competitionId, name, officialName, shortName, acronymName, providerId, imagery}]}"
+
+  - name: seriea_seasons
+    group: seriea.core
+    capabilities: [ref.seasons]
+    summary: "All 41 Serie A seasons (1986/87 → 2026/27) with seasonId + seasonName. The Serie A competition id is baked in — start here to get a seasonId, then drill into standings/teams/players/matches."
+    base: default
+    path: /competitions/serie-a::Football_Competition::ec93b94f74294dc98ab5bcfd67fc0d88/seasons
+    auth: default
+    params:
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{seasons:[{seasonId, seasonName, startDateUtc, endDateUtc, competitionId, providerId, imagery}]}  (seasonName like '2025/2026')"
+
+  - name: seriea_season
+    group: seriea.core
+    capabilities: [ref.seasons]
+    summary: "One season's detail by seasonId."
+    base: default
+    path: /seasons/{seasonId}
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons; e.g. serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a = 2025/26)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{season:{seasonId, seasonName, startDateUtc, endDateUtc, competitionId, imagery}}"
+
+  # ─── seriea.season — standings, teams, players, matches ───────────────
+  - name: seriea_standings
+    group: seriea.season
+    capabilities: [stats.ladder]
+    summary: "League table for a season. Returns three tables — standings[0]=overall, [1]=home, [2]=away — each with 20 teams; each team carries stats[] keyed by statsId (rank, points, matches-played, win, draw, lose, goals-for, goals-against, goal-difference)."
+    base: default
+    path: /seasons/{seasonId}/standings/overall
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{standings:[{type: table|home|away, teams:[{teamId, mediaName, providerId, imagery, stats:[{statsId, statsLabel, statsValue}]}]}]}"
+    examples:
+      - description: "2025/26 Serie A table"
+        params: { seasonId: "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a" }
+
+  - name: seriea_teams
+    group: seriea.season
+    capabilities: [ref.teams]
+    summary: "The 20 teams in a season, with identity + imagery (logos). Season-scoped."
+    base: default
+    path: /seasons/{seasonId}/teams
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{competition, teams:[{teamId, providerId, officialName, mediaName, shortName, acronymName, countryCode, imagery:{teamLogo}}]}"
+
+  - name: seriea_players
+    group: seriea.season
+    capabilities: [stats.player_season]
+    summary: "Every player in a season with identity AND full Opta stats[] (~279 {statsId, statsValue} pairs) — no separate squad call needed. Paginated 30/page (pagination.totalPages / isLastPage; the pageSize param is ignored). category is General or Goalkeeping only (others 400)."
+    base: default
+    path: /seasons/{seasonId}/stats/players
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
+      - { name: category, in: query, type: string, default: "General", enum: [General, Goalkeeping], description: "Stat category — only General and Goalkeeping are valid (Attack/Defence/etc. return 400)." }
+      - { name: page, in: query, type: integer, default: 1, description: "1-based page (30 players/page; total via pagination.totalPages)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{players:[{playerId, displayName, mediaFirstName, mediaLastName, shirtName, role (1 GK,2 DEF,3 MID,4 FWD), roleLabel, nationalityIsoCode, team, imagery, stats:[{statsId, statsValue}]}], pagination:{totalPages, currentPage, isLastPage}}"
+    examples:
+      - description: "2025/26 outfield player stats, page 1"
+        params: { seasonId: "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a", category: "General", page: 1 }
+
+  - name: seriea_matches
+    group: seriea.season
+    capabilities: [sport.fixtures_by_date]
+    summary: "All 380 matches for a season — scores, status, kickoff, stadium, matchday. Season-scoped (no competition mixing)."
+    base: default
+    path: /seasons/{seasonId}/matches
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{matches:[{matchId, home, away, providerHomeScore, providerAwayScore, status (FINISHED/…), matchDateUtc, stadiumName, roundName, matchSet:{matchSetId}, winTeamId}]}  (matchSet/providerId = opta:MatchDay:N)"

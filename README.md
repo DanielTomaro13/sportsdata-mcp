@@ -326,6 +326,21 @@ instance (slug `laliga-easports-2025` = 2025/26); detail endpoints are keyed by
 comparison via the shared `stats.ladder` / `sport.fixtures_by_date` /
 `stats.player_season` tags.
 
+### Serie A — `api-sdp.legaseriea.it` (no auth)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `seriea.core` | 3 | All competitions, the 41-season catalogue, single-season detail |
+| `seriea.season` | 4 | League table (overall/home/away), the 20 teams, every-player Opta stats (paginated), all 380 matches |
+
+The public **SDP** JSON API behind legaseriea.it, read directly (no auth).
+Underlying data is **Opta**. The Serie A competition id is baked in, so you only
+ever supply a `seasonId` (discovered from `seriea_seasons`; `seasonName` like
+`2025/2026`). Player stats return identity **and** ~279 Opta metrics in one call
+(no squad endpoint), paginated 30/page with `category=General|Goalkeeping`.
+Completes the big-three football leagues alongside Premier League + La Liga via
+the shared `stats.ladder` / `sport.fixtures_by_date` / `stats.player_season` tags.
+
 ### Kalshi — `kalshi.com` (prediction markets, no key)
 
 | Group | Tools | Notes |
