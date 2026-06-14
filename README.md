@@ -331,7 +331,7 @@ comparison via the shared `stats.ladder` / `sport.fixtures_by_date` /
 | Group | Tools | Notes |
 |---|---:|---|
 | `seriea.core` | 3 | All competitions, the 41-season catalogue, single-season detail |
-| `seriea.season` | 4 | League table (overall/home/away), the 20 teams, every-player Opta stats (paginated), all 380 matches |
+| `seriea.season` | 6 | League table (overall/home/away), the 20 teams, every-player + team Opta stats (paginated), all 380 matches, match lineups |
 
 The public **SDP** JSON API behind legaseriea.it, read directly (no auth).
 Underlying data is **Opta**. The Serie A competition id is baked in, so you only

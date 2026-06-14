@@ -107,7 +107,7 @@ endpoints:
   - name: seriea_players
     group: seriea.season
     capabilities: [stats.player_season]
-    summary: "Every player in a season with identity AND full Opta stats[] (~279 {statsId, statsValue} pairs) — no separate squad call needed. Paginated 30/page (pagination.totalPages / isLastPage; the pageSize param is ignored). category is General or Goalkeeping only (others 400)."
+    summary: "Every player in a season with identity AND full Opta stats[] (~279 {statsId, statsValue} pairs) — no separate squad call needed. Paginated 30/page (pagination.totalPages / isLastPage; the pageSize param is ignored). NOTE: `category` selects which STAT SET is returned (General or Goalkeeping; others 400) — it is NOT a position filter, every category returns all players."
     base: default
     path: /seasons/{seasonId}/stats/players
     auth: default
@@ -124,11 +124,37 @@ endpoints:
   - name: seriea_matches
     group: seriea.season
     capabilities: [sport.fixtures_by_date]
-    summary: "All 380 matches for a season — scores, status, kickoff, stadium, matchday. Season-scoped (no competition mixing)."
+    summary: "All 380 matches for a season — scores, status, kickoff, stadium, matchday. Season-scoped. NOTE: returns the WHOLE season in one ~1.2 MB payload — it cannot be narrowed server-side (matchday/round/page params are all ignored); filter the returned matches by `matchSet`/`roundName` (the matchweek) client-side."
     base: default
     path: /seasons/{seasonId}/matches
     auth: default
     params:
       - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
       - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
-    response_hint: "{matches:[{matchId, home, away, providerHomeScore, providerAwayScore, status (FINISHED/…), matchDateUtc, stadiumName, roundName, matchSet:{matchSetId}, winTeamId}]}  (matchSet/providerId = opta:MatchDay:N)"
+    response_hint: "{matches:[{matchId, home, away, providerHomeScore, providerAwayScore, status (FINISHED/…), matchDateUtc, stadiumName, roundName, matchSet:{matchSetId}, winTeamId}]}  (matchSet = the matchweek, providerId opta:MatchDay:N — group by it client-side)"
+
+  - name: seriea_match_lineups
+    group: seriea.season
+    summary: "Lineups for one match — per side: tacticalFormation, the fielded XI (with average pitch positions, captain/GK flags, per-player events), the bench, and staff. Discover the matchId from seriea_matches."
+    base: default
+    path: /seasons/{seasonId}/matches/{matchId}/lineups
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
+      - { name: matchId, in: path, type: string, required: true, description: "SDP match id (from seriea_matches.matches[].matchId)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{matchId, pitchSizeX, pitchSizeY, home:{teamId, tacticalFormation, fielded:[{displayName, bibNumber, isCaptain, isGoalkeeper, averageXPosition, averageYPosition, events}], benched, staff}, away:{…}}"
+
+  - name: seriea_team_stats
+    group: seriea.season
+    capabilities: [stats.team_season]
+    summary: "Team stat leaderboard for a season — all 20 teams with full Opta team stats[] (~402 {statsId, statsValue} pairs: games-played, total-points, total-wins/losses/draws, …). Same category rule as players (General or Goalkeeping; others 400)."
+    base: default
+    path: /seasons/{seasonId}/stats/teams
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "SDP season id (from seriea_seasons)." }
+      - { name: category, in: query, type: string, default: "General", enum: [General, Goalkeeping], description: "Stat category (General or Goalkeeping; others 400)." }
+      - { name: page, in: query, type: integer, default: 1, description: "1-based page (all 20 teams usually fit on page 1)." }
+      - { name: locale, in: query, type: string, default: "en-GB", description: "Label language." }
+    response_hint: "{teams:[{teamId, mediaName, providerId, imagery, stats:[{statsId, statsLabel, statsValue}]}], pagination:{totalPages, currentPage, isLastPage}}"

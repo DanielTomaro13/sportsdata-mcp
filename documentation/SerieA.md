@@ -61,7 +61,9 @@ seriea_matches(seasonId)             →  all 380 matches (scores, matchday)
 | `seriea_standings` | `/seasons/{seasonId}/standings/overall` | `stats.ladder` |
 | `seriea_teams` | `/seasons/{seasonId}/teams` | `ref.teams` |
 | `seriea_players` | `/seasons/{seasonId}/stats/players?category=&page=` | `stats.player_season` |
+| `seriea_team_stats` | `/seasons/{seasonId}/stats/teams?category=` | `stats.team_season` |
 | `seriea_matches` | `/seasons/{seasonId}/matches` | `sport.fixtures_by_date` |
+| `seriea_match_lineups` | `/seasons/{seasonId}/matches/{matchId}/lineups` | — |
 
 ### Notes
 
@@ -77,10 +79,19 @@ seriea_matches(seasonId)             →  all 380 matches (scores, matchday)
   and Title-case (`Interceptions`, `Total Passes`, `Goal Assists`,
   `Shots On Target ( inc goals )`) — read with fallbacks. There is no per-player
   clean-sheets/saves stat in `General`; clean sheets must be derived from
-  `seriea_matches`.
+  `seriea_matches`. **`category` is a stat-set, not a position filter** —
+  `Goalkeeping` returns *all* players (with goalkeeping stats), not only keepers.
+- **`seriea_team_stats`** is the team equivalent — all 20 teams with ~400 Opta team
+  metrics each (`games-played`, `total-points`, `total-wins`, …), same category rule.
 - **Matches** is season-scoped (all 380, no competition mixing). Scores are
   `providerHomeScore`/`providerAwayScore`; `status` is `FINISHED` for played games;
-  the matchweek is `matchSet` (its `providerId` is `opta:MatchDay:N`).
+  the matchweek is `matchSet` (its `providerId` is `opta:MatchDay:N`). ⚠️ The feed
+  returns the **whole season in one ~1.2 MB payload and cannot be narrowed
+  server-side** — `matchday`/`round`/`page`/`limit` are all silently ignored
+  (verified), so group the returned matches by `matchSet`/`roundName` client-side.
+- **`seriea_match_lineups`** (by `matchId` from the matches feed) gives each side's
+  `tacticalFormation`, the fielded XI (with average pitch positions, captain/GK flags,
+  per-player events), the bench and staff.
 
 ## Not modelled
 

@@ -42,7 +42,14 @@ def _payload(result):
 async def test_seriea_tools_registered(seriea_server):
     names = {t.name for t in await seriea_server.list_tools()}
     assert {"seriea_competitions", "seriea_seasons", "seriea_season"} <= names
-    assert {"seriea_standings", "seriea_teams", "seriea_players", "seriea_matches"} <= names
+    assert {
+        "seriea_standings",
+        "seriea_teams",
+        "seriea_players",
+        "seriea_team_stats",
+        "seriea_matches",
+        "seriea_match_lineups",
+    } <= names
 
 
 async def test_competition_id_baked_into_seasons_path(seriea_server):
@@ -102,13 +109,27 @@ async def test_players_paginated_and_goalkeeping_live(seriea_server):
 
 
 @pytest.mark.live
-async def test_matches_live(seriea_server):
-    """A season's matches feed is 380 games with scores + status."""
+async def test_matches_and_lineups_live(seriea_server):
+    """A season's matches feed is 380 games; a match drills into lineups (XI + formation)."""
     try:
         sid = await _a_season_id(seriea_server)
-        res = await seriea_server.call_tool("seriea_matches", {"seasonId": sid})
-    except (MCPToolError, RuntimeError) as e:
+        matches = _payload(await seriea_server.call_tool("seriea_matches", {"seasonId": sid}))["matches"]
+        mid = next(m["matchId"] for m in matches if m.get("status") == "FINISHED")
+        lineups = _payload(await seriea_server.call_tool("seriea_match_lineups", {"seasonId": sid, "matchId": mid}))
+    except (MCPToolError, RuntimeError, StopIteration) as e:
         pytest.xfail(f"Serie A SDP unavailable: {e}")
-    matches = _payload(res)["matches"]
     assert len(matches) == 380
     assert {"matchId", "home", "away", "status"} <= set(matches[0])
+    assert len(lineups["home"]["fielded"]) == 11 and lineups["home"].get("tacticalFormation")
+
+
+@pytest.mark.live
+async def test_team_stats_live(seriea_server):
+    """The team stat leaderboard returns 20 teams each with Opta stats[]."""
+    try:
+        sid = await _a_season_id(seriea_server)
+        res = await seriea_server.call_tool("seriea_team_stats", {"seasonId": sid})
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"Serie A SDP unavailable: {e}")
+    teams = _payload(res)["teams"]
+    assert len(teams) == 20 and teams[0]["stats"]

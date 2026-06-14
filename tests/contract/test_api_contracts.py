@@ -125,6 +125,7 @@ CONTRACTS: list[Contract] = [
     Contract("seriea_competitions", {}, ("competitions",), "competitions", ("competitionId", "name")),
     Contract("seriea_seasons", {}, ("seasons",), "seasons", ("seasonId", "seasonName")),
     Contract("seriea_standings", {"seasonId": "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a"}, ("standings",), "standings", ("type", "teams")),
+    Contract("seriea_team_stats", {"seasonId": "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a"}, ("teams",), "teams", ("teamId", "stats")),
     Contract("seriea_matches", {"seasonId": "serie-a::Football_Season::5f0e080fc3a44073984b75b3a8e06a8a"}, ("matches",), "matches", ("matchId", "home", "away", "status")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
