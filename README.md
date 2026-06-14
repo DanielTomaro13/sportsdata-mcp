@@ -286,6 +286,27 @@ with `mlb_teams` / `mlb_schedule` / `mlb_player_search`, then drill into a game 
 player. Most tools accept the API's `hydrate` string to embed related objects in one
 call.
 
+### Premier League — `premierleague.com` (no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `premierleague.core` | 7 | Competitions, season structure, awards, the league table, current gameweek, geo |
+| `premierleague.teams` | 10 | Teams (+ batch), squads, form (single + all-teams), team stats, next fixture, club metadata |
+| `premierleague.matches` | 8 | Fixtures/results feed + match centre: detail, events, lineups, team stats (~200 Opta metrics), officials, commentary |
+| `premierleague.players` | 8 | Player directory, profiles (basic/career/season), batch lookup, season + competition stats, metadata |
+| `premierleague.stats` | 2 | Player + team stat leaderboards (sort by any Opta metric) |
+| `premierleague.content` | 8 | Editorial content/search, latest+popular news/video, broadcasting schedule |
+
+The private JSON APIs that power premierleague.com, read directly (no key,
+no cookies) across three hosts (the **SDP** stats platform, the editorial/
+broadcast `api.premierleague.com`, and static config on `resources.premierleague.com`).
+Underlying data is **Opta**. Premier League = competition `8`; season id is the
+starting year (`2025` = 2025/26). Flow: `pl_teams` → `pl_matches` → a match id →
+`pl_match`/`pl_match_stats`; `pl_standings` for the table. Unofficial/undocumented —
+respect the ~5 rps rate limit. The SDP wire params (`_limit`, `_sort`,
+`kickoff>`/`kickoff<`) are exposed under clean tool names (`limit`, `sort`,
+`kickoff_after`/`kickoff_before`).
+
 ### Kalshi — `kalshi.com` (prediction markets, no key)
 
 | Group | Tools | Notes |

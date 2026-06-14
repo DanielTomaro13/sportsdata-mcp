@@ -111,6 +111,11 @@ CONTRACTS: list[Contract] = [
     # ── X/Twitter (needs X_BEARER_TOKEN → skips without one) ──
     Contract("twitter_user_by_username", {"username": "NBA"}, ("data",)),
     Contract("twitter_trends", {"woeid": 1}, ("data",)),
+    # ── Premier League (premierleague.com private APIs — public, global, runs in CI) ──
+    Contract("pl_competitions", {"limit": 5}, ("pagination", "data"), "data", ("id", "name")),
+    Contract("pl_teams", {"cid": 8, "limit": 60}, ("pagination", "data"), "data", ("id", "name", "shortName")),
+    Contract("pl_standings", {"cid": 8, "sid": 2025, "live": False}, ("matchweek", "tables")),
+    Contract("pl_player_leaderboard", {"cid": 8, "sid": 2025, "sort": "goals:desc", "limit": 5}, ("pagination", "data")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.

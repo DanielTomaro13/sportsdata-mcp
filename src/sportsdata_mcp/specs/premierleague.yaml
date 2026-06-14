@@ -1,0 +1,610 @@
+spec_version: 1
+
+# Premier League (premierleague.com) — the private JSON APIs that power the public
+# website, read directly. Unofficial + undocumented (no published contract; routes
+# can change). Re-probed live 2026-06-15. Three no-auth hosts:
+#   * sdp-prem-prod.premier-league-prod.pulselive.com — "SDP" (Sport Data Platform),
+#     the core stats/match/standings/player API. THE MAIN ONE. Underlying data is Opta.
+#   * api.premierleague.com — editorial content, broadcasting schedules, personalisation.
+#   * resources.premierleague.com — static config blobs (current gameweek, club metadata).
+#
+# No auth, no key, no cookies. SDP rate-limits 300 req / 60 s per IP (~5 rps) and
+# echoes x-ratelimit-remaining; the throttle below keeps us safely under it. The
+# gateway is allow-listed: a non-enabled route returns 400 problem+json, a valid
+# route with a missing entity returns 404. SDP serves JSON as application/json.
+#
+# Stable ids (Premier League = competition 8; season id = the STARTING year, so
+# 2025 = the 2025/26 season — use 2025 for current live data, 2026/27 fixtures
+# weren't published at probe time). Team ids are Opta-style (Liverpool 14, Man City
+# 43, Arsenal 3). Discover ids: pl_teams (tid) / pl_matches (matchId) / pl_players
+# (playerId) → drill into a match (events/lineups/stats/officials/commentary) or a
+# player (career, season stats).
+#
+# SDP list responses wrap data as {pagination, data:[...]}; page with limit + the
+# opaque next_cursor (the API's `_limit` / `_next`). Sort with sort=<field>:<dir>
+# (the API's `_sort`, e.g. goals:desc). These dotted/underscored/operator wire names
+# aren't valid tool params, so tools take clean names mapped via `api_name`.
+
+provider:
+  id: premierleague
+  display_name: "Premier League (premierleague.com)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/PremierLeague.md"
+  base_urls:
+    default: https://sdp-prem-prod.premier-league-prod.pulselive.com
+    content: https://api.premierleague.com
+    resources: https://resources.premierleague.com
+  default_headers:
+    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # SDP allows 300/60s (~5 rps); stay safely under it. One bucket throttles all
+    # three hosts together (conservative — the editorial/resources hosts are laxer).
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── premierleague.core — competition, structure, awards, standings ────
+  - name: pl_competitions
+    group: premierleague.core
+    capabilities: [sport.competitions_list]
+    summary: "All competitions on the platform (Premier League = id 8). Paginated."
+    base: default
+    path: /api/v1/competitions
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 50, description: "Page size." }
+      - { name: next_cursor, in: query, type: string, api_name: _next, description: "Opaque pagination cursor from pagination._next." }
+    response_hint: "{pagination, data:[{id, code, name}]}"
+
+  - name: pl_competition
+    group: premierleague.core
+    summary: "One competition by id (8 = Premier League)."
+    base: default
+    path: /api/v1/competitions/{cid}
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8 = Premier League)." }
+    response_hint: "{id, code, name}"
+
+  - name: pl_structure
+    group: premierleague.core
+    summary: "Season structure — current phase + phase/matchweek layout for one season."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/structure
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (the starting year; 2025 = 2025/26)." }
+    response_hint: "{currentPhase, structure}"
+
+  - name: pl_awards
+    group: premierleague.core
+    summary: "Season awards — Player/Manager of the Month and other honours for a season."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/awards
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+    response_hint: "{player_awards:[…], manager_awards:[…]}"
+
+  - name: pl_standings
+    group: premierleague.core
+    capabilities: [stats.ladder]
+    summary: "The league table for a season. Each entry has overall/home/away blocks (position, played, won, drawn, lost, GF, GA, points). live=true folds in in-progress matches."
+    base: default
+    path: /api/v5/competitions/{cid}/seasons/{sid}/standings
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: live, in: query, type: boolean, default: false, description: "Fold in in-progress matches." }
+    response_hint: "{matchweek, season, competition, live, deductions, tables:[{entries:[{team, overall:{position, played, won, drawn, lost, goalsFor, goalsAgainst, points}, home, away}]}]}"
+    examples:
+      - description: "2025/26 Premier League table"
+        params: { cid: 8, sid: 2025, live: false }
+
+  - name: pl_current_gameweek
+    group: premierleague.core
+    summary: "The current matchweek number (static config blob)."
+    base: resources
+    path: /premierleague25/config/current-gameweek.json
+    auth: default
+    response_hint: "{matchweek}"
+
+  - name: pl_country
+    group: premierleague.core
+    summary: "Echoes the caller's detected country (used by the site for content geo-gating)."
+    base: content
+    path: /country
+    auth: default
+    response_hint: "{country}"
+
+  # ─── premierleague.teams — teams, squads, form, team stats ────────────
+  - name: pl_teams
+    group: premierleague.teams
+    capabilities: [ref.teams]
+    summary: "All teams that have played the competition, each with seasons[], stadium, name, shortName, abbr, id. Paginated."
+    base: default
+    path: /api/v1/competitions/{cid}/teams
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 60, description: "Page size." }
+      - { name: next_cursor, in: query, type: string, api_name: _next, description: "Pagination cursor." }
+    response_hint: "{pagination, data:[{id, name, shortName, abbr, stadium, seasons}]}"
+    examples:
+      - description: "All Premier League teams"
+        params: { cid: 8 }
+
+  - name: pl_team
+    group: premierleague.teams
+    capabilities: [ref.teams]
+    summary: "One team within a competition by id."
+    base: default
+    path: /api/v1/competitions/{cid}/teams/{tid}
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: tid, in: path, type: integer, required: true, description: "Team id (Liverpool 14, Man City 43, Arsenal 3)." }
+    response_hint: "{name, shortName, abbreviation, player_id}"
+
+  - name: pl_season_teams
+    group: premierleague.teams
+    capabilities: [ref.teams]
+    summary: "The teams in a given season (the 20 in that season's table)."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/teams
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+    response_hint: "{pagination, data:[{id, name, shortName, abbr, stadium}]}"
+
+  - name: pl_teams_by_id
+    group: premierleague.teams
+    capabilities: [ref.teams]
+    summary: "Batch team lookup by a list of ids."
+    base: default
+    path: /api/v2/teams-by-id
+    auth: default
+    params:
+      - { name: id, in: query, type: string_csv, required: true, description: "Team id(s) (e.g. [14, 43])." }
+    response_hint: "[{id, name, shortName, abbr, stadium}]  (top-level array)"
+
+  - name: pl_squad
+    group: premierleague.teams
+    capabilities: [ref.players]
+    summary: "Full squad for a team in a season — players[] with name, shirtNum, position, height/weight, dates, country."
+    base: default
+    path: /api/v2/competitions/{cid}/seasons/{sid}/teams/{tid}/squad
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: tid, in: path, type: integer, required: true, description: "Team id (e.g. 14 = Liverpool)." }
+    response_hint: "{id, team, players:[{id, name, shirtNum, position, height, weight, country, dates}]}"
+
+  - name: pl_team_form
+    group: premierleague.teams
+    capabilities: [stats.team_game_log]
+    summary: "One team's recent matches/form within a season."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/teams/{tid}/form
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: tid, in: path, type: integer, required: true, description: "Team id." }
+      - { name: competitions, in: query, type: integer, description: "Competition filter (usually = cid)." }
+      - { name: seasons, in: query, type: integer, description: "Season filter (usually = sid)." }
+    response_hint: "[{kickoff, homeTeam, awayTeam, competition, ground, clock, attendance}]  (top-level array of matches)"
+
+  - name: pl_teamform
+    group: premierleague.teams
+    capabilities: [stats.team_game_log]
+    summary: "Every team's form for the season in one call (the table's form guide) — recent results + next fixture per team."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/teamform
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+    response_hint: "[{id, name, shortName, abbr, form, next}]  (top-level array, one per team)"
+
+  - name: pl_team_stats
+    group: premierleague.teams
+    capabilities: [stats.team_season]
+    summary: "Team aggregate stats (all-time in the competition) — ~130 Opta metrics."
+    base: default
+    path: /api/v1/competitions/{cid}/teams/{tid}/stats
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: tid, in: path, type: integer, required: true, description: "Team id." }
+    response_hint: "{team, stats:{…Opta team metrics: goals, possessionPercentage, passingAccuracy, totalShots, …}}"
+
+  - name: pl_team_next_fixture
+    group: premierleague.teams
+    capabilities: [sport.match_detail]
+    summary: "A team's next scheduled fixture. Returns 404 when none is scheduled (e.g. off-season)."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/teams/{tid}/nextfixture
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: tid, in: path, type: integer, required: true, description: "Team id." }
+    response_hint: "{kickoff, homeTeam, awayTeam, ground, competition}  (404 when no fixture scheduled)"
+
+  - name: pl_clubs_metadata
+    group: premierleague.teams
+    summary: "Club metadata (names, stadiums, websites, colours) for theming — static config blob."
+    base: resources
+    path: /premierleague25/config/clubs-metadata.json
+    auth: default
+    response_hint: "[{id, name, stadium, website}]  (top-level array)"
+
+  # ─── premierleague.matches — fixtures, results, match centre ──────────
+  - name: pl_matches
+    group: premierleague.matches
+    capabilities: [sport.fixtures_by_date]
+    summary: "Primary fixtures/results feed — filter by competition, season, matchweek, team, period (PreMatch/Live/FullTime) or a kickoff date range. Paginated."
+    base: default
+    path: /api/v2/matches
+    auth: default
+    params:
+      - { name: competition, in: query, type: integer, description: "Competition id (8)." }
+      - { name: season, in: query, type: integer, description: "Season id (2025 = 2025/26)." }
+      - { name: matchweek, in: query, type: integer, description: "Matchweek number." }
+      - { name: team, in: query, type: integer, description: "Filter to one team's matches." }
+      - { name: period, in: query, type: string, enum: [PreMatch, Live, FullTime], description: "Match state filter." }
+      - { name: kickoff_after, in: query, type: string, api_name: "kickoff>", description: "Only matches kicking off after this date (YYYY-MM-DD)." }
+      - { name: kickoff_before, in: query, type: string, api_name: "kickoff<", description: "Only matches kicking off before this date (YYYY-MM-DD)." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+      - { name: sort, in: query, type: string, api_name: _sort, description: "Sort, e.g. kickoff:asc or kickoff:desc." }
+      - { name: next_cursor, in: query, type: string, api_name: _next, description: "Pagination cursor." }
+    response_hint: "{pagination, data:[{matchId, competition, season, matchWeek, phase, kickoff, period, clock, ground, attendance, homeTeam:{id, name, score, halfTimeScore}, awayTeam, resultType}]}"
+    examples:
+      - description: "2025/26 matchweek 1 results"
+        params: { competition: 8, season: 2025, matchweek: 1, limit: 10 }
+
+  - name: pl_matchweek_matches
+    group: premierleague.matches
+    capabilities: [sport.fixtures_by_date]
+    summary: "Matches for one matchweek (v1 path alternative to pl_matches?matchweek=)."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/matchweeks/{mw}/matches
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: mw, in: path, type: integer, required: true, description: "Matchweek number." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+    response_hint: "{pagination, data:[{matchId, kickoff, homeTeam, awayTeam, ground, period}]}"
+
+  - name: pl_match
+    group: premierleague.matches
+    capabilities: [sport.match_detail]
+    summary: "Single match detail (match centre) — richer than the list item; adds seasonInfo."
+    base: default
+    path: /api/v2/matches/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Match id (7-digit, from pl_matches; e.g. 2561895)." }
+    response_hint: "{matchId, competitionId, competition, seasonInfo, matchWeek, phase, kickoff, period, clock, ground, attendance, homeTeam, awayTeam, resultType}"
+
+  - name: pl_match_events
+    group: premierleague.matches
+    capabilities: [stats.play_by_play]
+    summary: "Match events — goals, cards, subs split by home/away team, each with playerId, time, period, timestamp."
+    base: default
+    path: /api/v1/matches/{id}/events
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "{homeTeam:[{type, playerId, time, period, timestamp}], awayTeam:[…]}"
+
+  - name: pl_match_lineups
+    group: premierleague.matches
+    summary: "Match lineups — home_team/away_team players[] with formation and subs."
+    base: default
+    path: /api/v3/matches/{id}/lineups
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "{home_team:{players, formation, subs}, away_team:{…}}"
+
+  - name: pl_match_stats
+    group: premierleague.matches
+    capabilities: [sport.match_boxscore, stats.team_match]
+    summary: "Full team match stats — one block per side with ~200 granular Opta metrics (possession, shots, xG, passes, tackles, …)."
+    base: default
+    path: /api/v3/matches/{id}/stats
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "[{side: Home, teamId, stats:{possessionPercentage, totalScoringAtt, expectedGoals, accuratePass, totalTackle, …}}, {side: Away, …}]  (top-level array of 2)"
+
+  - name: pl_match_officials
+    group: premierleague.matches
+    summary: "Match officials — referee, assistants, fourth official, VAR."
+    base: default
+    path: /api/v1/matches/{id}/officials
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "{matchId, matchOfficials:[{role, name, …}]}"
+
+  - name: pl_match_commentary
+    group: premierleague.matches
+    capabilities: [sport.commentary]
+    summary: "Live text commentary feed for a match (paginated)."
+    base: default
+    path: /api/v1/matches/{id}/commentary
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Match id." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+      - { name: sort, in: query, type: string, api_name: _sort, default: "timestamp:desc", description: "Sort order." }
+      - { name: next_cursor, in: query, type: string, api_name: _next, description: "Pagination cursor." }
+    response_hint: "{pagination, data:[{type, time, timestamp, comment, team1, team2}]}"
+
+  # ─── premierleague.players — directory, profiles, stats ───────────────
+  - name: pl_players
+    group: premierleague.players
+    capabilities: [ref.players]
+    summary: "Player directory for a season (paginated; the Players index page)."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/players
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+      - { name: next_cursor, in: query, type: string, api_name: _next, description: "Pagination cursor." }
+      - { name: position, in: query, type: string, description: "Position filter (Goalkeeper, Defender, Midfielder, Forward)." }
+    response_hint: "{pagination, data:[{id, name, position, country, currentTeam, shirtNum, preferredFoot}]}"
+    examples:
+      - description: "First page of 2025/26 players"
+        params: { cid: 8, sid: 2025, limit: 10 }
+
+  - name: pl_player_basic
+    group: premierleague.players
+    capabilities: [stats.player_profile]
+    summary: "Lightweight player profile — name, position, country, currentTeam."
+    base: default
+    path: /api/v1/players/{pid}/basic
+    auth: default
+    params:
+      - { name: pid, in: path, type: integer, required: true, description: "Player id (from pl_players; e.g. 223094 = Haaland)." }
+    response_hint: "{id, name, firstName, lastName, position, country, currentTeam}"
+
+  - name: pl_player
+    group: premierleague.players
+    capabilities: [stats.player_career]
+    summary: "Full player career — one entry per club/season spell with dates, height/weight, shirtNum, preferredFoot, position."
+    base: default
+    path: /api/v1/players/{pid}
+    auth: default
+    params:
+      - { name: pid, in: path, type: integer, required: true, description: "Player id." }
+    response_hint: "[{id, name, position, currentTeam, country, countryOfBirth, height, dates}]  (top-level array, one per spell)"
+
+  - name: pl_players_by_id
+    group: premierleague.players
+    capabilities: [ref.players]
+    summary: "Batch player lookup by a list of ids (hydrates lineups/squads)."
+    base: default
+    path: /api/v2/players-by-id
+    auth: default
+    params:
+      - { name: id, in: query, type: string_csv, required: true, description: "Player id(s) (e.g. [200785, 223094])." }
+    response_hint: "[{id, name, firstName, lastName}]  (top-level array)"
+
+  - name: pl_player_comp_stats
+    group: premierleague.players
+    capabilities: [stats.player_career]
+    summary: "A player's career stats aggregated across the competition (all seasons)."
+    base: default
+    path: /api/v1/competitions/{cid}/players/{pid}/stats
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: pid, in: path, type: integer, required: true, description: "Player id." }
+    response_hint: "{player, stats:{…Opta player metrics: goals, goalAssists, expectedGoals, totalPasses, …}}"
+
+  - name: pl_player_season_stats
+    group: premierleague.players
+    capabilities: [stats.player_season]
+    summary: "A player's stats for one season."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/players/{pid}/stats
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: pid, in: path, type: integer, required: true, description: "Player id." }
+    response_hint: "{player, stats:{…season Opta metrics}}"
+
+  - name: pl_player_info
+    group: premierleague.players
+    capabilities: [stats.player_profile]
+    summary: "Player bio scoped to a season — team/shirt/dates as they were that season."
+    base: default
+    path: /api/v1/competitions/{cid}/seasons/{sid}/playerinfo/{pid}
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: pid, in: path, type: integer, required: true, description: "Player id." }
+    response_hint: "{id, name, currentTeam, shirtNum, country, countryOfBirth, weight, dates}"
+
+  - name: pl_metadata
+    group: premierleague.players
+    summary: "Generic entity metadata (external/fantasy profile links). type ∈ SDP_FOOTBALL_PLAYER, SDP_FOOTBALL_TEAM."
+    base: default
+    path: /api/v1/metadata/{type}/{mid}
+    auth: default
+    params:
+      - { name: type, in: path, type: string, required: true, description: "Entity type (SDP_FOOTBALL_PLAYER or SDP_FOOTBALL_TEAM)." }
+      - { name: mid, in: path, type: integer, required: true, description: "Entity id (player id or team id)." }
+    response_hint: "{metadata:{…external links / fantasy ids}}"
+
+  # ─── premierleague.stats — leaderboards ───────────────────────────────
+  - name: pl_player_leaderboard
+    group: premierleague.stats
+    capabilities: [stats.leaders_season]
+    summary: "Player stat leaderboard for a season — sort by any Opta metric (goals, goal_assists, clean_sheets, total_passes, …); filter by position. Each row: {playerMetadata, stats}."
+    base: default
+    path: /api/v3/competitions/{cid}/seasons/{sid}/players/stats/leaderboard
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: sid, in: path, type: integer, required: true, description: "Season id (2025 = 2025/26)." }
+      - { name: sort, in: query, type: string, api_name: _sort, default: "goals:desc", description: "Sort metric:dir (e.g. goals:desc, goal_assists:desc, clean_sheets:desc). snake_case or camelCase accepted." }
+      - { name: position, in: query, type: string, description: "Position filter (Goalkeeper, Defender, Midfielder, Forward)." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+      - { name: next_cursor, in: query, type: string, api_name: _next, description: "Pagination cursor." }
+    response_hint: "{pagination, data:[{playerMetadata:{id, name, position, team}, stats:{goals, goalAssists, …}}]}"
+    examples:
+      - description: "2025/26 top scorers"
+        params: { cid: 8, sid: 2025, sort: "goals:desc", limit: 10 }
+
+  - name: pl_team_leaderboard
+    group: premierleague.stats
+    capabilities: [stats.leaders_season]
+    summary: "Team stat leaderboard — sort by any Opta team metric. NOTE: season is a query param here, not a path segment. Each row: {teamMetadata, stats}."
+    base: default
+    path: /api/v2/competitions/{cid}/teams/stats/leaderboard
+    auth: default
+    params:
+      - { name: cid, in: path, type: integer, required: true, description: "Competition id (8)." }
+      - { name: season, in: query, type: integer, required: true, description: "Season id (2025 = 2025/26) — a query param, not a path segment." }
+      - { name: sort, in: query, type: string, api_name: _sort, default: "wins:desc", description: "Sort metric:dir (e.g. tackles_won:desc, blocks:desc, possessionPercentage:desc)." }
+      - { name: limit, in: query, type: integer, api_name: _limit, default: 20, description: "Page size." }
+    response_hint: "{pagination, data:[{teamMetadata:{id, name}, stats:{…team Opta metrics}}]}"
+    examples:
+      - description: "2025/26 teams by tackles won"
+        params: { cid: 8, season: 2025, sort: "tackles_won:desc", limit: 10 }
+
+  # ─── premierleague.content — editorial, broadcasting, personalisation ──
+  - name: pl_content
+    group: premierleague.content
+    capabilities: [content.news]
+    summary: "Content list/search (articles, video, photos) — filter by content types, entity references (SDP_FOOTBALL_MATCH/PLAYER/TEAM) and tags."
+    base: content
+    path: /content/premierleague/{lang}
+    auth: default
+    params:
+      - { name: lang, in: path, type: string, required: true, description: "Language (e.g. en)." }
+      - { name: contentTypes, in: query, type: string, default: "TEXT,VIDEO", description: "CSV of TEXT, VIDEO, PHOTO, PLAYLIST, PROMO, AUDIO." }
+      - { name: references, in: query, type: string, description: "Link to an entity, e.g. SDP_FOOTBALL_MATCH:2561895 (highlights), SDP_FOOTBALL_PLAYER:{pid}." }
+      - { name: tagExpression, in: query, type: string, description: "Tag filter expression, e.g. \"Highlights\"or\"Match Highlights\"." }
+      - { name: tagNames, in: query, type: string, description: "Tag name filter." }
+      - { name: limit, in: query, type: integer, default: 8, description: "Page size." }
+      - { name: offset, in: query, type: integer, default: 0, description: "Pagination offset." }
+      - { name: detail, in: query, type: string, default: "DETAILED", description: "Detail level." }
+    response_hint: "{pageInfo, content:[{id, type, title, description, date, references, tags}]}"
+    examples:
+      - description: "Latest articles + videos"
+        params: { lang: "en", contentTypes: "TEXT,VIDEO", limit: 5 }
+
+  - name: pl_content_item
+    group: premierleague.content
+    summary: "One content item by type + id (TEXT/VIDEO/PHOTO/PLAYLIST/PROMO/AUDIO)."
+    base: content
+    path: /content/premierleague/{type}/{lang}/{contentId}
+    auth: default
+    params:
+      - { name: type, in: path, type: string, required: true, description: "Content type (TEXT, VIDEO, PHOTO, PLAYLIST, PROMO, AUDIO)." }
+      - { name: lang, in: path, type: string, required: true, description: "Language (e.g. en)." }
+      - { name: contentId, in: path, type: integer, required: true, description: "Content id (from pl_content)." }
+      - { name: detail, in: query, type: string, default: "DETAILED", description: "Detail level." }
+    response_hint: "{id, type, title, description, date, body, ...}"
+
+  - name: pl_news_latest
+    group: premierleague.content
+    capabilities: [content.news]
+    summary: "Latest news, smart-ranked (homepage feed)."
+    base: content
+    path: /personalisation/content/news/latest/smart_order
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 9, description: "Page size." }
+      - { name: tags, in: query, type: string, description: "Tag filter (e.g. content-type:article,content-format:long-read)." }
+    response_hint: "[{title, author, body, contentSummary, canonicalUrl, date}]  (top-level array)"
+    examples:
+      - description: "Latest news"
+        params: { limit: 5 }
+
+  - name: pl_news_popular
+    group: premierleague.content
+    capabilities: [content.news]
+    summary: "Popular news over the last `recency` hours, smart-ranked."
+    base: content
+    path: /personalisation/content/news/popular/smart_order
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 10, description: "Page size." }
+      - { name: recency, in: query, type: integer, default: 48, description: "Lookback window in hours." }
+    response_hint: "[{title, author, contentSummary, canonicalUrl, date}]  (top-level array)"
+
+  - name: pl_video_latest
+    group: premierleague.content
+    capabilities: [content.video]
+    summary: "Latest video, smart-ranked."
+    base: content
+    path: /personalisation/content/video/latest/smart_order
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 9, description: "Page size." }
+      - { name: tags, in: query, type: string, description: "Tag filter (e.g. content-type:video)." }
+    response_hint: "[{title, canonicalUrl, date, duration, …}]  (top-level array)"
+    examples:
+      - description: "Latest video"
+        params: { limit: 5 }
+
+  - name: pl_video_popular
+    group: premierleague.content
+    capabilities: [content.video]
+    summary: "Popular video over the last `recency` hours."
+    base: content
+    path: /personalisation/content/video/popular/smart_order
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 10, description: "Page size." }
+      - { name: recency, in: query, type: integer, default: 48, description: "Lookback window in hours." }
+    response_hint: "[{title, canonicalUrl, date}]  (top-level array)"
+
+  - name: pl_broadcasting_events
+    group: premierleague.content
+    capabilities: [broadcast.schedule]
+    summary: "TV/broadcast schedule for a date range (ISO 8601 UTC)."
+    base: content
+    path: /broadcasting/events
+    auth: default
+    params:
+      - { name: pageSize, in: query, type: integer, default: 30, description: "Page size." }
+      - { name: fromDate, in: query, type: string, description: "Range start (ISO 8601 UTC, e.g. 2025-08-01T00:00:00Z)." }
+      - { name: toDate, in: query, type: string, description: "Range end (ISO 8601 UTC)." }
+    response_hint: "{pageInfo, content:[{match/broadcast schedule entries}]}"
+
+  - name: pl_broadcast_match_events
+    group: premierleague.content
+    capabilities: [broadcast.schedule]
+    summary: "Broadcast events for a specific match (sportDataId = SDP match id)."
+    base: content
+    path: /broadcasting/match-events
+    auth: default
+    params:
+      - { name: sportDataId, in: query, type: integer, required: true, description: "SDP match id (from pl_matches)." }
+      - { name: pageSize, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{pageInfo, content:[{broadcast entries for the match}]}"
