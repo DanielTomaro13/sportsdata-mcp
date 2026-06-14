@@ -84,3 +84,41 @@ async def test_value_prefix_prepended(monkeypatch):
     spec = AuthStaticHeader(type="static_header", header="Authorization", env="TEST_X_BEARER", value_prefix="Bearer ")
     name, value = await StaticHeaderAuthProvider(spec).get()
     assert (name, value) == ("Authorization", "Bearer tok123")
+
+
+async def test_env_overrides_literal_value(monkeypatch):
+    """With both env and value set, the env var wins (rotate-via-env)."""
+    from sportsdata_mcp.auth.header import StaticHeaderAuthProvider
+    from sportsdata_mcp.spec import AuthStaticHeader
+
+    monkeypatch.setenv("TEST_APIM_KEY", "rotated-key")
+    spec = AuthStaticHeader(type="static_header", header="Ocp-Apim-Subscription-Key",
+                            env="TEST_APIM_KEY", value="public-default")
+    name, value = await StaticHeaderAuthProvider(spec).get()
+    assert (name, value) == ("Ocp-Apim-Subscription-Key", "rotated-key")
+
+
+async def test_literal_value_used_when_env_unset(monkeypatch):
+    """env set but unset in environment → fall back to the literal public default."""
+    from sportsdata_mcp.auth.header import StaticHeaderAuthProvider
+    from sportsdata_mcp.spec import AuthStaticHeader
+
+    monkeypatch.delenv("TEST_APIM_KEY", raising=False)
+    spec = AuthStaticHeader(type="static_header", header="Ocp-Apim-Subscription-Key",
+                            env="TEST_APIM_KEY", value="public-default")
+    name, value = await StaticHeaderAuthProvider(spec).get()
+    assert value == "public-default"
+
+
+def test_env_only_still_requires_var(monkeypatch):
+    """env-only (no literal) must still raise when unset — no silent anonymous mode."""
+    import pytest
+
+    from sportsdata_mcp.auth.header import StaticHeaderAuthProvider
+    from sportsdata_mcp.errors import AuthMissingError
+    from sportsdata_mcp.spec import AuthStaticHeader
+
+    monkeypatch.delenv("TEST_REQUIRED", raising=False)
+    spec = AuthStaticHeader(type="static_header", header="X-Key", env="TEST_REQUIRED")
+    with pytest.raises(AuthMissingError):
+        StaticHeaderAuthProvider(spec)

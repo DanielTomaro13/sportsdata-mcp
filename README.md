@@ -307,6 +307,25 @@ respect the ~5 rps rate limit. The SDP wire params (`_limit`, `_sort`,
 `kickoff>`/`kickoff<`) are exposed under clean tool names (`limit`, `sort`,
 `kickoff_after`/`kickoff_before`).
 
+### LaLiga — `apim.laliga.com` (public key shipped)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `laliga.core` | 6 | Competitions, season instances (subscriptions), league table, rounds/matchweeks |
+| `laliga.teams` | 3 | Season team list, single team, club squad |
+| `laliga.players` | 3 | Every-player season stats (≈749, full Opta metrics), player profile + stats |
+| `laliga.matches` | 2 | Matches feed + single-match detail |
+
+The private JSON API behind laliga.com (Azure APIM), read directly. Underlying
+data is **Opta**. A **public** `Ocp-Apim-Subscription-Key` is **shipped as a
+working default**, so it runs out of the box — but the key rotates; override it
+with `LALIGA_SUBSCRIPTION_KEY` (env or `secrets:`) when reads start 401-ing
+(re-harvest from laliga.com's `__NEXT_DATA__`). A "subscription" is a season
+instance (slug `laliga-easports-2025` = 2025/26); detail endpoints are keyed by
+**slug**. Pairs with the Premier League provider for cross-league football
+comparison via the shared `stats.ladder` / `sport.fixtures_by_date` /
+`stats.player_season` tags.
+
 ### Kalshi — `kalshi.com` (prediction markets, no key)
 
 | Group | Tools | Notes |

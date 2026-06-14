@@ -16,20 +16,23 @@ from ..spec import AuthStaticQuery
 class StaticQueryAuthProvider:
     def __init__(self, spec: AuthStaticQuery, secrets: dict[str, str] | None = None) -> None:
         secrets = secrets or {}
+        # Resolution order: env var > config `secrets` block > literal `value`. When both
+        # `env` and `value` are set the env var overrides the literal (public-default,
+        # rotate-via-env pattern). env-only (e.g. Data Golf) still requires the var.
+        value: str | None = None
         if spec.env:
-            value = os.environ.get(spec.env)
-            if value is None:
-                value = secrets.get(spec.env)
-            if value is None:
+            value = os.environ.get(spec.env) or secrets.get(spec.env)
+        if value is None:
+            value = spec.value
+        if value is None:
+            if spec.env:
                 raise AuthMissingError(
-                    f"env var {spec.env} not set (and no secrets['{spec.env}']); required for query param {spec.param}"
+                    f"env var {spec.env} not set (and no secrets['{spec.env}'] or literal `value` "
+                    f"fallback); required for query param {spec.param}"
                 )
-            self._value = value
-        elif spec.value is not None:
-            self._value = spec.value
-        else:
             raise AuthMissingError(f"auth.static_query for param '{spec.param}' has neither `value` nor `env`")
         self._param = spec.param
+        self._value = value
 
     async def get(self) -> tuple[str, str]:
         return self._param, self._value

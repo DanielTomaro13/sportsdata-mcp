@@ -116,6 +116,10 @@ CONTRACTS: list[Contract] = [
     Contract("pl_teams", {"cid": 8, "limit": 60}, ("pagination", "data"), "data", ("id", "name", "shortName")),
     Contract("pl_standings", {"cid": 8, "sid": 2025, "live": False}, ("matchweek", "tables")),
     Contract("pl_player_leaderboard", {"cid": 8, "sid": 2025, "sort": "goals:desc", "limit": 5}, ("pagination", "data")),
+    # ── LaLiga (apim.laliga.com — ships a public key; global, runs in CI unless the key rotated) ──
+    Contract("laliga_competitions", {}, ("competitions",), "competitions", ("id", "slug", "opta_id")),
+    Contract("laliga_standing", {"slug": "laliga-easports-2025"}, ("total", "standings"), "standings", ("position", "points", "team")),
+    Contract("laliga_players_stats", {"slug": "laliga-easports-2025", "limit": 5}, ("total", "player_stats"), "player_stats", ("slug", "opta_id", "stats")),
     # ── Bookmakers (often geo/bot-blocked from CI → skip; verified locally) ──
     # These pin each book's response shape for local regression value; in CI they
     # mostly skip because GitHub's runners are geo/bot-blocked by the AU books.
