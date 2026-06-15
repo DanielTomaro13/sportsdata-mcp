@@ -69,6 +69,32 @@ def _all_groups(specs: list[Spec]) -> dict[str, dict]:
     return out
 
 
+def _provider_auth(specs: list[Spec]) -> dict[str, dict]:
+    """Per provider: which env-var secrets its auth needs, and whether they're
+    REQUIRED (the provider won't work without them) or OPTIONAL (it works anonymously
+    and a key only lifts limits — e.g. Kalshi). A client surfaces this as
+    'ready / needs-key' without probing live. Env NAMES only — never values."""
+    out: dict[str, dict] = {}
+    for spec in specs:
+        envs: set[str] = set()
+        optional = False
+        for auth in spec.provider.auth.values():
+            kind = getattr(auth, "type", "none")
+            if kind == "none":
+                continue
+            if kind == "kalshi_rsa":  # public data works anonymously; a key only raises limits
+                optional = True
+            for fname, value in auth.model_dump().items():
+                if value and (fname == "env" or fname.endswith("_env")):
+                    envs.add(str(value))
+        out[spec.provider.id] = {
+            "auth_env": sorted(envs),
+            "auth_required": bool(envs) and not optional,
+            "auth_optional": optional,
+        }
+    return out
+
+
 # ─── Server build ──────────────────────────────────────────────────────
 
 
@@ -103,12 +129,14 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     mcp = FastMCP("sportsdata-mcp", lifespan=lifespan)
 
     groups = _all_groups(specs)
+    provider_auth = _provider_auth(specs)
     cap_index = _build_capability_index(specs, enabled)
 
     # ── Meta-tools (always registered) ──
     @mcp.tool
     def list_available_groups() -> dict:
-        """List every tool group across all providers and which are currently enabled.
+        """List every tool group across all providers, which are currently enabled,
+        and each provider's auth requirements (env-var names + required/optional).
 
         On a fresh install (no groups enabled) this is the only functional tool, so
         the model can guide the user to enable what they want in sportsdata-mcp.yaml.
@@ -116,6 +144,7 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
         return {
             "enabled": sorted(enabled),
             "available": groups,
+            "providers": provider_auth,
             "hint": "Edit sportsdata-mcp.yaml `enabled_groups` (or SPORTSDATA_MCP_GROUPS) and restart.",
         }
 
