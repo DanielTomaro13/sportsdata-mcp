@@ -12,6 +12,15 @@ dist/
 venv/
 env/
 
+# Secrets & local config — NEVER commit. API keys may live in a .env or in the
+# `secrets:` block of a config file (see config.py precedence: env > cwd file >
+# user config dir). Root-anchored so the tracked examples/ templates are unaffected.
+.env
+.env.*
+!.env.example
+/sportsdata-mcp.yaml
+/config.yaml
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/
