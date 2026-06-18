@@ -17,6 +17,7 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from .config import Config, load_config
+from .licence import resolve_licensed_groups
 from .registry import Registered, register_all
 from .resources.builders import register_capabilities_resource
 from .spec import Dispatcher, Endpoint, Spec
@@ -108,6 +109,25 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     # deliberately want the full catalogue, e.g. an agent runtime filtering by
     # capability tags rather than by group.
     cfg.enabled_groups = expand_wildcard_groups(cfg.enabled_groups, specs)
+
+    # ── Licence gate (commerce Phase 2) ──
+    # When SPORTSDATA_LICENSE is set, the signed entitlement decides which feed groups
+    # this server may serve (see licence.py). It is the *ceiling*: a configured
+    # `enabled_groups` can narrow within the licence, but never exceed it. Opt-in (no
+    # licence → no change) and fail-closed (licence set but unresolvable → no feeds).
+    group_index = _all_groups(specs)
+    provider_groups: dict[str, list[str]] = {}
+    for gid, info in group_index.items():
+        provider_groups.setdefault(info["provider"], []).append(gid)
+    licensed = resolve_licensed_groups(set(group_index), provider_groups)
+    if licensed is not None:
+        cfg.enabled_groups = (
+            sorted(set(cfg.enabled_groups) & set(licensed))
+            if cfg.enabled_groups
+            else licensed
+        )
+        log.info("licence gate active — serving %d group(s)", len(cfg.enabled_groups))
+
     enabled = set(cfg.enabled_groups)
 
     # The provider HTTP clients are created eagerly by register_all (below) so that
@@ -128,7 +148,7 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
 
     mcp = FastMCP("sportsdata-mcp", lifespan=lifespan)
 
-    groups = _all_groups(specs)
+    groups = group_index
     provider_auth = _provider_auth(specs)
     cap_index = _build_capability_index(specs, enabled)
 
