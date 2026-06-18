@@ -107,6 +107,12 @@ or re-download. The gate is **opt-in** (no `SPORTSDATA_LICENSE` → unchanged) a
 **fail-closed** (licence set but unresolvable → no feeds). See `services/entitlement/` in
 the agents repo for the service itself.
 
+**Credentialed feeds.** A few feeds run on *our* upstream credential (DataGolf's paid
+key) and so are never shipped inside a licensed build — when a licence is set and no local
+key is present, the MCP routes those providers through the entitlement service's
+`/proxy/<id>`, which attaches the credential server-side. Supply your own `DATAGOLF_KEY`
+and the MCP calls the upstream directly instead.
+
 Meta-tools (`list_available_groups`, `list_tools_by_capability`, `list_resources`)
 are always registered regardless of what is enabled, so a fresh install can still
 guide the model to turn groups on.

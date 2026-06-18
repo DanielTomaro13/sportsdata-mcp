@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 
 import httpx
@@ -20,6 +21,7 @@ from .auth.oauth import OAuthRefreshProvider
 from .auth.query import StaticQueryAuthProvider
 from .config import Config
 from .errors import ToolError
+from .licence import proxy_base_for
 from .spec import AuthKalshiRSA, AuthOAuthRefresh, AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
 
 log = logging.getLogger("sportsdata_mcp.http")
@@ -85,6 +87,12 @@ class HTTPClient:
         self._max_retries = int(prov_cfg.get("max_retries", defaults.max_retries))
         self._retry_backoff = float(prov_cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds))
         self._strip_cookies = bool(prov_cfg.get("strip_cookies", defaults.strip_cookies))
+        # Licensed proxy mode (commerce): route a credentialed provider (e.g. DataGolf)
+        # through the entitlement service, which attaches our upstream key server-side.
+        self._proxy_base = proxy_base_for(provider.id)
+        self._licence = os.environ.get("SPORTSDATA_LICENSE")
+        if self._proxy_base:
+            log.info("provider %s routed through licence proxy %s", provider.id, self._proxy_base)
 
     def _auth_provider(self, key: str) -> AuthProvider:
         if key in self._auth_providers:
@@ -118,28 +126,38 @@ class HTTPClient:
         json_body: dict | list | None = None,
         auth_key: str = "default",
     ) -> httpx.Response:
-        full_url = self._provider.base_urls[base].rstrip("/") + url
         merged_headers = dict(headers or {})
-        auth_spec = self._provider.auth.get(auth_key)
-        needs_auth = auth_spec is not None and not isinstance(auth_spec, AuthNone)
         auth_query: dict[str, str] = {}
         signer: KalshiRSASigner | None = None
 
-        if needs_auth:
-            ap = self._auth_provider(auth_key)
-            if isinstance(ap, KalshiRSASigner):
-                # Per-request signer (timestamp in the signature) — headers are
-                # computed fresh on every attempt inside the loop below. Inactive
-                # (no credentials) signs nothing: the request stays anonymous.
-                signer = ap
-            else:
-                name, value = await ap.get()
-                # static_query rides in the query string (e.g. Data Golf ?key=);
-                # everything else is a header.
-                if isinstance(auth_spec, AuthStaticQuery):
-                    auth_query[name] = value
+        if self._proxy_base:
+            # Licensed proxy mode: the entitlement service attaches the real upstream
+            # credential server-side, so we just authenticate with the licence key and
+            # skip the (absent) upstream auth. `base` collapses — proxied providers have
+            # a single upstream.
+            full_url = self._proxy_base.rstrip("/") + url
+            if self._licence:
+                merged_headers["Authorization"] = f"Bearer {self._licence}"
+            needs_auth = False
+        else:
+            full_url = self._provider.base_urls[base].rstrip("/") + url
+            auth_spec = self._provider.auth.get(auth_key)
+            needs_auth = auth_spec is not None and not isinstance(auth_spec, AuthNone)
+            if needs_auth:
+                ap = self._auth_provider(auth_key)
+                if isinstance(ap, KalshiRSASigner):
+                    # Per-request signer (timestamp in the signature) — headers are
+                    # computed fresh on every attempt inside the loop below. Inactive
+                    # (no credentials) signs nothing: the request stays anonymous.
+                    signer = ap
                 else:
-                    merged_headers[name] = value
+                    name, value = await ap.get()
+                    # static_query rides in the query string (e.g. Data Golf ?key=);
+                    # everything else is a header.
+                    if isinstance(auth_spec, AuthStaticQuery):
+                        auth_query[name] = value
+                    else:
+                        merged_headers[name] = value
 
         merged_params = {**(params or {}), **auth_query} if auth_query else params
 
