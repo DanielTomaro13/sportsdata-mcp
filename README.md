@@ -90,6 +90,22 @@ variable first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name
 | `SPORTSDATA_MCP_GROUPS` | Comma-separated group list; overrides `enabled_groups`. |
 | `SPORTSDATA_MCP_CONFIG` | Path to a config file (see resolution order above). |
 | `SPORTSDATA_MCP_MAX_BYTES` | Global response-size cap in bytes for every provider that doesn't set its own `max_response_bytes`. `0` (the default) means no cap. |
+| `SPORTSDATA_LICENSE` | A licence key (`sd_live_…`). When set, the signed entitlement decides which feed groups are served — see [Licensed builds](#licensed-builds). Unset = no gate. |
+| `SPORTSDATA_ENTITLEMENT_URL` | Entitlement service base URL (defaults to the hosted service). |
+| `SPORTSDATA_ENTITLEMENT_PUBKEY` | Override the baked Ed25519 verify key (raw, base64url). Normally unset. |
+
+### Licensed builds
+
+A self-host build run by a paying customer sets a single value — `SPORTSDATA_LICENSE`
+(everything else has a sensible default). On start, the server fetches a **signed
+entitlement** from the entitlement service, verifies it offline against a baked Ed25519
+public key, and serves **only the feed groups the licence grants** (caching the result so
+a brief outage doesn't drop a customer's feeds). The licence is a **ceiling**: a
+configured `enabled_groups` can narrow within it but never exceed it. Adding a feed is
+purely a billing change — the next start picks up the new entitlement, with no config edit
+or re-download. The gate is **opt-in** (no `SPORTSDATA_LICENSE` → unchanged) and
+**fail-closed** (licence set but unresolvable → no feeds). See `services/entitlement/` in
+the agents repo for the service itself.
 
 Meta-tools (`list_available_groups`, `list_tools_by_capability`, `list_resources`)
 are always registered regardless of what is enabled, so a fresh install can still
