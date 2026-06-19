@@ -20,6 +20,7 @@ the exact payload bytes.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -46,6 +47,10 @@ BAKED_PUBKEY_B64 = ""
 # reach (or re-verify against) the service — and how far past `expires` we still honour
 # a token. Matches the service-side issuance TTL philosophy: tolerant, not permanent.
 GRACE_SECONDS = 7 * 24 * 3600
+
+# How often a long-running server re-checks the entitlement so a cancellation/downgrade
+# takes effect mid-session (not only at restart). 15 minutes.
+REVALIDATE_SECONDS = 15 * 60
 
 _FETCH_TIMEOUT = 8.0
 _LIVE_STATUSES = {"active", "trialing", "past_due"}
@@ -230,3 +235,87 @@ def resolve_licensed_groups(
         len(groups),
     )
     return groups
+
+
+# ── Live re-validation ────────────────────────────────────────────────────
+# A licensed build only resolves once at startup, so without this a cancellation or
+# downgrade would keep serving until the next restart. build_server seeds the granted
+# set; a background task in the lifespan refreshes it on a TTL; the dispatch guard
+# consults group_is_live() per call. (Tools can only be *removed* at runtime, never
+# added — gaining a feed still needs a restart, which the startup gate already handles.)
+
+_live_state: dict = {"configured": False, "groups": set()}
+
+
+def set_live_groups(groups: list[str] | None) -> None:
+    """Seed/replace the currently-granted group set. ``None`` = no licence configured
+    (the gate is inert and every group is live); ``[]`` = configured but revoked."""
+    if groups is None:
+        _live_state["configured"] = False
+        _live_state["groups"] = set()
+    else:
+        _live_state["configured"] = True
+        _live_state["groups"] = set(groups)
+
+
+def group_is_live(group: str) -> bool:
+    """Whether a tool in ``group`` may run right now. True when unlicensed (inert)."""
+    if not _live_state["configured"]:
+        return True
+    return group in _live_state["groups"]
+
+
+def _revalidate_groups(
+    all_groups: set[str], provider_groups: dict[str, list[str]]
+) -> list[str] | None:
+    """A *live* re-check (no cache fallback) for a running server. Returns the freshly
+    granted groups, ``[]`` on a definitive non-live status (revoke everything), or
+    ``None`` to mean 'no confident answer — keep the current set' so a transient outage
+    never knocks a paying customer offline mid-session."""
+    key = os.environ.get("SPORTSDATA_LICENSE")
+    if not key:
+        return None
+    url = os.environ.get("SPORTSDATA_ENTITLEMENT_URL", DEFAULT_ENTITLEMENT_URL)
+    pubkey_b64 = os.environ.get("SPORTSDATA_ENTITLEMENT_PUBKEY", BAKED_PUBKEY_B64)
+    if not pubkey_b64:
+        return None
+    try:
+        token = _fetch_token(url, key)
+    except Exception as exc:  # noqa: BLE001 — transient: keep current entitlement
+        log.info("revalidation fetch failed (%s) — keeping current entitlement", exc)
+        return None
+    if not token:
+        return None
+    try:
+        claims = _verify_token(token, pubkey_b64)
+    except Exception as exc:  # noqa: BLE001 — unverifiable: keep current, don't revoke
+        log.warning("revalidation verify failed: %s — keeping current entitlement", exc)
+        return None
+    if str(claims.get("key", "")) != key:
+        return None
+    if str(claims.get("status", "")) not in _LIVE_STATUSES:
+        log.warning("entitlement no longer active (%s) — revoking feeds", claims.get("status"))
+        return []
+    _save_cache(token)
+    return claims_to_groups(claims, all_groups, provider_groups)
+
+
+async def revalidate_once(
+    all_groups: set[str], provider_groups: dict[str, list[str]]
+) -> None:
+    """Refresh the live granted set once — the blocking fetch runs off the event loop."""
+    groups = await asyncio.to_thread(_revalidate_groups, all_groups, provider_groups)
+    if groups is not None:
+        set_live_groups(groups)
+
+
+async def revalidation_loop(
+    all_groups: set[str], provider_groups: dict[str, list[str]]
+) -> None:
+    """Re-check the entitlement every ``REVALIDATE_SECONDS`` until cancelled."""
+    while True:
+        await asyncio.sleep(REVALIDATE_SECONDS)
+        try:
+            await revalidate_once(all_groups, provider_groups)
+        except Exception as exc:  # noqa: BLE001 — never let the loop die
+            log.warning("entitlement revalidation error: %s", exc)

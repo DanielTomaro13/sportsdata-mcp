@@ -21,6 +21,7 @@ from .dispatchers.graphql_persisted import make_graphql_dispatcher
 from .dispatchers.graphql_query import make_graphql_query_dispatcher
 from .dispatchers.templated_rest import make_templated_rest_dispatcher
 from .errors import ToolError
+from .licence import group_is_live
 from .http_client import HTTPClient
 from .resources.builders import (
     register_graphql_catalog,
@@ -180,7 +181,7 @@ def make_dispatcher_handler(disp: Dispatcher, spec: Spec, http: HTTPClient) -> C
 # ─── Transport-error guard ─────────────────────────────────────────────
 
 
-def _guard(handler: Callable, tool_name: str) -> Callable:
+def _guard(handler: Callable, tool_name: str, group: str) -> Callable:
     """Catch-all for transport-level failures, wrapped around every tool handler.
 
     `HTTPClient._decode` already turns HTTP-status / content-type problems into
@@ -189,10 +190,20 @@ def _guard(handler: Callable, tool_name: str) -> Callable:
     masks it as an opaque ``Error calling tool`` string; here we convert it into
     an actionable, recoverable `ToolError` so the model can retry sensibly. Our
     own `ToolError`s pass through untouched — their envelope is already correct.
+
+    Also enforces the live licence: if the tool's `group` is no longer granted (a
+    mid-session cancellation/downgrade the revalidation loop has picked up), the call
+    is refused. Unlicensed installs are inert (`group_is_live` always True).
     """
 
     @functools.wraps(handler)
     async def wrapped(**kwargs):
+        if not group_is_live(group):
+            raise ToolError(
+                f"{tool_name}: this feed is not included in your current licence.",
+                recoverable=False,
+                code="NOT_LICENSED",
+            )
         try:
             return await handler(**kwargs)
         except ToolError:
@@ -252,14 +263,16 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
         for endpoint in spec.endpoints:
             if endpoint.group not in enabled:
                 continue
-            handler = _guard(make_endpoint_handler(endpoint, http), endpoint.name)
+            handler = _guard(make_endpoint_handler(endpoint, http), endpoint.name, endpoint.group)
             mcp.tool(name=endpoint.name, description=_describe(endpoint))(handler)
             registered.tools.append(endpoint.name)
 
         for dispatcher in spec.dispatchers:
             if dispatcher.group not in enabled:
                 continue
-            handler = _guard(make_dispatcher_handler(dispatcher, spec, http), dispatcher.name)
+            handler = _guard(
+                make_dispatcher_handler(dispatcher, spec, http), dispatcher.name, dispatcher.group
+            )
             mcp.tool(name=dispatcher.name, description=_describe(dispatcher))(handler)
             registered.tools.append(dispatcher.name)
             if dispatcher.kind in ("graphql_persisted", "graphql_query"):

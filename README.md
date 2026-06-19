@@ -104,8 +104,10 @@ a brief outage doesn't drop a customer's feeds). The licence is a **ceiling**: a
 configured `enabled_groups` can narrow within it but never exceed it. Adding a feed is
 purely a billing change — the next start picks up the new entitlement, with no config edit
 or re-download. The gate is **opt-in** (no `SPORTSDATA_LICENSE` → unchanged) and
-**fail-closed** (licence set but unresolvable → no feeds). See `services/entitlement/` in
-the agents repo for the service itself.
+**fail-closed** (licence set but unresolvable → no feeds). A licensed server also
+**re-checks the entitlement every ~15 min**, so a cancellation or downgrade takes effect
+mid-session (a transient outage keeps the last-known grant — it never drops a paying
+customer offline). See `services/entitlement/` in the agents repo for the service itself.
 
 **Credentialed feeds.** A few feeds run on *our* upstream credential (DataGolf's paid
 key) and so are never shipped inside a licensed build — when a licence is set and no local

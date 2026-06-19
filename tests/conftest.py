@@ -9,6 +9,18 @@ import pytest
 
 from sportsdata_mcp.config import Config
 
+
+@pytest.fixture(autouse=True)
+def _reset_licence_live_state():
+    """The licence gate keeps a module-global live-granted set; reset it around every
+    test so a licensed build_server in one test can't gate tool calls in another."""
+    from sportsdata_mcp import licence
+
+    licence.set_live_groups(None)
+    yield
+    licence.set_live_groups(None)
+
+
 CAPABILITIES_YAML = textwrap.dedent(
     """
     capabilities:
