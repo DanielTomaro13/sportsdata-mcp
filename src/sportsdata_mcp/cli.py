@@ -155,6 +155,60 @@ def refresh_hashes(provider: str, dry_run: bool) -> None:
 
 
 @cli.command()
+@click.option("--license", "license_key", required=True, help="Your sportsdata licence key (sd_live_…).")
+@click.option(
+    "--client",
+    type=click.Choice(["claude-desktop", "cursor", "both"]),
+    default="both",
+    show_default=True,
+    help="Which AI client to configure.",
+)
+@click.option("--command", "command", default=None, help="Override the launch command (defaults to this binary).")
+@click.option("--print", "print_only", is_flag=True, help="Print the config block instead of writing it.")
+def setup(license_key: str, client: str, command: str | None, print_only: bool) -> None:
+    """Register this MCP into your AI client(s) with your licence — the 'set it up for me' step."""
+    import json as _json
+
+    from .setup_client import CLIENTS, client_config_path, full_config, register
+
+    cmd = command or _default_setup_command()
+    if print_only:
+        click.echo(_json.dumps(full_config(license_key, cmd), indent=2))
+        return
+
+    if client == "both":
+        # Configure whichever clients are actually present — don't litter configs for
+        # apps that aren't installed.
+        targets = [c for c in CLIENTS if client_config_path(c).parent.exists()]
+    else:
+        targets = [client]
+
+    wrote = False
+    for c in targets:
+        try:
+            path = register(c, license_key, cmd)
+            click.echo(click.style(f"✓ {c}: {path}", fg="green"))
+            wrote = True
+        except Exception as exc:  # noqa: BLE001 — one client failing shouldn't abort the others
+            click.echo(click.style(f"… {c}: skipped ({exc})", fg="yellow"), err=True)
+
+    if wrote:
+        click.echo("\nRestart your AI client, then ask it to “list available sportsdata groups”.")
+    else:
+        click.echo(
+            click.style("No AI clients configured. Re-run with --print to copy the block manually.", fg="red"),
+            err=True,
+        )
+        raise SystemExit(1)
+
+
+def _default_setup_command() -> str:
+    from .setup_client import default_command
+
+    return default_command()
+
+
+@cli.command()
 def version() -> None:
     """Print version info."""
     click.echo(_version_string())
