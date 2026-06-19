@@ -29,8 +29,10 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Default entitlement service endpoint. Override per-install with
-# SPORTSDATA_ENTITLEMENT_URL (e.g. a custom Worker route / domain).
+# Placeholder entitlement endpoint. NOTE: `wrangler deploy` publishes the Worker at
+# `sportsdata-entitlement.<your-account>.workers.dev` (or a custom route) — NOT this bare
+# host — so a licensed build MUST set SPORTSDATA_ENTITLEMENT_URL (or a custom domain).
+# If it can't be reached the gate fails closed (serves nothing), never open.
 DEFAULT_ENTITLEMENT_URL = "https://sportsdata-entitlement.workers.dev"
 
 # Baked Ed25519 *public* key (raw, base64url) — the matching half of the entitlement
@@ -152,6 +154,13 @@ def _resolve_entitlement(key: str, url: str, pubkey_b64: str) -> dict | None:
         claims = _verify_token(token, pubkey_b64)
     except Exception as exc:  # noqa: BLE001 — bad signature / malformed token
         log.warning("entitlement verification failed: %s", exc)
+        return None
+
+    # Bind the token to *this* licence: a valid signature is necessary but not
+    # sufficient — the token's `key` claim must be the configured licence, so a cached
+    # token issued for a different licence (the cache file is shared) is never honoured.
+    if str(claims.get("key", "")) != key:
+        log.warning("entitlement token is for a different licence key — ignoring")
         return None
 
     expires = int(claims.get("expires", 0))

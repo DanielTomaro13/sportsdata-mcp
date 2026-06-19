@@ -48,7 +48,13 @@ def gate_env(monkeypatch, tmp_path, keypair):
         def fake_fetch(url: str, key: str):
             if raise_fetch:
                 raise RuntimeError("service unreachable")
-            return _sign(priv, claims) if claims is not None else None
+            if claims is None:
+                return None
+            # The gate binds the token to the configured licence; default the `key`
+            # claim to match so tests exercise group/status logic (a test can still
+            # pass an explicit mismatching `key` to check the binding).
+            c = {"key": "sd_live_testkey0001", **claims}
+            return _sign(priv, c)
 
         monkeypatch.setattr(licence, "_fetch_token", fake_fetch)
 
@@ -114,6 +120,13 @@ def test_inactive_status_serves_nothing(gate_env):
     gate_env({"status": "canceled", "all_access": True, "groups": []})
     groups = resolve_licensed_groups({"mlb.reference"}, {"mlb": ["mlb.reference"]})
     assert groups == []
+
+
+def test_token_for_a_different_licence_rejected(gate_env):
+    """A correctly-signed token whose `key` claim is a different licence is ignored —
+    guards the shared offline cache against cross-licence reuse."""
+    gate_env({"status": "active", "all_access": True, "key": "sd_live_someoneelse"})
+    assert resolve_licensed_groups({"mlb.reference"}, {"mlb": ["mlb.reference"]}) == []
 
 
 def test_bad_signature_rejected(monkeypatch, tmp_path, keypair):
