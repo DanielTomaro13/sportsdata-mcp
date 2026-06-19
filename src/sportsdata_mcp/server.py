@@ -8,7 +8,10 @@ provider tool/resource via `registry.register_all`.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -17,7 +20,7 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from .config import Config, load_config
-from .licence import resolve_licensed_groups
+from .licence import resolve_licensed_groups, revalidation_loop, set_live_groups
 from .registry import Registered, register_all
 from .resources.builders import register_capabilities_resource
 from .spec import Dispatcher, Endpoint, Spec
@@ -119,7 +122,8 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     provider_groups: dict[str, list[str]] = {}
     for gid, info in group_index.items():
         provider_groups.setdefault(info["provider"], []).append(gid)
-    licensed = resolve_licensed_groups(set(group_index), provider_groups)
+    all_group_ids = set(group_index)
+    licensed = resolve_licensed_groups(all_group_ids, provider_groups)
     if licensed is not None:
         cfg.enabled_groups = (
             sorted(set(cfg.enabled_groups) & set(licensed))
@@ -127,6 +131,9 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
             else licensed
         )
         log.info("licence gate active — serving %d group(s)", len(cfg.enabled_groups))
+    # Seed the live-granted set the dispatch guard consults; a background task in the
+    # lifespan refreshes it so a cancellation/downgrade takes effect mid-session.
+    set_live_groups(licensed)
 
     enabled = set(cfg.enabled_groups)
 
@@ -138,9 +145,18 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
 
     @asynccontextmanager
     async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
+        revalidator: asyncio.Task | None = None
+        if licensed is not None and os.environ.get("SPORTSDATA_LICENSE"):
+            revalidator = asyncio.create_task(
+                revalidation_loop(all_group_ids, provider_groups)
+            )
         try:
             yield
         finally:
+            if revalidator is not None:
+                revalidator.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await revalidator
             reg = holder.get("registered")
             if reg is not None:
                 await reg.aclose()

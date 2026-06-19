@@ -87,7 +87,7 @@ def _fake_handler(raises: Exception):
 
 
 async def test_guard_converts_timeout_to_recoverable():
-    guarded = _guard(_fake_handler(httpx.ConnectTimeout("slow")), "fake_tool")
+    guarded = _guard(_fake_handler(httpx.ConnectTimeout("slow")), "fake_tool", "test.group")
     with pytest.raises(ToolError) as ei:
         await guarded(eventId=1)
     assert ei.value.code == "UPSTREAM_TIMEOUT"
@@ -95,7 +95,7 @@ async def test_guard_converts_timeout_to_recoverable():
 
 
 async def test_guard_converts_transport_error_to_recoverable():
-    guarded = _guard(_fake_handler(httpx.ConnectError("refused")), "fake_tool")
+    guarded = _guard(_fake_handler(httpx.ConnectError("refused")), "fake_tool", "test.group")
     with pytest.raises(ToolError) as ei:
         await guarded(eventId=1)
     assert ei.value.code == "TRANSPORT_ERROR"
@@ -104,7 +104,7 @@ async def test_guard_converts_transport_error_to_recoverable():
 
 async def test_guard_passes_our_toolerror_through_untouched():
     original = ToolError("boom", recoverable=True, code="UNKNOWN_OPERATION")
-    guarded = _guard(_fake_handler(original), "fake_tool")
+    guarded = _guard(_fake_handler(original), "fake_tool", "test.group")
     with pytest.raises(ToolError) as ei:
         await guarded(eventId=1)
     assert ei.value is original  # not re-wrapped — envelope preserved verbatim
@@ -112,6 +112,6 @@ async def test_guard_passes_our_toolerror_through_untouched():
 
 def test_guard_preserves_signature_and_annotations():
     inner = _fake_handler(RuntimeError())
-    guarded = _guard(inner, "fake_tool")
+    guarded = _guard(inner, "fake_tool", "test.group")
     assert list(inspect.signature(guarded).parameters) == ["eventId"]
     assert guarded.__annotations__ == {"eventId": int, "return": dict}
