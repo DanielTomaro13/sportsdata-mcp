@@ -91,7 +91,7 @@ variable first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name
 | `SPORTSDATA_MCP_CONFIG` | Path to a config file (see resolution order above). |
 | `SPORTSDATA_MCP_MAX_BYTES` | Global response-size cap in bytes for every provider that doesn't set its own `max_response_bytes`. `0` (the default) means no cap. |
 | `SPORTSDATA_LICENSE` | A licence key (`sd_live_…`). When set, the signed entitlement decides which feed groups are served — see [Licensed builds](#licensed-builds). Unset = no gate. |
-| `SPORTSDATA_ENTITLEMENT_URL` | Entitlement service base URL (defaults to the hosted service). |
+| `SPORTSDATA_ENTITLEMENT_URL` | Entitlement service base URL. **Required** for a licensed build — the baked default (`…workers.dev`) is a placeholder; set this to your deployed Worker URL. |
 | `SPORTSDATA_ENTITLEMENT_PUBKEY` | Override the baked Ed25519 verify key (raw, base64url). Normally unset. |
 
 ### Licensed builds
