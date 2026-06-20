@@ -4,9 +4,11 @@
 #   sh scripts/build-installer.sh      # produces dist/sportsdata-mcp/ (the onedir)
 #   sh scripts/make-macos-app.sh       # wraps it as dist/sportsdata-mcp.app
 #
-# The bundled MCP binary ends up at
-#   sportsdata-mcp.app/Contents/Resources/sportsdata-mcp/sportsdata-mcp
-# which is exactly the path `sportsdata-mcp setup` writes into the AI-client config.
+# The bundled Mach-O binary becomes the bundle's MAIN executable at
+#   sportsdata-mcp.app/Contents/MacOS/sportsdata-mcp
+# (a Mach-O main executable is required for the hardened runtime + notarization — a shell
+# launcher as CFBundleExecutable can notarize-pass yet refuse to launch). That path is
+# exactly what `sportsdata-mcp setup` writes (sys.executable when frozen) into the config.
 set -eu
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,17 +27,15 @@ fi
 
 echo "assembling $APP_NAME.app $VERSION"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS"
 
-# 1. the bundled runtime + binary go under Resources/sportsdata-mcp/
-cp -R "$ONEDIR" "$APP/Contents/Resources/$APP_NAME"
+# The PyInstaller onedir is the bundled Mach-O binary + its `_internal` sibling; both go
+# straight into Contents/MacOS so `sportsdata-mcp` IS the bundle's main executable.
+cp -R "$ONEDIR"/. "$APP/Contents/MacOS/"
 
-# 2. the launcher is the bundle's main executable
-cp "$PKG/launcher.sh" "$APP/Contents/MacOS/$APP_NAME-launcher"
-chmod +x "$APP/Contents/MacOS/$APP_NAME-launcher"
-
-# 3. Info.plist with the version substituted in
+# Info.plist with the version substituted in (CFBundleExecutable = sportsdata-mcp).
 sed "s/__VERSION__/$VERSION/g" "$PKG/Info.plist.template" > "$APP/Contents/Info.plist"
 
 echo "done → $APP"
+echo "  bundle binary: $APP/Contents/MacOS/$APP_NAME"
 echo "next: sh scripts/sign-and-notarize.sh   (needs an Apple Developer ID)"

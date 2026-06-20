@@ -46,7 +46,9 @@ BAKED_PUBKEY_B64 = ""
 # How long a cached entitlement keeps a customer's feeds alive once we can no longer
 # reach (or re-verify against) the service — and how far past `expires` we still honour
 # a token. Matches the service-side issuance TTL philosophy: tolerant, not permanent.
-GRACE_SECONDS = 7 * 24 * 3600
+GRACE_SECONDS = 7 * 24 * 3600  # how long a cached token keeps feeds alive *since fetch*,
+#                               capped by the token's own `expires` (no double-counting)
+_CLOCK_SKEW = 3600  # tolerance on expiry / period-end checks for clock skew
 
 # How often a long-running server re-checks the entitlement so a cancellation/downgrade
 # takes effect mid-session (not only at restart). 15 minutes.
@@ -168,9 +170,19 @@ def _resolve_entitlement(key: str, url: str, pubkey_b64: str) -> dict | None:
         log.warning("entitlement token is for a different licence key — ignoring")
         return None
 
+    # Honour the token's own `expires` strictly (only a small clock-skew tolerance) — the
+    # offline window is the cache-age grace (GRACE_SECONDS since fetch) capped by this, so
+    # the two don't compound. The service bounds `expires` to the paid period, and we also
+    # enforce `current_period_end` directly, so a cached token can't outlive the
+    # subscription even against an older service that didn't bound `expires`.
+    now = int(time.time())
     expires = int(claims.get("expires", 0))
-    if expires and int(time.time()) - expires > GRACE_SECONDS:
-        log.warning("entitlement expired beyond grace window")
+    if expires and now > expires + _CLOCK_SKEW:
+        log.warning("entitlement token has expired")
+        return None
+    period_end = int(claims.get("current_period_end", 0))
+    if period_end and now > period_end + _CLOCK_SKEW:
+        log.warning("entitlement is past its billing period")
         return None
     if str(claims.get("status", "")) not in _LIVE_STATUSES:
         log.warning("entitlement status %r is not active", claims.get("status"))
