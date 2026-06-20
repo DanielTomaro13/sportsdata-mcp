@@ -7,7 +7,7 @@
   <key>CFBundleIdentifier</key>      <string>com.sportsdata.mcp</string>
   <key>CFBundleVersion</key>         <string>__VERSION__</string>
   <key>CFBundleShortVersionString</key> <string>__VERSION__</string>
-  <key>CFBundleExecutable</key>      <string>sportsdata-mcp-launcher</string>
+  <key>CFBundleExecutable</key>      <string>sportsdata-mcp</string>
   <key>CFBundlePackageType</key>     <string>APPL</string>
   <key>LSMinimumSystemVersion</key>  <string>11.0</string>
   <!-- Background tool: no Dock icon / menu bar. The MCP is launched by the AI client. -->

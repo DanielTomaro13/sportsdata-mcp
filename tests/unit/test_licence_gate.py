@@ -3,6 +3,7 @@ entitlement decides which feed groups the server serves. Opt-in + fail-closed.""
 
 import base64
 import json
+import time
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -120,6 +121,23 @@ def test_inactive_status_serves_nothing(gate_env):
     gate_env({"status": "canceled", "all_access": True, "groups": []})
     groups = resolve_licensed_groups({"mlb.reference"}, {"mlb": ["mlb.reference"]})
     assert groups == []
+
+
+def test_expired_token_serves_nothing(gate_env):
+    """A token past its own `expires` is rejected (no 7-day extra grace on top)."""
+    gate_env({"status": "active", "all_access": True, "expires": int(time.time()) - 10 * 24 * 3600})
+    assert resolve_licensed_groups({"mlb.reference"}, {"mlb": ["mlb.reference"]}) == []
+
+
+def test_past_billing_period_serves_nothing(gate_env):
+    """Even with a far-future `expires`, a token past `current_period_end` is rejected —
+    so a cached token can't outlive the paid subscription."""
+    now = int(time.time())
+    gate_env({
+        "status": "active", "all_access": True,
+        "expires": now + 999_999, "current_period_end": now - 10_000,
+    })
+    assert resolve_licensed_groups({"mlb.reference"}, {"mlb": ["mlb.reference"]}) == []
 
 
 def test_token_for_a_different_licence_rejected(gate_env):
