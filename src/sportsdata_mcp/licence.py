@@ -30,18 +30,14 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Placeholder entitlement endpoint. NOTE: `wrangler deploy` publishes the Worker at
-# `sportsdata-entitlement.<your-account>.workers.dev` (or a custom route) — NOT this bare
-# host — so a licensed build MUST set SPORTSDATA_ENTITLEMENT_URL (or a custom domain).
+# The deployed entitlement Worker. Override per-install with SPORTSDATA_ENTITLEMENT_URL.
 # If it can't be reached the gate fails closed (serves nothing), never open.
-DEFAULT_ENTITLEMENT_URL = "https://sportsdata-entitlement.workers.dev"
+DEFAULT_ENTITLEMENT_URL = "https://sportsdata-entitlement.sportsdata.workers.dev"
 
 # Baked Ed25519 *public* key (raw, base64url) — the matching half of the entitlement
-# service's signing key. Replace this with the `public` line printed by
-# services/entitlement/gen-keypair.py before shipping a licensed build, or override at
-# runtime with SPORTSDATA_ENTITLEMENT_PUBKEY. Empty here so unsigned/dev builds are
-# obviously unconfigured rather than silently trusting a stranger's key.
-BAKED_PUBKEY_B64 = ""
+# service's signing key (services/entitlement/gen-keypair.py). Override at runtime with
+# SPORTSDATA_ENTITLEMENT_PUBKEY. If this is ever rotated, re-bake the new public line.
+BAKED_PUBKEY_B64 = "ORyOLyscq2zWC84Ontdpqq_qf3Dhqak6NB480t_4W24"
 
 # How long a cached entitlement keeps a customer's feeds alive once we can no longer
 # reach (or re-verify against) the service — and how far past `expires` we still honour
