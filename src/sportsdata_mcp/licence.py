@@ -37,7 +37,7 @@ DEFAULT_ENTITLEMENT_URL = "https://sportsdata-entitlement.sportsdata.workers.dev
 # Baked Ed25519 *public* key (raw, base64url) — the matching half of the entitlement
 # service's signing key (services/entitlement/gen-keypair.py). Override at runtime with
 # SPORTSDATA_ENTITLEMENT_PUBKEY. If this is ever rotated, re-bake the new public line.
-BAKED_PUBKEY_B64 = "ORyOLyscq2zWC84Ontdpqq_qf3Dhqak6NB480t_4W24"
+BAKED_PUBKEY_B64 = "Vc1niiTDDyWM7Es7pvGdS1Bne9k9nDIMKFhJYiHT0e8"
 
 # How long a cached entitlement keeps a customer's feeds alive once we can no longer
 # reach (or re-verify against) the service — and how far past `expires` we still honour
