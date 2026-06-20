@@ -73,8 +73,18 @@ jobs:
           if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
             sh scripts/sign-and-notarize.sh
           else
-            ( cd dist && zip -qr "sportsdata-mcp-$VERSION-macos-unsigned.zip" "sportsdata-mcp.app" )
-            echo "built UNSIGNED dist/sportsdata-mcp-$VERSION-macos-unsigned.zip"
+            # No Developer ID yet — but a *completely unsigned* bundle is reported as
+            # "damaged and can't be opened" on Apple Silicon (the kernel refuses to load
+            # an unsigned Mach-O, and Gatekeeper can't validate a quarantined unsigned
+            # app). Ad-hoc sign it so it loads and Gatekeeper instead says "unidentified
+            # developer" — which `right-click → Open` (or `xattr -dr com.apple.quarantine`)
+            # clears. Package with `ditto`, not `zip`: plain zip drops the framework
+            # symlinks and corrupts the signature, which itself triggers "damaged".
+            codesign --force --deep --sign - "dist/sportsdata-mcp.app"
+            codesign --verify --deep --strict "dist/sportsdata-mcp.app"
+            ditto -c -k --sequesterRsrc --keepParent \
+              "dist/sportsdata-mcp.app" "dist/sportsdata-mcp-$VERSION-macos-unsigned.zip"
+            echo "built ad-hoc-signed dist/sportsdata-mcp-$VERSION-macos-unsigned.zip"
           fi
 
       - name: Upload build artifacts
