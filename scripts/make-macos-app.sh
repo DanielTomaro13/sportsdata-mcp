@@ -27,11 +27,16 @@ fi
 
 echo "assembling $APP_NAME.app $VERSION"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 
-# The PyInstaller onedir is the bundled Mach-O binary + its `_internal` sibling; both go
-# straight into Contents/MacOS so `sportsdata-mcp` IS the bundle's main executable.
-cp -R "$ONEDIR"/. "$APP/Contents/MacOS/"
+# Lay the onedir out the way PyInstaller's bootloader expects INSIDE a .app: the Mach-O
+# executable alone in Contents/MacOS (so it's the bundle's main executable), and the whole
+# `_internal` payload FLAT in Contents/Frameworks. When the bootloader detects it's running
+# from `…app/Contents/MacOS/`, it resolves its Python runtime + support libs at
+# `…/Contents/Frameworks/` (NOT `…/MacOS/_internal/`) — putting them under MacOS makes the
+# app fail at launch with "Failed to load Python shared library …/Contents/Frameworks/Python".
+cp "$ONEDIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+cp -R "$ONEDIR/_internal/." "$APP/Contents/Frameworks/"
 
 # Info.plist with the version substituted in (CFBundleExecutable = sportsdata-mcp).
 sed "s/__VERSION__/$VERSION/g" "$PKG/Info.plist.template" > "$APP/Contents/Info.plist"
