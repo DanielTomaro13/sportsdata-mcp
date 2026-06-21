@@ -17,6 +17,9 @@ def _datagolf_provider() -> Provider:
         display_name="Data Golf",
         base_urls={"default": "https://feeds.datagolf.com"},
         auth={"default": AuthStaticQuery(type="static_query", param="key", env="DATAGOLF_KEY")},
+        # mirror the real datagolf.yaml: the proxied/byo-key routing is now spec data
+        proxied=True,
+        byo_key_env="DATAGOLF_KEY",
     )
 
 
