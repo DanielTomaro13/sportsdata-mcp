@@ -25,6 +25,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,17 @@ log = logging.getLogger("sportsdata_mcp.ota")
 SCHEMA = 1
 SPEC_FEED_URL_ENV = "SPORTSDATA_SPEC_FEED_URL"
 SPEC_PUBKEY_ENV = "SPORTSDATA_SPEC_PUBKEY"
+
+# A bundle file name must be exactly a provider spec — same shape as a provider id + .yaml.
+# Whitelisting (not blacklisting) blocks dotfiles, ``_``-prefixed, path separators, and odd
+# unicode in one rule, so nothing but a real ``{provider}.yaml`` is ever written.
+_VALID_SPEC_NAME = re.compile(r"[a-z][a-z0-9_]*\.yaml")
+# A version must start with a digit so date ('2026-06-22') and semver ('1.10.0') both order
+# numerically via _version_key — and a blank/garbage version can't slip past anti-rollback.
+_VALID_VERSION = re.compile(r"[0-9][0-9A-Za-z._\-]*")
+# Specs are small text; cap the fetched bundle well above any real size, BEFORE verifying,
+# so a hostile/compromised feed host can't exhaust memory with a giant or unbounded body.
+MAX_BUNDLE_BYTES = 8 * 1024 * 1024
 
 # Baked Ed25519 verify keys for spec bundles, by kid. Empty until a key is baked at release;
 # until then a product build can't OTA-update (no trust anchor) and a dev/source build
@@ -170,42 +182,56 @@ def _validate_spec_text(text: str, name: str) -> None:
 
 
 def apply_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
-    """Write each spec in a verified bundle to the overlay dir, sha256-checked and written
-    atomically (tmp + replace). Entries must be ``{provider}.yaml`` (no path separators,
-    no ``_`` prefix); anything else is skipped (forward-compatible). Anti-rollback refuses a
-    bundle older than the applied one (a signed-but-stale replay can't revert specs)."""
+    """Write the specs in a verified bundle to the overlay dir. Entries must be
+    ``{provider}.yaml``; anything else is skipped (forward-compatible). The whole bundle is
+    sha256- and Spec-validated FIRST, then written — so a single bad file leaves the overlay
+    untouched (no torn-bundle state). Anti-rollback refuses a missing/blank/older version (a
+    signed-but-stale replay can't revert specs)."""
     if bundle.get("schema") != SCHEMA:
         raise SpecFeedError(f"unsupported bundle schema {bundle.get('schema')!r} (expected {SCHEMA})")
 
+    # A version is mandatory and must be digit-led, so it always orders numerically (an empty
+    # or garbage version would otherwise slip past — and blanking the stored VERSION would
+    # disable anti-rollback for good).
     new_v = str(bundle.get("version", "")).strip()
+    if not _VALID_VERSION.fullmatch(new_v):
+        raise SpecFeedError(f"bundle version {new_v!r} is missing or not a valid version")
     cur_v = applied_version()
-    if new_v and cur_v:
+    if cur_v:
         try:
             older = _version_key(new_v) < _version_key(cur_v)
-        except TypeError:  # mixed version formats — fall back to a plain string compare
-            older = new_v < cur_v
+        except TypeError:
+            # Unorderable across version schemes — REFUSE rather than fall back to a
+            # lexicographic compare (which isn't a valid ordering and could pass a rollback).
+            raise SpecFeedError(
+                f"cannot compare version {new_v!r} with applied {cur_v!r} — use one version scheme"
+            ) from None
         if older:
             raise SpecFeedError(
                 f"bundle version {new_v!r} is older than the applied {cur_v!r} — refusing rollback"
             )
 
-    overlay = _overlay_dir()
-    overlay.mkdir(parents=True, exist_ok=True, mode=0o700)
-    applied: list[str] = []
+    # Phase 1: validate EVERY file (sha256 + parses as a Spec) before touching the overlay.
+    validated: dict[str, str] = {}
     for name, rec in (bundle.get("files") or {}).items():
-        if not name.endswith(".yaml") or name.startswith("_") or "/" in name or "\\" in name:
+        if not _VALID_SPEC_NAME.fullmatch(name):
             log.warning("bundle carries unexpected file %r — skipping", name)
             continue
         content = str(rec.get("content", ""))
         if hashlib.sha256(content.encode("utf-8")).hexdigest() != rec.get("sha256"):
             raise SpecFeedError(f"sha256 mismatch for {name} — refusing to apply a corrupt bundle")
-        _validate_spec_text(content, name)  # a malformed spec aborts BEFORE any write
+        _validate_spec_text(content, name)  # malformed spec aborts the WHOLE apply, before any write
+        validated[name] = content
+
+    # Phase 2: everything checked — write atomically (tmp + replace), VERSION last.
+    overlay = _overlay_dir()
+    overlay.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for name, content in validated.items():
         tmp = overlay / f".{name}.tmp"
         tmp.write_text(content, encoding="utf-8")
         tmp.replace(overlay / name)  # atomic swap — no torn file on crash
-        applied.append(name)
     (overlay / "VERSION").write_text(new_v, encoding="utf-8")
-    return {"applied": applied, "version": new_v}
+    return {"applied": sorted(validated), "version": new_v}
 
 
 def fetch_and_apply(url: str, *, trusted: dict[str, str] | None = None) -> dict[str, Any]:
@@ -215,7 +241,11 @@ def fetch_and_apply(url: str, *, trusted: dict[str, str] | None = None) -> dict[
     import urllib.request
 
     trust = _trusted_pubkeys() if trusted is None else trusted
-    if url.startswith("http://"):
+    # Only http(s) — block file://, ftp://, etc. so a feed URL can't read a local file.
+    scheme = url.split(":", 1)[0].lower()
+    if scheme not in ("https", "http"):
+        raise SpecFeedError(f"unsupported spec feed URL scheme {scheme!r} — use https")
+    if scheme == "http":
         # A product build (baked key) must never pull the feed over plaintext: the signature
         # protects integrity, but http leaks WHICH specs the install fetches and eases a
         # downgrade/MITM. Hard-reject when a key is baked; warn only on dev/source.
@@ -224,7 +254,11 @@ def fetch_and_apply(url: str, *, trusted: dict[str, str] | None = None) -> dict[
         log.warning("spec feed over plain http (%s) — use https (dev only)", url.split("?")[0])
 
     with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310 — explicit user action
-        doc = json.loads(resp.read().decode("utf-8"))
+        # Cap the read BEFORE verifying/parsing so a hostile feed can't exhaust memory.
+        raw = resp.read(MAX_BUNDLE_BYTES + 1)
+    if len(raw) > MAX_BUNDLE_BYTES:
+        raise SpecFeedError(f"spec feed response exceeds {MAX_BUNDLE_BYTES} bytes — refusing")
+    doc = json.loads(raw.decode("utf-8"))
     bundle, signature = doc.get("bundle"), doc.get("signature", "")
     if not isinstance(bundle, dict):
         raise SpecFeedError("feed response missing a 'bundle' object")

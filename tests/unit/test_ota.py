@@ -155,7 +155,7 @@ def test_fetch_and_apply_verifies_signature(overlay, monkeypatch):
 
     class _Resp:
         def __init__(self, body): self._b = body
-        def read(self): return self._b
+        def read(self, n=-1): return self._b
         def __enter__(self): return self
         def __exit__(self, *a): return False
 
@@ -166,6 +166,62 @@ def test_fetch_and_apply_verifies_signature(overlay, monkeypatch):
     _, other = _keypair()
     with pytest.raises(ota.SpecFeedError, match="verification FAILED"):
         ota.fetch_and_apply("https://feed.invalid/b", trusted={"k1": other})
+
+
+def test_apply_rejects_blank_or_garbage_version(overlay):
+    for bad in ("", "   ", "v2", "latest"):
+        with pytest.raises(ota.SpecFeedError, match="version"):
+            ota.apply_bundle(_bundle_with(bad, {"example.yaml": _template_text()}))
+
+
+def test_cross_scheme_versions_order_numerically(overlay):
+    # date and semver both order via _version_key (digit-led), so anti-rollback still fires
+    # across schemes — no lexicographic fallback. A date (2026…) outranks a semver (1.x).
+    ota.apply_bundle(_bundle_with("2026-06-22", {"example.yaml": _template_text()}))
+    with pytest.raises(ota.SpecFeedError, match="rollback"):
+        ota.apply_bundle(_bundle_with("1.0.0", {"example.yaml": _template_text()}))
+
+
+def test_apply_is_all_or_nothing(overlay):
+    good = _template_text()
+    bundle = {
+        "schema": ota.SCHEMA,
+        "version": "1",
+        "files": {
+            "aaa.yaml": {"sha256": hashlib.sha256(good.encode()).hexdigest(), "content": good},
+            "bbb.yaml": {"sha256": "0" * 64, "content": good},  # bad sha → whole apply aborts
+        },
+    }
+    with pytest.raises(ota.SpecFeedError, match="sha256 mismatch"):
+        ota.apply_bundle(bundle)
+    # the earlier-validated file must NOT have been written (no torn-bundle state)
+    assert not (overlay / "aaa.yaml").exists()
+    assert ota.applied_version() is None
+
+
+def test_overlay_dup_tool_falls_back_to_packaged(overlay):
+    # Two overlay specs that both define tool `example_ping` → cross-spec collision in the
+    # merged set. load_all_specs must NOT crash; it drops the overlay and serves packaged.
+    overlay.mkdir(parents=True, exist_ok=True)
+    (overlay / "a.yaml").write_text(_template_text(), encoding="utf-8")
+    (overlay / "b.yaml").write_text(_template_text(), encoding="utf-8")
+    providers = {s.provider.id for s in load_all_specs()}  # no raise
+    assert "example" not in providers  # overlay dropped → packaged-only
+    assert providers == {s.provider.id for s in load_all_specs(packaged_specs_dir())}
+
+
+def test_fetch_rejects_oversized_and_bad_scheme(overlay, monkeypatch):
+    with pytest.raises(ota.SpecFeedError, match="scheme"):
+        ota.fetch_and_apply("file:///etc/passwd", trusted={})
+
+    class _Big:
+        def read(self, n=-1): return b"x" * (ota.MAX_BUNDLE_BYTES + 1)
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=30: _Big())
+    with pytest.raises(ota.SpecFeedError, match="exceeds"):
+        ota.fetch_and_apply("https://feed.invalid/b", trusted={})
 
 
 def test_clear_overlay_reverts_to_packaged(overlay):
