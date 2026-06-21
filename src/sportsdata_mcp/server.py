@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+from . import __version__
 from .config import Config, load_config
 from .licence import resolve_licensed_groups, revalidation_loop, set_live_groups
 from .registry import Registered, register_all
@@ -162,7 +163,9 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
                 await reg.aclose()
                 log.info("closed %d provider HTTP client(s) on shutdown", len(reg.http_clients))
 
-    mcp = FastMCP("sportsdata-mcp", lifespan=lifespan)
+    # version is reported in the MCP `initialize` handshake so a client (the agents
+    # platform) can detect a too-old data plane and warn on a contract mismatch.
+    mcp = FastMCP("sportsdata-mcp", version=__version__, lifespan=lifespan)
 
     groups = group_index
     provider_auth = _provider_auth(specs)
