@@ -37,6 +37,8 @@ PY="$REPO/.venv/bin/pyinstaller"
   "$REPO/src/sportsdata_mcp/__main__.py" || {
     echo "pyinstaller failed — did you run: pip install -e '.[build]' ?" >&2; exit 1; }
 
-( cd dist && zip -qr "$APP_NAME-$VERSION-macos.zip" "$APP_NAME" )
-echo "done → dist/$APP_NAME/  and  dist/$APP_NAME-$VERSION-macos.zip"
+# NOTE: the distributable is the .app produced by make-macos-app.sh + packaged with
+# `ditto` (see release.yml) — NOT a `zip` of this onedir. Plain `zip` drops the framework
+# symlinks and breaks the nested ad-hoc signatures, which makes the app read as "damaged".
+echo "done → dist/$APP_NAME/  (onedir)"
 echo "next: sh scripts/make-macos-app.sh   then   sh scripts/sign-and-notarize.sh"
