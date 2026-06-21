@@ -81,7 +81,7 @@ async def test_guard_refuses_revoked_group():
 def reval_env(monkeypatch, tmp_path, keypair):
     priv, pub_b64 = keypair
     monkeypatch.setenv("SPORTSDATA_LICENSE", "sd_live_testkey0001")
-    monkeypatch.setenv("SPORTSDATA_ENTITLEMENT_PUBKEY", pub_b64)
+    monkeypatch.setattr(licence, "BAKED_PUBKEY_B64", pub_b64)
     monkeypatch.setattr(licence, "_cache_path", lambda: tmp_path / "entitlement.json")
 
     def arm(claims=None, *, raise_fetch=False):

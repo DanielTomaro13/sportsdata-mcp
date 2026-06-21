@@ -35,9 +35,23 @@ log = logging.getLogger(__name__)
 DEFAULT_ENTITLEMENT_URL = "https://sportsdata-entitlement.sportsdata.workers.dev"
 
 # Baked Ed25519 *public* key (raw, base64url) — the matching half of the entitlement
-# service's signing key (services/entitlement/gen-keypair.py). Override at runtime with
-# SPORTSDATA_ENTITLEMENT_PUBKEY. If this is ever rotated, re-bake the new public line.
+# service's signing key (services/entitlement/gen-keypair.py). If this is ever rotated,
+# re-bake the new public line.
 BAKED_PUBKEY_B64 = "Vc1niiTDDyWM7Es7pvGdS1Bne9k9nDIMKFhJYiHT0e8"
+
+
+def _entitlement_pubkey() -> str:
+    """The Ed25519 verify key the gate trusts.
+
+    Security: when a key is BAKED IN (the shipped product), the env override is IGNORED —
+    otherwise a self-hoster could substitute their own keypair, point SPORTSDATA_ENTITLEMENT_URL
+    at a Worker they control, and mint an all-access token that verifies (a complete bypass).
+    The env override is honoured ONLY in unbaked dev/source builds (empty BAKED_PUBKEY_B64),
+    where it's needed to test against a local entitlement service.
+    """
+    if BAKED_PUBKEY_B64:
+        return BAKED_PUBKEY_B64
+    return os.environ.get("SPORTSDATA_ENTITLEMENT_PUBKEY", "")
 
 # How long a cached entitlement keeps a customer's feeds alive once we can no longer
 # reach (or re-verify against) the service — and how far past `expires` we still honour
@@ -117,8 +131,11 @@ def _fetch_token(url: str, key: str) -> str | None:
 def _save_cache(token: str) -> None:
     try:
         path = _cache_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # The cache holds a signed bearer token at rest; keep the dir + file owner-only
+        # (the cache path is shared, so don't leave it world-readable to other local users).
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_text(json.dumps({"token": token, "fetched_at": int(time.time())}))
+        os.chmod(path, 0o600)
     except OSError as exc:  # cache is best-effort — never fatal
         log.debug("could not write entitlement cache: %s", exc)
 
@@ -223,7 +240,7 @@ def resolve_licensed_groups(
         return None
 
     url = os.environ.get("SPORTSDATA_ENTITLEMENT_URL", DEFAULT_ENTITLEMENT_URL)
-    pubkey_b64 = os.environ.get("SPORTSDATA_ENTITLEMENT_PUBKEY", BAKED_PUBKEY_B64)
+    pubkey_b64 = _entitlement_pubkey()
     if not pubkey_b64:
         log.warning(
             "SPORTSDATA_LICENSE is set but no entitlement public key is configured "
@@ -284,7 +301,7 @@ def _revalidate_groups(
     if not key:
         return None
     url = os.environ.get("SPORTSDATA_ENTITLEMENT_URL", DEFAULT_ENTITLEMENT_URL)
-    pubkey_b64 = os.environ.get("SPORTSDATA_ENTITLEMENT_PUBKEY", BAKED_PUBKEY_B64)
+    pubkey_b64 = _entitlement_pubkey()
     if not pubkey_b64:
         return None
     try:
@@ -301,6 +318,18 @@ def _revalidate_groups(
         return None
     if str(claims.get("key", "")) != key:
         return None
+    # Mirror the startup path's strict checks: a freshly-fetched token that is expired or
+    # past its billing period is a DEFINITIVE lapse (revoke), not a transient outage. Without
+    # these a long-lived server kept serving past period-end whenever status stayed "active".
+    now = int(time.time())
+    expires = int(claims.get("expires", 0))
+    if expires and now > expires + _CLOCK_SKEW:
+        log.warning("entitlement token has expired — revoking feeds")
+        return []
+    period_end = int(claims.get("current_period_end", 0))
+    if period_end and now > period_end + _CLOCK_SKEW:
+        log.warning("entitlement is past its billing period — revoking feeds")
+        return []
     if str(claims.get("status", "")) not in _LIVE_STATUSES:
         log.warning("entitlement no longer active (%s) — revoking feeds", claims.get("status"))
         return []

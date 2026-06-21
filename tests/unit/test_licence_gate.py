@@ -41,7 +41,9 @@ def gate_env(monkeypatch, tmp_path, keypair):
     helper that arms the (monkeypatched) entitlement fetch with given claims."""
     priv, pub_b64 = keypair
     monkeypatch.setenv("SPORTSDATA_LICENSE", "sd_live_testkey0001")
-    monkeypatch.setenv("SPORTSDATA_ENTITLEMENT_PUBKEY", pub_b64)
+    # Inject the verify key the way production does — BAKED IN. (The env override is now
+    # ignored whenever a key is baked, so a forged key can't substitute the trust anchor.)
+    monkeypatch.setattr(licence, "BAKED_PUBKEY_B64", pub_b64)
     monkeypatch.setenv("SPORTSDATA_ENTITLEMENT_URL", "https://example.invalid")
     monkeypatch.setattr(licence, "_cache_path", lambda: tmp_path / "entitlement.json")
 
@@ -152,7 +154,7 @@ def test_bad_signature_rejected(monkeypatch, tmp_path, keypair):
     _, pub_b64 = keypair
     other = Ed25519PrivateKey.generate()
     monkeypatch.setenv("SPORTSDATA_LICENSE", "sd_live_testkey0001")
-    monkeypatch.setenv("SPORTSDATA_ENTITLEMENT_PUBKEY", pub_b64)
+    monkeypatch.setattr(licence, "BAKED_PUBKEY_B64", pub_b64)
     monkeypatch.setattr(licence, "_cache_path", lambda: tmp_path / "entitlement.json")
     token = _sign(other, {"status": "active", "all_access": True})
     monkeypatch.setattr(licence, "_fetch_token", lambda url, key: token)
@@ -164,6 +166,26 @@ def test_missing_pubkey_serves_nothing(monkeypatch):
     monkeypatch.setenv("SPORTSDATA_ENTITLEMENT_PUBKEY", "")
     monkeypatch.setattr(licence, "BAKED_PUBKEY_B64", "")
     assert resolve_licensed_groups({"mlb.reference"}, {}) == []
+
+
+def test_baked_key_ignores_env_pubkey_override(monkeypatch, tmp_path):
+    """Security: when a key is BAKED, a self-hoster's SPORTSDATA_ENTITLEMENT_PUBKEY is
+    ignored, so they cannot substitute their own keypair to forge an all-access token."""
+    _raw = serialization.Encoding.Raw
+    _pub = serialization.PublicFormat.Raw
+    real = Ed25519PrivateKey.generate()
+    real_pub = _b64url(real.public_key().public_bytes(_raw, _pub))
+    attacker = Ed25519PrivateKey.generate()
+    attacker_pub = _b64url(attacker.public_key().public_bytes(_raw, _pub))
+    monkeypatch.setenv("SPORTSDATA_LICENSE", "sd_live_testkey0001")
+    monkeypatch.setattr(licence, "BAKED_PUBKEY_B64", real_pub)
+    # The attacker points the env override at THEIR key and signs with it…
+    monkeypatch.setenv("SPORTSDATA_ENTITLEMENT_PUBKEY", attacker_pub)
+    monkeypatch.setattr(licence, "_cache_path", lambda: tmp_path / "entitlement.json")
+    forged = _sign(attacker, {"key": "sd_live_testkey0001", "status": "active", "all_access": True})
+    monkeypatch.setattr(licence, "_fetch_token", lambda url, key: forged)
+    # …and it must NOT verify against the baked key → no feeds.
+    assert resolve_licensed_groups({"mlb.reference"}, {"mlb": ["mlb.reference"]}) == []
 
 
 # ── claims_to_groups (pure mapping) ──────────────────────────────────────
