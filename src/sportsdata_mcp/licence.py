@@ -35,13 +35,22 @@ log = logging.getLogger(__name__)
 DEFAULT_ENTITLEMENT_URL = "https://sportsdata-entitlement.sportsdata.workers.dev"
 
 # Baked Ed25519 *public* key (raw, base64url) — the matching half of the entitlement
-# service's signing key (services/entitlement/gen-keypair.py). If this is ever rotated,
-# re-bake the new public line.
+# service's signing key (services/entitlement/gen-keypair.py). This is the CURRENT key,
+# tagged kid "k1" (the Worker stamps the same kid on the tokens it signs).
 BAKED_PUBKEY_B64 = "Vc1niiTDDyWM7Es7pvGdS1Bne9k9nDIMKFhJYiHT0e8"
 
+# Additional trusted verify keys by `kid`, for rotating the signing key WITHOUT a flag-day.
+# To rotate: (1) ship a build that trusts both the current key and the next one by adding
+# the next here (e.g. {"k2": "<new pubkey>"}); (2) once customers have that build, switch
+# the Worker to sign with the new private key + SIGNING_KID="k2" — its tokens carry kid
+# "k2" and verify against this entry, while older "k1"/kid-less tokens keep verifying; (3)
+# drop the stale entry once every token signed by it has expired. An unknown/absent kid
+# falls back to trying every trusted key, so a legacy kid-less token still verifies.
+EXTRA_BAKED_PUBKEYS: dict[str, str] = {}
 
-def _entitlement_pubkey() -> str:
-    """The Ed25519 verify key the gate trusts.
+
+def _entitlement_pubkeys() -> dict[str, str]:
+    """The Ed25519 verify keys the gate trusts, as ``{kid: base64url-pubkey}``.
 
     Security: when a key is BAKED IN (the shipped product), the env override is IGNORED —
     otherwise a self-hoster could substitute their own keypair, point SPORTSDATA_ENTITLEMENT_URL
@@ -50,8 +59,9 @@ def _entitlement_pubkey() -> str:
     where it's needed to test against a local entitlement service.
     """
     if BAKED_PUBKEY_B64:
-        return BAKED_PUBKEY_B64
-    return os.environ.get("SPORTSDATA_ENTITLEMENT_PUBKEY", "")
+        return {"k1": BAKED_PUBKEY_B64, **EXTRA_BAKED_PUBKEYS}
+    env = os.environ.get("SPORTSDATA_ENTITLEMENT_PUBKEY", "")
+    return {"env": env} if env else {}
 
 # How long a cached entitlement keeps a customer's feeds alive once we can no longer
 # reach (or re-verify against) the service — and how far past `expires` we still honour
@@ -97,18 +107,35 @@ def _cache_path() -> Path:
     return Path.home() / ".sportsdata" / "entitlement.json"
 
 
-def _verify_token(token: str, pubkey_b64: str) -> dict:
-    """Verify a signed entitlement token and return its claims. Raises on any failure."""
+def _verify_token(token: str, trusted: dict[str, str]) -> dict:
+    """Verify a signed entitlement token against any trusted key and return its claims.
+
+    ``trusted`` is ``{kid: base64url-pubkey}``. The token's ``kid`` claim selects which key
+    to try first (the rotation fast path); we then fall back to every other trusted key, so
+    a legacy kid-less token — or one minted during a rotation — still verifies. Raises if no
+    trusted key verifies the signature, or the payload isn't a JSON object."""
+    from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
     payload_b64, sig_b64 = token.split(".", 1)
     payload = _b64url_decode(payload_b64)
-    pub = Ed25519PublicKey.from_public_bytes(_b64url_decode(pubkey_b64))
-    pub.verify(_b64url_decode(sig_b64), payload)  # raises InvalidSignature
+    sig = _b64url_decode(sig_b64)
     claims = json.loads(payload)
     if not isinstance(claims, dict):
         raise ValueError("entitlement payload is not an object")
-    return claims
+
+    kid = str(claims.get("kid", "")) or None
+    order = ([trusted[kid]] if kid and kid in trusted else []) + [
+        v for k, v in trusted.items() if not (kid and k == kid)
+    ]
+    last_exc: Exception | None = None
+    for pubkey_b64 in order:
+        try:
+            Ed25519PublicKey.from_public_bytes(_b64url_decode(pubkey_b64)).verify(sig, payload)
+            return claims
+        except (InvalidSignature, ValueError) as exc:  # try the next trusted key
+            last_exc = exc
+    raise last_exc or ValueError("no trusted entitlement key verified the token")
 
 
 def _fetch_token(url: str, key: str) -> str | None:
@@ -149,7 +176,7 @@ def _load_cache() -> str | None:
     return str(token) if token else None
 
 
-def _resolve_entitlement(key: str, url: str, pubkey_b64: str) -> dict | None:
+def _resolve_entitlement(key: str, url: str, trusted: dict[str, str]) -> dict | None:
     """Live fetch → verify → cache; on any failure fall back to a cached token within
     the grace window. Returns verified claims, or ``None`` if nothing usable."""
     token: str | None = None
@@ -168,7 +195,7 @@ def _resolve_entitlement(key: str, url: str, pubkey_b64: str) -> dict | None:
         return None
 
     try:
-        claims = _verify_token(token, pubkey_b64)
+        claims = _verify_token(token, trusted)
     except Exception as exc:  # noqa: BLE001 — bad signature / malformed token
         log.warning("entitlement verification failed: %s", exc)
         return None
@@ -237,15 +264,15 @@ def resolve_licensed_groups(
         return None
 
     url = os.environ.get("SPORTSDATA_ENTITLEMENT_URL", DEFAULT_ENTITLEMENT_URL)
-    pubkey_b64 = _entitlement_pubkey()
-    if not pubkey_b64:
+    trusted = _entitlement_pubkeys()
+    if not trusted:
         log.warning(
             "SPORTSDATA_LICENSE is set but no entitlement public key is configured "
             "(SPORTSDATA_ENTITLEMENT_PUBKEY / baked key) — serving no feeds"
         )
         return []
 
-    claims = _resolve_entitlement(key, url, pubkey_b64)
+    claims = _resolve_entitlement(key, url, trusted)
     if claims is None:
         return []  # fail closed
     groups = claims_to_groups(claims, all_groups, provider_groups)
@@ -298,8 +325,8 @@ def _revalidate_groups(
     if not key:
         return None
     url = os.environ.get("SPORTSDATA_ENTITLEMENT_URL", DEFAULT_ENTITLEMENT_URL)
-    pubkey_b64 = _entitlement_pubkey()
-    if not pubkey_b64:
+    trusted = _entitlement_pubkeys()
+    if not trusted:
         return None
     try:
         token = _fetch_token(url, key)
@@ -309,7 +336,7 @@ def _revalidate_groups(
     if not token:
         return None
     try:
-        claims = _verify_token(token, pubkey_b64)
+        claims = _verify_token(token, trusted)
     except Exception as exc:  # noqa: BLE001 — unverifiable: keep current, don't revoke
         log.warning("revalidation verify failed: %s — keeping current entitlement", exc)
         return None
