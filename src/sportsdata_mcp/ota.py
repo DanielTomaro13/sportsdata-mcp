@@ -50,6 +50,8 @@ MAX_BUNDLE_BYTES = 8 * 1024 * 1024
 # until then a product build can't OTA-update (no trust anchor) and a dev/source build
 # applies UNVERIFIED with a warning. Kid-aware so the signing key rotates the same way the
 # entitlement key does (licence.py: ship trust for the next key, switch the issuer, retire).
+# Generate a keypair with `python scripts/gen-spec-keypair.py` and paste the PUBLIC half
+# here, e.g. {"k1": "<base64url-pubkey>"}; keep the private half offline (publish only).
 BAKED_SPEC_PUBKEYS: dict[str, str] = {}
 
 
