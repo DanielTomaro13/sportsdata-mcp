@@ -40,7 +40,16 @@ sportsdata-mcp list-groups      # see every available tool group
 sportsdata-mcp lint             # validate the packaged specs
 sportsdata-mcp doctor           # probe enabled groups for reachability + auth
 sportsdata-mcp serve            # start the MCP stdio server (default command)
+sportsdata-mcp update-specs     # OTA-refresh provider specs (signed bundle); --clear reverts
 ```
+
+Provider endpoints drift (e.g. Entain rotates its GraphQL persisted-query hashes).
+`update-specs` fetches a **signed** spec bundle and applies it into an overlay under
+`~/.sportsdata/spec-overlay`, which the loader prefers over the packaged copy — so a drift
+fix doesn't need a whole new app build. The bundle is Ed25519-verified against a baked key
+(a product build refuses an unsigned/forged bundle; anti-rollback refuses a stale replay).
+Publish one with `scripts/publish-spec-bundle.py`; point `--url` / `$SPORTSDATA_SPEC_FEED_URL`
+at the asset. Restart the server after applying.
 
 Enable tool groups with a config file or the `SPORTSDATA_MCP_GROUPS` env var:
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from importlib import metadata
 from pathlib import Path
@@ -208,10 +209,49 @@ def _default_setup_command() -> str:
     return default_command()
 
 
+@cli.command("update-specs")
+@click.option("--url", default=None, help="Spec-bundle feed URL (default: $SPORTSDATA_SPEC_FEED_URL).")
+@click.option("--clear", is_flag=True, help="Remove any applied overlay and revert to the packaged specs.")
+def update_specs(url: str | None, clear: bool) -> None:
+    """Fetch + apply a signed provider-spec update (OTA) so drifting specs (e.g. Entain
+    GraphQL hashes) can be refreshed without a new app build. --clear reverts to packaged."""
+    from . import ota
+
+    if clear:
+        ota.clear_overlay()
+        click.echo(click.style("✓ spec overlay cleared — using the packaged specs.", fg="green"))
+        click.echo("   Restart the MCP server for the change to take effect.")
+        return
+
+    feed = url or os.environ.get(ota.SPEC_FEED_URL_ENV, "")
+    if not feed:
+        click.echo(
+            click.style("no feed URL — pass --url or set SPORTSDATA_SPEC_FEED_URL", fg="red"), err=True
+        )
+        raise SystemExit(1)
+    try:
+        result = ota.fetch_and_apply(feed)
+    except ota.SpecFeedError as e:
+        click.echo(click.style(f"update failed: {e}", fg="red"), err=True)
+        raise SystemExit(1) from e
+    click.echo(
+        click.style(
+            f"✅ applied spec bundle {result['version']}: {len(result['applied'])} spec(s) updated",
+            fg="green",
+        )
+    )
+    click.echo("   Restart the MCP server for changes to take effect.")
+
+
 @cli.command()
 def version() -> None:
     """Print version info."""
+    from . import ota
+
     click.echo(_version_string())
+    applied = ota.applied_version()
+    if applied:
+        click.echo(f"spec overlay: {applied} (OTA-applied; `update-specs --clear` reverts)")
 
 
 def main() -> None:

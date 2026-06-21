@@ -40,39 +40,66 @@ def load_capabilities(path: Path | None = None) -> CapabilityCatalogue:
         raise SpecValidationError(f"{path.name}: {e}") from e
 
 
-def load_spec(path: Path) -> Spec:
-    raw = yaml.safe_load(path.read_text())
+def load_spec_text(text: str, name: str) -> Spec:
+    """Validate one spec's YAML text into a Spec (``name`` is used only for error context).
+    Shared by the file loader and the OTA overlay path so both validate identically — a
+    malformed-YAML or schema-invalid overlay surfaces as one SpecValidationError, never a
+    raw scanner error that could escape the apply path."""
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise SpecValidationError(f"{name}: not valid YAML ({e})") from e
     try:
         spec = Spec.model_validate(raw)
     except ValidationError as e:
-        raise SpecValidationError(f"{path.name}: {e}") from e
+        raise SpecValidationError(f"{name}: {e}") from e
     if spec.spec_version > CURRENT_SPEC_VERSION:
         log.warning(
             "%s declares spec_version=%d but this build understands up to %d; "
             "loading anyway — newer fields may be ignored.",
-            path.name,
+            name,
             spec.spec_version,
             CURRENT_SPEC_VERSION,
         )
     return spec
 
 
+def load_spec(path: Path) -> Spec:
+    return load_spec_text(path.read_text(), path.name)
+
+
 def load_all_specs(specs_dir: Path | None = None) -> list[Spec]:
-    """Load every {provider}.yaml (skipping files starting with _) from the packaged specs dir."""
+    """Load every {provider}.yaml (skipping files starting with _).
+
+    The default (no ``specs_dir``) load is what the running server uses: it reads the
+    packaged specs and then lets an applied OTA overlay shadow/add specs by filename (see
+    ``ota.overlay_spec_sources``). An explicit ``specs_dir`` (lint, tests) reads ONLY that
+    directory — no overlay — so those stay deterministic on the source tree.
+    """
+    use_overlay = specs_dir is None
     if specs_dir is None:
         specs_dir = packaged_specs_dir()
-    specs: list[Spec] = []
-    seen_names: dict[str, str] = {}  # tool name -> spec filename
+
+    sources: dict[str, str] = {}  # filename -> yaml text (packaged, then overlay-shadowed)
     for path in sorted(specs_dir.glob("*.yaml")):
         if path.name.startswith("_"):
             continue
-        spec = load_spec(path)
+        sources[path.name] = path.read_text()
+    if use_overlay:
+        from . import ota
+
+        sources.update(ota.overlay_spec_sources())
+
+    specs: list[Spec] = []
+    seen_names: dict[str, str] = {}  # tool name -> spec filename
+    for name in sorted(sources):
+        spec = load_spec_text(sources[name], name)
         for tool in spec.all_tools():
             if tool.name in seen_names:
                 raise SpecValidationError(
-                    f"duplicate tool name '{tool.name}' between {seen_names[tool.name]} and {path.name}"
+                    f"duplicate tool name '{tool.name}' between {seen_names[tool.name]} and {name}"
                 )
-            seen_names[tool.name] = path.name
+            seen_names[tool.name] = name
         specs.append(spec)
     return specs
 
