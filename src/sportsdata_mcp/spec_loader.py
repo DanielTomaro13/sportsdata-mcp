@@ -68,28 +68,9 @@ def load_spec(path: Path) -> Spec:
     return load_spec_text(path.read_text(), path.name)
 
 
-def load_all_specs(specs_dir: Path | None = None) -> list[Spec]:
-    """Load every {provider}.yaml (skipping files starting with _).
-
-    The default (no ``specs_dir``) load is what the running server uses: it reads the
-    packaged specs and then lets an applied OTA overlay shadow/add specs by filename (see
-    ``ota.overlay_spec_sources``). An explicit ``specs_dir`` (lint, tests) reads ONLY that
-    directory — no overlay — so those stay deterministic on the source tree.
-    """
-    use_overlay = specs_dir is None
-    if specs_dir is None:
-        specs_dir = packaged_specs_dir()
-
-    sources: dict[str, str] = {}  # filename -> yaml text (packaged, then overlay-shadowed)
-    for path in sorted(specs_dir.glob("*.yaml")):
-        if path.name.startswith("_"):
-            continue
-        sources[path.name] = path.read_text()
-    if use_overlay:
-        from . import ota
-
-        sources.update(ota.overlay_spec_sources())
-
+def _build_specs(sources: dict[str, str]) -> list[Spec]:
+    """Validate a {filename: yaml-text} map into Specs, enforcing tool-name uniqueness
+    across the whole set."""
     specs: list[Spec] = []
     seen_names: dict[str, str] = {}  # tool name -> spec filename
     for name in sorted(sources):
@@ -102,6 +83,43 @@ def load_all_specs(specs_dir: Path | None = None) -> list[Spec]:
             seen_names[tool.name] = name
         specs.append(spec)
     return specs
+
+
+def load_all_specs(specs_dir: Path | None = None) -> list[Spec]:
+    """Load every {provider}.yaml (skipping files starting with _).
+
+    The default (no ``specs_dir``) load is what the running server uses: it reads the
+    packaged specs and then lets an applied OTA overlay shadow/add specs by filename (see
+    ``ota.overlay_spec_sources``). An explicit ``specs_dir`` (lint, tests) reads ONLY that
+    directory — no overlay — so those stay deterministic on the source tree.
+
+    If an applied overlay makes the *merged* set invalid (a cross-spec duplicate tool name,
+    or a spec a newer build now rejects), the overlay is dropped and the packaged specs load
+    instead — a bad OTA update must never take the server down with no path back.
+    """
+    use_overlay = specs_dir is None
+    if specs_dir is None:
+        specs_dir = packaged_specs_dir()
+
+    packaged: dict[str, str] = {}  # filename -> yaml text
+    for path in sorted(specs_dir.glob("*.yaml")):
+        if path.name.startswith("_"):
+            continue
+        packaged[path.name] = path.read_text()
+
+    if not use_overlay:
+        return _build_specs(packaged)
+
+    from . import ota
+
+    overlay = ota.overlay_spec_sources()
+    if not overlay:
+        return _build_specs(packaged)
+    try:
+        return _build_specs({**packaged, **overlay})
+    except SpecValidationError as e:
+        log.warning("applied spec overlay failed to load (%s) — falling back to packaged specs", e)
+        return _build_specs(packaged)
 
 
 def lint(specs_dir: Path | None = None) -> tuple[list[str], list[str]]:
