@@ -68,26 +68,23 @@ _FETCH_TIMEOUT = 8.0
 _LIVE_STATUSES = {"active", "trialing", "past_due"}
 
 
-# Providers that run on OUR upstream credential and must be routed through the
-# entitlement service's proxy in a licensed build (the credential never ships locally).
-# Only DataGolf today: TAB's public endpoints need no auth and run client-side.
-PROXIED_PROVIDERS = {"datagolf"}
-
-
-def proxy_base_for(provider_id: str) -> str | None:
+def proxy_base_for(
+    provider_id: str, *, proxied: bool = False, byo_key_env: str | None = None
+) -> str | None:
     """If this provider should be routed through the entitlement proxy, return its
     ``…/proxy/<id>`` base; otherwise ``None``.
 
-    Active only when a licence is configured and we have *no* local upstream credential
-    for the provider — so a customer who supplies their own key still calls the upstream
-    directly.
+    `proxied`/`byo_key_env` are spec fields (``provider.proxied`` / ``provider.byo_key_env``)
+    so adding a credentialed provider is DATA, not a hardcoded set here. Active only when a
+    licence is configured and we have *no* local upstream credential — a customer who
+    supplies their own key (``byo_key_env`` set) still calls the upstream directly.
     """
-    if provider_id not in PROXIED_PROVIDERS:
+    if not proxied:
         return None
     if not os.environ.get("SPORTSDATA_LICENSE"):
         return None
-    if provider_id == "datagolf" and os.environ.get("DATAGOLF_KEY"):
-        return None  # customer's own DataGolf key — go direct
+    if byo_key_env and os.environ.get(byo_key_env):
+        return None  # customer's own key — go direct
     url = os.environ.get("SPORTSDATA_ENTITLEMENT_URL", DEFAULT_ENTITLEMENT_URL)
     return f"{url.rstrip('/')}/proxy/{provider_id}"
 

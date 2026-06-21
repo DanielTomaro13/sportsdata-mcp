@@ -130,6 +130,11 @@ class Provider(BaseModel):
     auth: dict[str, AuthSpec] = Field(default_factory=lambda: {"default": AuthNone()})
     hash_refresh: HashRefresh | None = None
     defaults: ProviderDefaults = Field(default_factory=ProviderDefaults)
+    # Commerce: this provider runs on OUR upstream credential (never shipped locally), so a
+    # licensed build routes it through the entitlement proxy. `byo_key_env`, when that env
+    # var is set, means the customer supplied their own key → call the upstream directly.
+    proxied: bool = False
+    byo_key_env: str | None = None
 
 
 # ─── Endpoint params ───────────────────────────────────────────────────

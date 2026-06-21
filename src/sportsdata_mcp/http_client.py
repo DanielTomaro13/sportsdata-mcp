@@ -89,7 +89,9 @@ class HTTPClient:
         self._strip_cookies = bool(prov_cfg.get("strip_cookies", defaults.strip_cookies))
         # Licensed proxy mode (commerce): route a credentialed provider (e.g. DataGolf)
         # through the entitlement service, which attaches our upstream key server-side.
-        self._proxy_base = proxy_base_for(provider.id)
+        self._proxy_base = proxy_base_for(
+            provider.id, proxied=provider.proxied, byo_key_env=provider.byo_key_env
+        )
         self._licence = os.environ.get("SPORTSDATA_LICENSE")
         if self._proxy_base:
             log.info("provider %s routed through licence proxy %s", provider.id, self._proxy_base)
