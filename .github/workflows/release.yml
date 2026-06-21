@@ -73,8 +73,16 @@ jobs:
           if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
             sh scripts/sign-and-notarize.sh
           else
-            ( cd dist && zip -qr "sportsdata-mcp-$VERSION-macos-unsigned.zip" "sportsdata-mcp.app" )
-            echo "built UNSIGNED dist/sportsdata-mcp-$VERSION-macos-unsigned.zip"
+            # No Developer ID: PyInstaller's per-binary ad-hoc signatures stand, but the
+            # bundle can't be cleanly sealed (codesign rejects PyInstaller's .dist-info data
+            # dirs under Contents/Frameworks), so a quarantined download reads as "damaged"
+            # until notarized — the customer clears it once with
+            #   xattr -dr com.apple.quarantine /Applications/sportsdata-mcp.app
+            # Package with `ditto`, NOT `zip`: zip drops the framework symlinks and breaks
+            # the nested signatures, which itself triggers "damaged".
+            ditto -c -k --sequesterRsrc --keepParent \
+              "dist/sportsdata-mcp.app" "dist/sportsdata-mcp-$VERSION-macos-unsigned.zip"
+            echo "built ditto-packaged dist/sportsdata-mcp-$VERSION-macos-unsigned.zip (ad-hoc nested sigs)"
           fi
 
       - name: Upload build artifacts
