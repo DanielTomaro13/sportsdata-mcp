@@ -17,12 +17,17 @@ spec_version: 1
 # Read-only odds data (fixtures, markets, prices) — no bet placement, consistent
 # with the repo's no-money invariant.
 #
+# Works for ANY competition, not just AFL/NRL: discover ids with
+# dabble_active_competitions (the ~269 currently-bettable competitions across all
+# sports) or dabble_competitions(name=…) (exact-name lookup), then feed the id to
+# dabble_competition_fixtures. dabble_sports lists the 24 sports.
+#
 # Shape: ONE fixtures feed per competition embeds markets + prices + selections;
 # the per-fixture `details` endpoint returns the FULL book (hundreds of markets +
 # the Pick'em playerProps product). Markets join to selections + prices by
-# marketId / selectionId. Competition ids are opaque UUIDs — the AFL and NRL ones
-# are baked into the tool examples; discover others from the app (the /competitions
-# catalogue is a ~38 MB / 140k-row dump and is deliberately not modelled).
+# marketId / selectionId. Competition/sport ids are opaque UUIDs. (The unfiltered
+# /competitions catalogue is a ~38 MB / 140k-row dump and is deliberately not
+# modelled — use the active list or the name filter instead.)
 
 provider:
   id: dabble
@@ -48,15 +53,45 @@ provider:
     retry_backoff_seconds: 0.5
 
 endpoints:
+  # ─── discovery — find any competition's id ────────────────────────────
+  - name: dabble_active_competitions
+    group: dabble.sport
+    capabilities: [sport.competitions_list]
+    summary: "Every currently-bettable competition across all sports (~269) — the discovery entry point. Pick any one's `id` and pass it to dabble_competition_fixtures. Each carries name, sportName, country and a featured flag."
+    base: default
+    path: /competitions/active
+    auth: default
+    response_hint: "{status, data:{activeCompetitions:[{id, name, sportName, country, featured, location, sportId}]}}"
+
+  - name: dabble_competitions
+    group: dabble.sport
+    capabilities: [sport.competitions_list]
+    summary: "Look up competitions by EXACT name (case-sensitive; e.g. 'NRL', 'Premier League', 'AFL Matches' — note 'AFL' alone returns nothing). Returns the matching competition(s) with their id(s). For browsing, prefer dabble_active_competitions."
+    base: default
+    path: /competitions
+    auth: default
+    params:
+      - { name: name, in: query, type: string, required: true, description: "Exact competition name (e.g. 'NRL', 'Premier League', 'AFL Matches')." }
+    response_hint: "{status, data:[{id, name, sportId, country}]}  (exact-match only — empty if the name isn't exact)"
+
+  - name: dabble_sports
+    group: dabble.sport
+    summary: "The 24 sports Dabble offers (Rugby League, Australian Rules, Football, Basketball, Cricket, Tennis, Horse Racing, …), each with id + name. Join sportId from a competition back to its sport here."
+    base: default
+    path: /sports
+    auth: default
+    response_hint: "{status, data:[{id, name, isRacing, isHidden}]}"
+
+  # ─── fixtures + markets/odds for a competition ────────────────────────
   - name: dabble_competition_fixtures
     group: dabble.sport
     capabilities: [sport.fixtures_by_date, sport.event_markets, sport.prices]
-    summary: "All fixtures for a competition, each embedding its markets + prices (decimal odds) + selections + teams. Competition ids are opaque UUIDs — AFL = ad4c78ec-e39d-45ee-8cec-ff5d485a3205, NRL = c709772d-d5d0-4252-af89-be8a163706dc. For the FULL book of one fixture use dabble_fixture_details."
+    summary: "All fixtures for ONE competition, each embedding its markets + prices (decimal odds) + selections + teams. Get the competitionId from dabble_active_competitions / dabble_competitions (AFL Matches = ad4c78ec-e39d-45ee-8cec-ff5d485a3205, NRL = c709772d-d5d0-4252-af89-be8a163706dc). For the FULL book of one fixture use dabble_fixture_details."
     base: default
     path: /frontend-api/competitions/{competitionId}/sport-fixtures
     auth: default
     params:
-      - { name: competitionId, in: path, type: string, required: true, description: "Competition UUID (AFL ad4c78ec-e39d-45ee-8cec-ff5d485a3205, NRL c709772d-d5d0-4252-af89-be8a163706dc)." }
+      - { name: competitionId, in: path, type: string, required: true, description: "Competition UUID — from dabble_active_competitions / dabble_competitions (any competition, not just AFL/NRL)." }
       - { name: includeInPlay, in: query, type: boolean, default: false, description: "Include in-play fixtures." }
       - { name: exclude, in: query, type: string, api_name: "exclude[]", default: "none", enum: [none, markets, prices, selections], description: "Slim the payload by dropping an embedded block (default none = include all). Pass one of markets/prices/selections to omit it." }
     response_hint: "{data:[{id, name, displayName, competitionId, competitionName, advertisedStart, status, inplayAvailable, teams:[{id, name, abbreviation}], markets:[{id, name, resultingType, isHandicap, isTotal, isSgmAllowed, status}], selections:[{id, name, marketId, isScratched}], prices:[{marketId, selectionId, price}]}]}"

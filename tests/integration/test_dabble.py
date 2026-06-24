@@ -41,7 +41,13 @@ def _payload(result):
 
 async def test_dabble_tools_registered(dabble_server):
     names = {t.name for t in await dabble_server.list_tools()}
-    assert {"dabble_competition_fixtures", "dabble_fixture_details"} <= names
+    assert {
+        "dabble_active_competitions",
+        "dabble_competitions",
+        "dabble_sports",
+        "dabble_competition_fixtures",
+        "dabble_fixture_details",
+    } <= names
 
 
 async def test_exclude_param_maps_to_wire_name(dabble_server):
@@ -53,6 +59,37 @@ async def test_exclude_param_maps_to_wire_name(dabble_server):
 
 
 # ─── live: api.dabble.com.au (AU-geo + Cloudflare → xfail when blocked) ──
+
+
+@pytest.mark.live
+async def test_discovery_any_competition_live(dabble_server):
+    """Discover an ARBITRARY competition (not AFL/NRL) from the active list and pull
+    its fixtures — proves Dabble works for any competition."""
+    try:
+        active = _payload(await dabble_server.call_tool("dabble_active_competitions", {}))
+        comps = active["data"]["activeCompetitions"]
+        if not comps:
+            pytest.skip("no active competitions right now")
+        # pick a non-AU-football competition to make the point
+        pick = next(
+            (c for c in comps if c.get("sportName") in ("Football", "Tennis", "Cricket", "Basketball") and c.get("id")),
+            comps[0],
+        )
+        fx = _payload(await dabble_server.call_tool("dabble_competition_fixtures", {"competitionId": pick["id"]}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"dabble unavailable (AU-geo / Cloudflare?): {e}")
+    assert len(comps) > 20 and {"id", "name", "sportName"} <= set(comps[0])
+    assert "data" in fx  # fixtures (possibly empty if none scheduled), but the call resolved
+
+
+@pytest.mark.live
+async def test_competitions_name_lookup_live(dabble_server):
+    """Exact-name lookup resolves a known competition to its id."""
+    try:
+        res = _payload(await dabble_server.call_tool("dabble_competitions", {"name": "NRL"}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"dabble unavailable: {e}")
+    assert res["data"] and res["data"][0]["name"] == "NRL" and res["data"][0]["id"]
 
 
 @pytest.mark.live

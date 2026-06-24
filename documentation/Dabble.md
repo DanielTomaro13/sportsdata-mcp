@@ -35,17 +35,23 @@ blocked — the app's own client uses a Safari-iOS TLS impersonation
 feed from an AU IP. (An optional `Bearer` token unlocks account features, which
 are out of scope.)
 
-## Shape
+## Works for any competition
 
-One **fixtures feed per competition** embeds the markets, prices and selections;
-a per-fixture **details** endpoint returns the *full* book. Markets join to
-selections and prices by `marketId` / `selectionId`:
+Dabble is **not limited to AFL/NRL** — discover any competition's id, then pull
+its fixtures + odds:
 
 ```
-dabble_competition_fixtures(competitionId)  →  fixtures (+ embedded markets/prices/selections)
-                                            →  fixture id
-dabble_fixture_details(fixtureId)           →  the FULL book (hundreds of markets + Pick'em)
+dabble_active_competitions          →  ~269 currently-bettable competitions (all sports)
+   (or dabble_competitions(name=…)  →  exact-name lookup)
+                                    →  pick a competition id
+dabble_competition_fixtures(id)     →  fixtures (+ embedded markets/prices/selections)
+                                    →  fixture id
+dabble_fixture_details(fixtureId)   →  the FULL book (hundreds of markets + Pick'em)
 ```
+
+`dabble_active_competitions` covers all 24 sports (Football incl. the FIFA World
+Cup, Tennis incl. Wimbledon, Cricket, Basketball, racing, …) — pick any one.
+Markets join to selections and prices by `marketId` / `selectionId`.
 
 Decimal odds live on each `prices[].price`. Dabble also runs a **Pick'em**
 (multiplier/parlay) product alongside its fixed-odds book — those surface as
@@ -55,8 +61,17 @@ Decimal odds live on each `prices[].price`. Dabble also runs a **Pick'em**
 
 | Tool | Path | Capability |
 |---|---|---|
+| `dabble_active_competitions` | `/competitions/active` | `sport.competitions_list` |
+| `dabble_competitions` | `/competitions?name=` | `sport.competitions_list` |
+| `dabble_sports` | `/sports` | — (24 sports) |
 | `dabble_competition_fixtures` | `/frontend-api/competitions/{competitionId}/sport-fixtures?includeInPlay=&exclude[]=` | `sport.fixtures_by_date`, `sport.event_markets`, `sport.prices` |
 | `dabble_fixture_details` | `/frontend-api/sport-fixtures/details/{fixtureId}` | `sport.event_markets`, `sport.prices`, `sport.same_game_multi` |
+
+- `dabble_active_competitions` is the **discovery entry point** — ~269 bettable
+  competitions with `id` + `name` + `sportName`; pick any.
+- `dabble_competitions?name=` is **exact-match** (case-sensitive): `Premier League`
+  and `NRL` resolve, but `AFL` returns nothing (the competition is named
+  `AFL Matches`). Prefer the active list for browsing.
 
 - `exclude` (mapped to the wire param `exclude[]`) slims the fixtures payload —
   pass `markets`, `prices` or `selections` to drop that block (default `none` =
@@ -66,20 +81,24 @@ Decimal odds live on each `prices[].price`. Dabble also runs a **Pick'em**
 
 ## Competition ids
 
-Competition ids are opaque UUIDs. The two verified here:
+Competition ids are opaque UUIDs — **discover any of them** with
+`dabble_active_competitions` (browse) or `dabble_competitions(name=…)` (exact
+lookup). A couple for quick reference:
 
 | Competition | id |
 |---|---|
 | AFL Matches | `ad4c78ec-e39d-45ee-8cec-ff5d485a3205` |
 | NRL | `c709772d-d5d0-4252-af89-be8a163706dc` |
+| Premier League | `33ce3354-1cea-4715-812a-d33572f046f6` |
 
-Discover others from the app's network traffic. The `/competitions` catalogue
-*does* exist but is a **~38 MB / ~140,000-row dump** (all competitions ever), so
-it is **deliberately not modelled** — filter it offline if you need more ids.
+The **unfiltered** `/competitions` catalogue is a ~38 MB / ~140,000-row dump (all
+competitions ever) and is **not modelled** — the active list and the name filter
+replace it.
 
 ## Not modelled
 
-- **`/competitions`** — the 38 MB catalogue firehose (no server-side filter).
+- **`/competitions`** unfiltered — the 38 MB catalogue firehose. The active
+  list + name filter (`?name=`) replace it for discovery.
 - **Account / wagering** (bet placement, balances, the authenticated `Bearer`
   surfaces) — out of scope for a read-only data provider.
 - The Pick'em **placement** flow — only the `playerProps` *data* is read (in

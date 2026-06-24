@@ -219,13 +219,14 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `dabble.sport` | 2 | Competition fixtures (with embedded markets + decimal-odds prices) + the full per-fixture book (400+ markets + Pick'em props) |
+| `dabble.sport` | 5 | Discover any competition (active list / name lookup / sports), then its fixtures (embedded markets + decimal odds) + the full per-fixture book (400+ markets + Pick'em props) |
 
 The Australian social-betting app's backend, read directly. Reached by **posing
 as the iOS app** — the spec bakes the app's `User-Agent` + `x-device-id` +
 `x-app-version` so the public feeds return JSON anonymously. **AU-only** and
-Cloudflare-fronted (403s from non-AU IPs, like the other AU books). Competition
-ids are UUIDs (AFL + NRL are documented). Read-only odds — no bet placement.
+Cloudflare-fronted (403s from non-AU IPs, like the other AU books). Works for
+**any** competition — `dabble_active_competitions` lists the ~269 currently-bettable
+ones across all sports. Read-only odds — no bet placement.
 Composes with the other books via `sport.event_markets` / `sport.prices`.
 
 ### Racing and Sports — `racingandsports.com.au`
