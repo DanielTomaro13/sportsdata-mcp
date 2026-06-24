@@ -140,6 +140,7 @@ CONTRACTS: list[Contract] = [
     Contract("entain_racing_search", {}, ("facets", "meta")),
     Contract("fanduel_racing_quicklinks", {}, list_at="", item_keys=("id", "name", "quicklinks")),
     Contract("betfair_navigation", {"nodeIds": ["EVENT_TYPE:7"]}, ("nodes", "edges")),
+    Contract("dabble_competition_fixtures", {"competitionId": "ad4c78ec-e39d-45ee-8cec-ff5d485a3205"}, ("data",)),
 ]
 
 

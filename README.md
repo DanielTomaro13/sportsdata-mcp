@@ -215,6 +215,19 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 | `betfair.navigation` | 1 | `bynode` catalogue graph (sport → meeting → event → market) |
 | `betfair.inplay` | 5 | Live scores, event details, timeline (single + batch), scores+broadcast |
 
+### Dabble — `dabble.com.au` (iOS app backend)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `dabble.sport` | 2 | Competition fixtures (with embedded markets + decimal-odds prices) + the full per-fixture book (400+ markets + Pick'em props) |
+
+The Australian social-betting app's backend, read directly. Reached by **posing
+as the iOS app** — the spec bakes the app's `User-Agent` + `x-device-id` +
+`x-app-version` so the public feeds return JSON anonymously. **AU-only** and
+Cloudflare-fronted (403s from non-AU IPs, like the other AU books). Competition
+ids are UUIDs (AFL + NRL are documented). Read-only odds — no bet placement.
+Composes with the other books via `sport.event_markets` / `sport.prices`.
+
 ### Racing and Sports — `racingandsports.com.au`
 
 | Group | Tools | Notes |

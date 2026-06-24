@@ -1,0 +1,76 @@
+spec_version: 1
+
+# Dabble (dabble.com.au) — the Australian social-betting app's backend, read
+# directly. Unofficial. Re-probed live 2026-06-25.
+#
+# HOW IT WORKS: api.dabble.com.au is the native iOS app's API and is Cloudflare-
+# fronted. The trick to reaching it is to pose as the app — send the app's
+# User-Agent (Dabble/<build> CFNetwork/<v> Darwin/<v>), an x-device-id and an
+# x-app-version. With that header bundle the public feeds return JSON anonymously
+# from an AU IP (no Bearer token needed; an optional DABBLE_AUTH bearer exists for
+# account features, which are out of scope). Like the other AU books it is
+# GEO + bot gated: it works from an Australian connection but will 403/challenge
+# from non-AU or datacenter IPs. If Cloudflare ever starts JA3-fingerprinting the
+# engine's TLS, a fingerprint-impersonating client (curl_cffi safari_ios) is
+# needed — out of scope for the engine's httpx.
+#
+# Read-only odds data (fixtures, markets, prices) — no bet placement, consistent
+# with the repo's no-money invariant.
+#
+# Shape: ONE fixtures feed per competition embeds markets + prices + selections;
+# the per-fixture `details` endpoint returns the FULL book (hundreds of markets +
+# the Pick'em playerProps product). Markets join to selections + prices by
+# marketId / selectionId. Competition ids are opaque UUIDs — the AFL and NRL ones
+# are baked into the tool examples; discover others from the app (the /competitions
+# catalogue is a ~38 MB / 140k-row dump and is deliberately not modelled).
+
+provider:
+  id: dabble
+  display_name: "Dabble (dabble.com.au)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Dabble.md"
+  base_urls:
+    default: https://api.dabble.com.au
+  default_headers:
+    accept: "application/json"
+    accept-language: "en-AU,en;q=0.9"
+    user-agent: "Dabble/1000041710 CFNetwork/3826.600.41.2.1 Darwin/24.6.0"
+    x-device-id: "00000000-0000-0000-0000-000000000000"
+    x-app-version: "4.17.10+019ededb"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Cloudflare-fronted — keep the rate modest and retry transient statuses.
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  - name: dabble_competition_fixtures
+    group: dabble.sport
+    capabilities: [sport.fixtures_by_date, sport.event_markets, sport.prices]
+    summary: "All fixtures for a competition, each embedding its markets + prices (decimal odds) + selections + teams. Competition ids are opaque UUIDs — AFL = ad4c78ec-e39d-45ee-8cec-ff5d485a3205, NRL = c709772d-d5d0-4252-af89-be8a163706dc. For the FULL book of one fixture use dabble_fixture_details."
+    base: default
+    path: /frontend-api/competitions/{competitionId}/sport-fixtures
+    auth: default
+    params:
+      - { name: competitionId, in: path, type: string, required: true, description: "Competition UUID (AFL ad4c78ec-e39d-45ee-8cec-ff5d485a3205, NRL c709772d-d5d0-4252-af89-be8a163706dc)." }
+      - { name: includeInPlay, in: query, type: boolean, default: false, description: "Include in-play fixtures." }
+      - { name: exclude, in: query, type: string, api_name: "exclude[]", default: "none", enum: [none, markets, prices, selections], description: "Slim the payload by dropping an embedded block (default none = include all). Pass one of markets/prices/selections to omit it." }
+    response_hint: "{data:[{id, name, displayName, competitionId, competitionName, advertisedStart, status, inplayAvailable, teams:[{id, name, abbreviation}], markets:[{id, name, resultingType, isHandicap, isTotal, isSgmAllowed, status}], selections:[{id, name, marketId, isScratched}], prices:[{marketId, selectionId, price}]}]}"
+    examples:
+      - description: "AFL fixtures with markets + odds"
+        params: { competitionId: "ad4c78ec-e39d-45ee-8cec-ff5d485a3205" }
+
+  - name: dabble_fixture_details
+    group: dabble.sport
+    capabilities: [sport.event_markets, sport.prices, sport.same_game_multi]
+    summary: "The FULL book for one fixture — every market (hundreds), all selections + prices, the marketGroups (SGM grouping) and the Pick'em playerProps product. LARGE (~1 MB+ for a major match); fetch one fixture at a time. fixtureId comes from dabble_competition_fixtures."
+    base: default
+    path: /frontend-api/sport-fixtures/details/{fixtureId}
+    auth: default
+    params:
+      - { name: fixtureId, in: path, type: string, required: true, description: "Fixture UUID (from dabble_competition_fixtures.data[].id)." }
+    response_hint: "{sportFixtureDetail:{id, name, competitionName, sportName, status, teams, markets:[{id, name, resultingType, isSgmAllowed, isSrmAllowed}], selections:[{id, name, marketId}], prices:[{marketId, selectionId, price}], marketGroups, marketGroupMappings, playerProps:[{playerName, stats, value, lineType}]}}  (LARGE — markets/selections/prices number in the hundreds-to-thousands)"
