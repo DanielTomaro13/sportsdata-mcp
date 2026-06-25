@@ -181,24 +181,31 @@ class Example(BaseModel):
 class ClassifyRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Exactly one matcher (prefix | contains | regex) paired with `value`, OR a
-    # lone `default` (the fallback when no earlier rule matched). Rules are tried
-    # in declaration order; first match wins.
+    # Each rule reads one item key (`field`, or the block's `from` default) and
+    # applies exactly one matcher — string (prefix | contains | regex) or scalar
+    # (`eq`, e.g. a boolean capability flag) — paired with `value`. A lone
+    # `default` is the fallback when no earlier rule matched. Rules are tried in
+    # declaration order; first match wins. Prefer provider-agnostic signals
+    # (capability flags) over third-party-derived names so a vendor swap upstream
+    # doesn't silently break classification.
+    field: str | None = None
     prefix: str | None = None
     contains: str | None = None
     regex: str | None = None
+    eq: object | None = None
     value: str | None = None
     default: str | None = None
 
     @model_validator(mode="after")
     def _exactly_one_form(self) -> "ClassifyRule":
         matchers = [m for m in (self.prefix, self.contains, self.regex) if m is not None]
+        n_match = len(matchers) + (1 if self.eq is not None else 0)
         if self.default is not None:
-            if matchers or self.value is not None:
-                raise ValueError("classify rule with `default` must not also set a matcher or `value`")
+            if n_match or self.value is not None or self.field is not None:
+                raise ValueError("classify rule with `default` must not also set a matcher, `value`, or `field`")
         else:
-            if len(matchers) != 1:
-                raise ValueError("classify rule needs exactly one of prefix/contains/regex (or `default`)")
+            if n_match != 1:
+                raise ValueError("classify rule needs exactly one of prefix/contains/regex/eq (or `default`)")
             if self.value is None:
                 raise ValueError("classify rule with a matcher must set `value`")
         if self.regex is not None:
@@ -217,8 +224,9 @@ class Classify(BaseModel):
     #   "sportFixtureDetail.markets[].product"  → detail dict → markets list → set `product`
     #   "data[].markets[].product"              → fixtures list → each markets list → set `product`
     field: str = Field(pattern=r"^(\w+\[\]\.|\w+\.)*\w+$")
-    # The source key read off each terminal item (e.g. "resultingType").
-    source: str = Field(alias="from")
+    # Default item key a rule reads when it doesn't set its own `field` (e.g.
+    # "resultingType"). Optional — a block may instead give every rule its own field.
+    source: str | None = Field(default=None, alias="from")
     rules: list[ClassifyRule] = Field(min_length=1)
 
     @property
@@ -235,6 +243,11 @@ class Classify(BaseModel):
             raise ValueError(f"classify field {self.field!r} must end in a plain key, not a `[]` segment")
         if not self.container_segments:
             raise ValueError(f"classify field {self.field!r} must traverse at least one container segment")
+        for r in self.rules:
+            if r.default is None and r.field is None and self.source is None:
+                raise ValueError(
+                    f"classify field {self.field!r}: a rule has no `field` and the block sets no `from` default"
+                )
         return self
 
 
