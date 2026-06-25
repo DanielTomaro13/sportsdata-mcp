@@ -94,7 +94,19 @@ endpoints:
       - { name: competitionId, in: path, type: string, required: true, description: "Competition UUID — from dabble_active_competitions / dabble_competitions (any competition, not just AFL/NRL)." }
       - { name: includeInPlay, in: query, type: boolean, default: false, description: "Include in-play fixtures." }
       - { name: exclude, in: query, type: string, api_name: "exclude[]", default: "none", enum: [none, markets, prices, selections], description: "Slim the payload by dropping an embedded block (default none = include all). Pass one of markets/prices/selections to omit it." }
-    response_hint: "{data:[{id, name, displayName, competitionId, competitionName, advertisedStart, status, inplayAvailable, teams:[{id, name, abbreviation}], markets:[{id, name, resultingType, isHandicap, isTotal, isSgmAllowed, status}], selections:[{id, name, marketId, isScratched}], prices:[{marketId, selectionId, price}]}]}"
+    response_hint: "{data:[{id, name, displayName, competitionId, competitionName, advertisedStart, status, inplayAvailable, teams:[{id, name, abbreviation}], markets:[{id, name, resultingType, product, isHandicap, isTotal, isSgmAllowed, status}], selections:[{id, name, marketId, isScratched}], prices:[{marketId, selectionId, price}]}]}  (`product` is engine-derived from resultingType — see dabble_fixture_details.)"
+    # Engine-derived product tag so consumers never blend Pick'em multipliers into a
+    # fixed-odds comparison. (Fixtures embeds the slim core set, so most tag `single`;
+    # the full split shows on dabble_fixture_details.)
+    classify:
+      - field: "data[].markets[].product"
+        from: resultingType
+        rules: &dabble_product_rules
+          - { prefix: "sportcast_", value: sgm }      # SportCast-powered SGM legs
+          - { contains: "pickem", value: pickem }     # Pick'em multiplier product (odds_on_pickem_*)
+          - { regex: "^RacingSrm", value: srm }       # Same-Race-Multi (racing's SGM) — before ^Racing
+          - { regex: "^Racing", value: racing }       # racing win/place/exotics
+          - { default: single }                       # core fixed-odds singles
     examples:
       - description: "AFL fixtures with markets + odds"
         params: { competitionId: "ad4c78ec-e39d-45ee-8cec-ff5d485a3205" }
@@ -102,10 +114,15 @@ endpoints:
   - name: dabble_fixture_details
     group: dabble.sport
     capabilities: [sport.event_markets, sport.prices, sport.same_game_multi]
-    summary: "The FULL book for one fixture — every market (hundreds), all selections + prices, the marketGroups (SGM grouping) and the Pick'em playerProps product. LARGE (~1 MB+ for a major match); fetch one fixture at a time. fixtureId comes from dabble_competition_fixtures."
+    summary: "The FULL book for one fixture — every market (hundreds), all selections + prices, the marketGroups (SGM grouping) and the Pick'em playerProps product. LARGE (~1 MB+ for a major match); fetch one fixture at a time. fixtureId comes from dabble_competition_fixtures. PRODUCT SPLIT lives on markets[].resultingType (NOT the name): SPORTS → `sportcast_*`=SGM legs (isSgmAllowed), `*pickem*` (e.g. odds_on_pickem_goals)=Pick'em multiplier product, unprefixed (e.g. match_score)=core singles (isSingleAllowed). RACING → PascalCase `Racing*`: RacingFixed*/RacingSP*=win/place singles, RacingDD*=exotics, `RacingSrm*`=Same-Race-Multi (no Pick'em in racing)."
     base: default
     path: /frontend-api/sport-fixtures/details/{fixtureId}
     auth: default
     params:
       - { name: fixtureId, in: path, type: string, required: true, description: "Fixture UUID (from dabble_competition_fixtures.data[].id)." }
-    response_hint: "{sportFixtureDetail:{id, name, competitionName, sportName, status, teams, markets:[{id, name, resultingType, isSgmAllowed, isSrmAllowed}], selections:[{id, name, marketId}], prices:[{marketId, selectionId, price}], marketGroups, marketGroupMappings, playerProps:[{playerName, stats, value, lineType}]}}  (LARGE — markets/selections/prices number in the hundreds-to-thousands)"
+    response_hint: "{sportFixtureDetail:{id, name, competitionName, sportName, status, teams, markets:[{id, name, resultingType, product, isSgmAllowed, isSingleAllowed}], selections:[{id, name, marketId}], prices:[{marketId, selectionId, price}], marketGroups, marketGroupMappings, playerProps:[{playerName, stats, value, lineType}]}}  (LARGE — markets/selections/prices number in the hundreds-to-thousands. Each market carries an engine-derived `product` ∈ {single, sgm, pickem, srm, racing}, classified from resultingType: sportcast_*→sgm, *pickem*→pickem, RacingSrm*→srm, Racing*→racing, else→single. Use `product=single` (or sgm) for like-for-like price comparison; NEVER blend `pickem` multipliers into fixed-odds value/arb.)"
+    # Same product tagger as dabble_competition_fixtures, on the full per-fixture book.
+    classify:
+      - field: "sportFixtureDetail.markets[].product"
+        from: resultingType
+        rules: *dabble_product_rules

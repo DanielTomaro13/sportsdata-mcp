@@ -168,6 +168,76 @@ class Example(BaseModel):
     params: dict[str, object]
 
 
+# ─── Response classifier ───────────────────────────────────────────────
+# A spec-declared, ADDITIVE post-fetch annotation: it reads one source key on
+# each item of a (possibly nested) list in the response and writes a derived tag
+# onto a new key on that same item. It never alters an upstream value and is a
+# no-op for any endpoint that doesn't declare a `classify` block — the engine's
+# passthrough contract holds for everyone else. Motivating case: tagging each
+# Dabble market with its product (single/sgm/pickem/racing) so a consumer can't
+# silently blend Pick'em multipliers into a fixed-odds price comparison.
+
+
+class ClassifyRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Exactly one matcher (prefix | contains | regex) paired with `value`, OR a
+    # lone `default` (the fallback when no earlier rule matched). Rules are tried
+    # in declaration order; first match wins.
+    prefix: str | None = None
+    contains: str | None = None
+    regex: str | None = None
+    value: str | None = None
+    default: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_form(self) -> "ClassifyRule":
+        matchers = [m for m in (self.prefix, self.contains, self.regex) if m is not None]
+        if self.default is not None:
+            if matchers or self.value is not None:
+                raise ValueError("classify rule with `default` must not also set a matcher or `value`")
+        else:
+            if len(matchers) != 1:
+                raise ValueError("classify rule needs exactly one of prefix/contains/regex (or `default`)")
+            if self.value is None:
+                raise ValueError("classify rule with a matcher must set `value`")
+        if self.regex is not None:
+            try:
+                re.compile(self.regex)
+            except re.error as e:
+                raise ValueError(f"invalid classify regex {self.regex!r}: {e}") from e
+        return self
+
+
+class Classify(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    # Where to write the tag, as a path of dotted segments ending in the new key.
+    # A segment suffixed with `[]` is a list to iterate. Examples:
+    #   "sportFixtureDetail.markets[].product"  → detail dict → markets list → set `product`
+    #   "data[].markets[].product"              → fixtures list → each markets list → set `product`
+    field: str = Field(pattern=r"^(\w+\[\]\.|\w+\.)*\w+$")
+    # The source key read off each terminal item (e.g. "resultingType").
+    source: str = Field(alias="from")
+    rules: list[ClassifyRule] = Field(min_length=1)
+
+    @property
+    def container_segments(self) -> list[str]:
+        return self.field.split(".")[:-1]
+
+    @property
+    def set_key(self) -> str:
+        return self.field.split(".")[-1]
+
+    @model_validator(mode="after")
+    def _field_shape(self) -> "Classify":
+        if "[]" in self.set_key:
+            raise ValueError(f"classify field {self.field!r} must end in a plain key, not a `[]` segment")
+        if not self.container_segments:
+            raise ValueError(f"classify field {self.field!r} must traverse at least one container segment")
+        return self
+
+
 # ─── Endpoint ──────────────────────────────────────────────────────────
 
 
@@ -185,6 +255,8 @@ class Endpoint(BaseModel):
     params: list[Param] = Field(default_factory=list)
     response_hint: str | None = None
     examples: list[Example] = Field(default_factory=list)
+    # Optional, additive post-fetch tags (see Classify). Absent ⇒ pure passthrough.
+    classify: list[Classify] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _path_params_required(self) -> "Endpoint":

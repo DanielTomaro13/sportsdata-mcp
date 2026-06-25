@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from .classify import apply_classify
 from .config import Config
 from .dispatchers.graphql_persisted import make_graphql_dispatcher
 from .dispatchers.graphql_query import make_graphql_query_dispatcher
@@ -149,7 +150,7 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
         query = _build_query(ep, kwargs)
         header = _build_headers(ep, kwargs)
         body = _build_body(ep, kwargs)
-        return await http.request_json(
+        result = await http.request_json(
             method=ep.method,
             base=ep.base,
             url=url,
@@ -158,6 +159,8 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             json_body=body,
             auth_key=ep.auth,
         )
+        # Pure passthrough unless the endpoint opted into additive `classify` tags.
+        return apply_classify(result, ep.classify) if ep.classify else result
 
     handler.__signature__ = sig  # type: ignore[attr-defined]
     # FastMCP/pydantic derive the JSON-schema from __annotations__, not __signature__,

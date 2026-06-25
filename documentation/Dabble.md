@@ -57,6 +57,29 @@ Decimal odds live on each `prices[].price`. Dabble also runs a **Pick'em**
 (multiplier/parlay) product alongside its fixed-odds book — those surface as
 `playerProps[]` in the details payload (flat picks, not traditional fixed odds).
 
+### The `product` tag — knowing what kind of odds you're holding
+
+A single Dabble fixture payload mixes **three** products, and the discriminator is
+`markets[].resultingType`, **not** the market name. Because conflating them (e.g.
+letting a Pick'em multiplier into a fixed-odds value/arb calc) is a silent
+correctness bug, the engine tags every market with a derived **`product`** field —
+an *additive* annotation classified from `resultingType` (it never alters an
+upstream value; endpoints without a `classify` block stay pure passthrough):
+
+| `product` | How it's matched | What it is |
+|---|---|---|
+| `sgm`    | `resultingType` starts `sportcast_` | SportCast-powered Same-Game-Multi legs (`isSgmAllowed`) |
+| `pickem` | `resultingType` contains `pickem` (e.g. `odds_on_pickem_goals`) | the Pick'em multiplier product (also in `playerProps[]`) |
+| `srm`    | `resultingType` starts `RacingSrm` | racing **Same-Race-Multi** (matched before the generic racing rule) |
+| `racing` | `resultingType` starts `Racing` | racing win/place (`RacingFixed*`/`RacingSP*`) + exotics (`RacingDD*`) |
+| `single` | anything else (e.g. `match_score`) | the core fixed-odds singles book |
+
+Live shape (re-probed 2026-06-25): a major AFL fixture's 539 markets split
+**231 `single` / 218 `pickem` / 90 `sgm`**; a thoroughbred race's 12 split
+**8 `racing` / 4 `srm`** (no Pick'em in racing). For like-for-like comparison
+against the other books use `product` ∈ {`single`, `sgm`}; **never** blend
+`pickem`.
+
 ## Tools — group `dabble.sport`
 
 | Tool | Path | Capability |
