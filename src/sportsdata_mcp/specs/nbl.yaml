@@ -215,7 +215,23 @@ endpoints:
     params:
       - { name: seasonId, in: path, type: string, required: true, description: "Season UUID — from nbl_seasons (data[].id, the season_type=regular one for the main leaders)." }
       - { name: limit, in: query, type: integer, default: 50, description: "Max rows; -1 for all." }
+      - { name: sort, in: query, type: string, description: "Sort key, prefix `-` for descending — e.g. -points_average (top scorers), -assists_average, -rebounds_total_average. Any per-game average column works." }
     response_hint: "{type, count, data:[{player, team, points_average, rebounds_total_average, assists_average, field_goals_percentage, three_pointers_made_average, …}]}"
     examples:
-      - description: "Top 50 leaders for NBL26"
-        params: { seasonId: "1f8e4a79-e98b-457b-85a5-e4b898c6c0bd", limit: 50 }
+      - description: "Top 50 scorers for NBL26"
+        params: { seasonId: "1f8e4a79-e98b-457b-85a5-e4b898c6c0bd", limit: 50, sort: "-points_average" }
+
+  # ─── content: news ────────────────────────────────────────────────────
+  - name: nbl_news
+    group: nbl.basketball
+    capabilities: [content.news]
+    summary: "NBL news articles (latest ~200) — each with title, slug, body (HTML), excerpt, sub_headline, byline, published_date, categories/tags, a related_player and match_slug link, and featured_image_url. NOTE: this feed returns a RAW ARRAY (not the {type,count,data} envelope). Use `limit` to cap rows."
+    base: default
+    path: /get/nbl/news
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, description: "Max articles to return (default: all ~200)." }
+    response_hint: "array of {id, status, title, slug, body, excerpt, sub_headline, byline, published_date, categories, tags, related_player, match_slug, featured_image_url, likes}  (RAW ARRAY, not enveloped)"
+    examples:
+      - description: "Latest 10 NBL articles"
+        params: { limit: 10 }

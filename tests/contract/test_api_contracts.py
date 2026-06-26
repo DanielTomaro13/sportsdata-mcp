@@ -159,6 +159,14 @@ CONTRACTS: list[Contract] = [
         item_keys=("id", "team1", "team2", "round"),
     ),
     Contract("supercoach_player", {"sport": "afl", "year": 2026, "id": 1}, ("id", "first_name", "team_id")),
+    Contract("supercoach_leagues", {"sport": "afl", "year": 2026}, list_at="", item_keys=("id", "name", "code", "type")),
+    # draft mode (mode=draft) — players carry the extra top-level predraft_rank
+    Contract(
+        "supercoach_players",
+        {"sport": "afl", "year": 2026, "mode": "draft", "round": 1, "embed": "player_stats"},
+        list_at="",
+        item_keys=("id", "first_name", "predraft_rank"),
+    ),
     # ── NBL (prod.rosetta.nbl.com.au — public, referer-gated; runs in CI) ──
     # Enveloped {type, count, data:[…]}; NBL26 (year 2025) is the current season.
     Contract("nbl_seasons", {}, ("type", "count", "data"), "data", ("id", "name", "year", "season_type")),
@@ -166,6 +174,7 @@ CONTRACTS: list[Contract] = [
     Contract("nbl_ladder", {"year": 2025, "seasonType": "regular"}, ("type", "count", "data"), "data", ("position", "won", "lost")),
     Contract("nbl_schedule", {"year": 2025, "seasonType": "all"}, ("type", "count", "data"), "data", ("id", "round", "home_team", "away_team")),
     Contract("nbl_players", {"year": 2025}, ("type", "count", "data"), "data", ("jersey_number", "player", "team")),
+    Contract("nbl_news", {"limit": 5}, list_at="", item_keys=("id", "title", "slug", "published_date")),
 ]
 
 

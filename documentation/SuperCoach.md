@@ -8,7 +8,18 @@ the feeds modelled here, and it is **not geo-blocked** (unlike the AU bookmakers
 so it runs in CI.
 
 Probed live 2026-06-26 across all seven games. Provider id `supercoach`, group
-`supercoach.fantasy` (5 tools).
+`supercoach.fantasy` (6 tools).
+
+### Two game modes
+
+Every sport has **two modes** at `/{mode}/v1/`:
+
+- **`classic`** (default) — the salary-cap game, all 7 sports.
+- **`draft`** — the draft-league variant (afl / nrl / nba / epl). Players gain a
+  top-level **`predraft_rank`** and `player_stats.position_ranks` (the draft
+  rankings). Same response shape otherwise.
+
+Pass `mode` to any tool (defaults to `classic`).
 
 ## One surface, seven games
 
@@ -55,6 +66,7 @@ SuperCoach itself does not require it.)
 | `supercoach_real_fixture` | `real_fixture?round=&page=&page_size=` | `sport.fixtures_by_date`, `sport.match_score` |
 | `supercoach_teams` | `teams` | `ref.teams` |
 | `supercoach_player` | `players/{id}` | `ref.players`, `stats.player_profile` |
+| `supercoach_leagues` | `leagues` | — (the game's public/featured leagues) |
 
 ### Typical flow
 

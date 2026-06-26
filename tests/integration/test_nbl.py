@@ -45,6 +45,7 @@ async def test_nbl_tools_registered(nbl_server):
     assert {
         "nbl_seasons", "nbl_teams", "nbl_ladder", "nbl_schedule",
         "nbl_players", "nbl_player_stats", "nbl_team_stats", "nbl_stat_leaders",
+        "nbl_news",
     } <= names
 
 
@@ -103,6 +104,17 @@ async def test_stat_leaders_by_season_uuid_live(nbl_server):
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"nbl unavailable: {e}")
     assert isinstance(res.get("data"), list)
+
+
+@pytest.mark.live
+async def test_news_is_raw_array_live(nbl_server):
+    """The news feed is a RAW array (not the {type,count,data} envelope)."""
+    try:
+        news = _payload(await nbl_server.call_tool("nbl_news", {"limit": 5}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"nbl unavailable: {e}")
+    assert isinstance(news, list) and news
+    assert {"title", "slug", "published_date"} <= set(news[0])
 
 
 @pytest.mark.live

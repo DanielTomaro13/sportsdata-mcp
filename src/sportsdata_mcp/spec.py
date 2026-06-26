@@ -281,8 +281,11 @@ class Endpoint(BaseModel):
         if missing:
             raise ValueError(f"endpoint '{self.name}' has path params {missing} not declared in params[]")
         for p in self.params:
+            # A path param is required UNLESS it declares a default — then it's optional
+            # and the default is interpolated when the caller omits it (e.g. a `mode`
+            # segment defaulting to "classic"). The default must be non-None to count.
             if p.in_ == "path" and p.name in path_param_names:
-                p.required = True
+                p.required = p.default is None
         return self
 
 

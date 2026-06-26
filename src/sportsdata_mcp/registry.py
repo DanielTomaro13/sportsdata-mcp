@@ -62,6 +62,8 @@ def _interpolate_path(ep: Endpoint, kwargs: dict) -> str:
     for p in ep.params:
         if p.in_ == "path":
             value = kwargs.get(p.name)
+            if value is None:  # caller omitted it — fall back to the declared default
+                value = p.default
             if value is None:
                 raise ToolError(f"missing required path param '{p.name}'", recoverable=True)
             url = url.replace("{" + p.name + "}", str(value))

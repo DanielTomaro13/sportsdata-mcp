@@ -233,7 +233,7 @@ Composes with the other books via `sport.event_markets` / `sport.prices`.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `supercoach.fantasy` | 5 | One uniform surface across **all 7 games** (afl/nrl/epl/nba/nbl/nfl/bbl): competition state, the full per-player feed (price + `ppts1` projection + ownership + matchup), fixtures (with H2H odds), club + single-player catalogues |
+| `supercoach.fantasy` | 6 | One uniform surface across **all 7 games** (afl/nrl/epl/nba/nbl/nfl/bbl) × **2 modes** (`classic` + `draft`): competition state, the full per-player feed (price + `ppts1` projection + ownership + matchup; draft adds `predraft_rank`), fixtures (with H2H odds), club + single-player catalogues, leagues |
 
 News Corp / Champion Data's salary-cap fantasy game. Every feed lives under
 `/{year}/api/{sport}/classic/v1/…` — pass `sport` (one of the seven) and `year`
@@ -248,7 +248,7 @@ The core `supercoach_players` feed is per-round and large (~1–3 MB); use `ppts
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `nbl.basketball` | 13 | Seasons, teams, ladder, schedule (scores), players + rosters, per-player season stats + game-log box scores, team stats, and season stat leaders |
+| `nbl.basketball` | 14 | Seasons, teams, ladder, schedule (scores), players + rosters, per-player season stats + game-log box scores, team stats, season stat leaders (sortable), and news |
 
 The league's own site data API — a Redis-cached proxy (**"rosetta"**) over Genius
 Sports stats at `prod.rosetta.nbl.com.au/get/…`. **No token**, but **referer-gated**

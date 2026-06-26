@@ -5,7 +5,13 @@ API. **Genius Sports** powers the underlying stats; nbl.com.au fronts them throu
 a Redis-cached proxy it calls **"rosetta"**. **No token / API key** — but the proxy
 is **referer-gated**.
 
-Probed live 2026-06-26. Provider id `nbl`, group `nbl.basketball` (13 tools).
+Probed live 2026-06-26. Provider id `nbl`, group `nbl.basketball` (14 tools).
+
+> `nbl_stat_leaders` accepts a `sort` (e.g. `-points_average` for top scorers).
+> `nbl_news` is the one feed that returns a **raw array** (not the `{type,count,data}`
+> envelope). Per-match play-by-play / shot-charts are served by Genius's own widget
+> library (keyed by the fixture UUID in `external_id`) and aren't part of this API;
+> per-match player box scores come from `nbl_player_boxscores`.
 
 ## How it works
 
@@ -63,7 +69,8 @@ come back empty — the call still resolves.
 | `nbl_player_stats` | `nbl/statistics/for/player/{playerId}` | `stats.player_season`, `stats.player_profile` |
 | `nbl_player_boxscores` | `nbl/player_boxscores/for/{playerId}/in/season/{year}/{seasonType}` | `stats.player_game_log` |
 | `nbl_team_stats` | `nbl/team/stats/for/season/{year}/{seasonType}` | `stats.team_season` |
-| `nbl_stat_leaders` | `nbl/stats/leaders/for/season/id/{seasonId}?limit=` | `stats.leaders_season` |
+| `nbl_stat_leaders` | `nbl/stats/leaders/for/season/id/{seasonId}?limit=&sort=` | `stats.leaders_season` |
+| `nbl_news` | `nbl/news?limit=` | `content.news` |
 
 ### Typical flow
 

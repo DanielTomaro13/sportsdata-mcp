@@ -50,6 +50,7 @@ async def test_supercoach_tools_registered(sc_server):
         "supercoach_real_fixture",
         "supercoach_teams",
         "supercoach_player",
+        "supercoach_leagues",
     } <= names
 
 
@@ -138,3 +139,26 @@ async def test_teams_catalogue_live(sc_server):
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"supercoach unavailable: {e}")
     assert isinstance(teams, list) and len(teams) >= 8
+
+
+@pytest.mark.live
+async def test_draft_mode_adds_predraft_rank_live(sc_server):
+    """The draft game mode (mode=draft) carries a top-level predraft_rank that classic doesn't."""
+    try:
+        classic = _payload(await sc_server.call_tool(
+            "supercoach_players", {"sport": "afl", "year": AFL_YEAR, "mode": "classic", "round": 1, "embed": "player_stats"}))
+        draft = _payload(await sc_server.call_tool(
+            "supercoach_players", {"sport": "afl", "year": AFL_YEAR, "mode": "draft", "round": 1, "embed": "player_stats"}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"supercoach unavailable: {e}")
+    assert draft and "predraft_rank" in draft[0]
+    assert classic and "predraft_rank" not in classic[0]
+
+
+@pytest.mark.live
+async def test_leagues_live(sc_server):
+    try:
+        leagues = _payload(await sc_server.call_tool("supercoach_leagues", {"sport": "afl", "year": AFL_YEAR}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"supercoach unavailable: {e}")
+    assert isinstance(leagues, list) and leagues and {"name", "code", "type"} <= set(leagues[0])

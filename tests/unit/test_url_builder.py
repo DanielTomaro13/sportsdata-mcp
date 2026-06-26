@@ -41,6 +41,19 @@ def test_path_param_with_suffix_is_required_and_interpolates():
     assert _interpolate_path(ep, {"eventId": 123}) == "/statistics/event/123.json"
 
 
+def test_path_param_with_default_is_optional_and_falls_back():
+    """A path param that declares a default is optional — the default is interpolated
+    when the caller omits it (e.g. a `mode` segment defaulting to 'classic')."""
+    ep = _ep(
+        [{"name": "mode", "in": "path", "type": "string", "default": "classic"}],
+        path="/api/{mode}/v1/settings",
+    )
+    mode = next(p for p in ep.params if p.name == "mode")
+    assert mode.required is False  # default makes it optional
+    assert _interpolate_path(ep, {}) == "/api/classic/v1/settings"  # omitted → default
+    assert _interpolate_path(ep, {"mode": "draft"}) == "/api/draft/v1/settings"  # explicit wins
+
+
 def test_build_query_skips_none_and_keeps_defaults():
     ep = _ep(
         [
