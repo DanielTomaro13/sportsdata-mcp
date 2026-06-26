@@ -262,7 +262,7 @@ official box-score source. See [documentation/NBL.md](documentation/NBL.md).
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `wta.tennis` | 7 | Official WTA API: singles/doubles rankings, player catalogue + profiles + match history, tournament calendar + per-edition results |
+| `wta.tennis` | 8 | Official WTA API: singles/doubles rankings, player catalogue + profiles + match history, tournament calendar + per-edition results + entry lists (seeds) |
 
 The WTA's **official** data API (`api.wtatennis.com/tennis/…`) — public Spring REST,
 **no auth/key, no geo-block**, runs in CI. Rankings need `type`+`metric`

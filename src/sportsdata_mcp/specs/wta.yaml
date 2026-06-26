@@ -145,3 +145,18 @@ endpoints:
     examples:
       - description: "Australian Open 2025 results"
         params: { groupId: 901, year: 2025 }
+
+  - name: wta_tournament_players
+    group: wta.tennis
+    capabilities: [sport.competition_screen, ref.players]
+    summary: "The entry list / draw for one tournament edition — {events:[{eventTypeCode, eventPlayers:[{players:[{id, firstName, lastName}], seed, entryType, eliminated, winner, runnerUp}]}]}. One event per discipline (eventTypeCode LS = Ladies Singles, LD = Ladies Doubles). Carries seeding, entry type, and final results (winner/runnerUp/eliminated). E.g. AO 2025 singles = 128 entrants."
+    base: default
+    path: /tennis/tournaments/{groupId}/{year}/players
+    auth: default
+    params:
+      - { name: groupId, in: path, type: integer, required: true, description: "tournamentGroup id (e.g. 901 = Australian Open) — from wta_tournaments." }
+      - { name: year, in: path, type: integer, required: true, description: "Edition year (e.g. 2025)." }
+    response_hint: "{events:[{description, eventTypeCode, eventPlayers:[{players:[{id, firstName, lastName, countryCode}], seed, entryType, eliminated, winner, runnerUp}]}]}"
+    examples:
+      - description: "Australian Open 2025 entry list + seeds"
+        params: { groupId: 901, year: 2025 }

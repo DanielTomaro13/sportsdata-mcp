@@ -186,6 +186,7 @@ CONTRACTS: list[Contract] = [
     Contract("wta_player", {"playerId": 320760}, ("id", "fullName", "countryCode")),
     Contract("wta_tournaments", {"pageSize": 5}, ("pageInfo", "content"), "content", ("tournamentGroup", "year", "title")),
     Contract("wta_tournament_matches", {"groupId": 901, "year": 2025}, ("tournament", "matches")),
+    Contract("wta_tournament_players", {"groupId": 901, "year": 2025}, ("events",), "events", ("eventTypeCode", "eventPlayers")),
 ]
 
 

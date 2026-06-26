@@ -5,7 +5,7 @@ public Spring REST API at `api.wtatennis.com/tennis/…` with **no auth, no key,
 Origin/Referer gate** and no geo-block: it returns JSON to a plain request. Runs in
 CI.
 
-Probed live 2026-06-26. Provider id `wta`, group `wta.tennis` (7 tools).
+Probed live 2026-06-26. Provider id `wta`, group `wta.tennis` (8 tools).
 
 ## Shape
 
@@ -28,6 +28,7 @@ Probed live 2026-06-26. Provider id `wta`, group `wta.tennis` (7 tools).
 | `wta_tournaments` | `tournaments?page=&pageSize=` | `sport.competitions_list` |
 | `wta_tournament` | `tournaments/{groupId}/{year}` | `sport.competition_screen`, `sport.season_summary` |
 | `wta_tournament_matches` | `tournaments/{groupId}/{year}/matches` | `sport.fixtures_by_date`, `sport.match_score` |
+| `wta_tournament_players` | `tournaments/{groupId}/{year}/players` | `sport.competition_screen`, `ref.players` |
 
 ### Rankings — `type` + `metric` (must agree)
 
@@ -44,8 +45,15 @@ tournamentsPlayed, movement, rankedAt}`. `pageSize=100` → top 100.
 1. `wta_rankings` (singles) → the current top players + their `player.id`.
 2. `wta_players?name=` to look someone up, or `wta_player`/`wta_player_matches`
    for a profile + match history.
-3. `wta_tournaments` → a `tournamentGroup.id` + `year` → `wta_tournament` (detail)
-   or `wta_tournament_matches` (draws/results; AO 2025 ≈ 302 matches).
+3. `wta_tournaments` → a `tournamentGroup.id` + `year` → `wta_tournament` (detail),
+   `wta_tournament_matches` (draws/results; AO 2025 ≈ 302 matches), or
+   `wta_tournament_players` (the entry list + seeds; AO 2025 singles = 128 entrants
+   with `seed`/`winner`/`runnerUp`/`eliminated`).
+
+> Not modelled: **race-to-Finals** rankings (`type=raceSingles`) — the API returns
+> 5xx for race types, so it's not a stable endpoint. There's no head-to-head, live-
+> score, or stats-leaders endpoint on this API (those 404), and `countryCode` on the
+> player list is silently ignored.
 
 ## Cross-provider comparison
 

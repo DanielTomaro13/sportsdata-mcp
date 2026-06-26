@@ -42,7 +42,7 @@ async def test_wta_tools_registered(wta_server):
     names = {t.name for t in await wta_server.list_tools()}
     assert {
         "wta_rankings", "wta_players", "wta_player", "wta_player_matches",
-        "wta_tournaments", "wta_tournament", "wta_tournament_matches",
+        "wta_tournaments", "wta_tournament", "wta_tournament_matches", "wta_tournament_players",
     } <= names
 
 
@@ -90,6 +90,18 @@ async def test_tournament_matches_live(wta_server):
         pytest.xfail(f"wta unavailable: {e}")
     matches = tm["matches"]
     assert matches and {"MatchID", "EventYear"} <= set(matches[0])
+
+
+@pytest.mark.live
+async def test_tournament_entrants_live(wta_server):
+    """The entry list carries seeded entrants per discipline (LS/LD)."""
+    try:
+        ep = _payload(await wta_server.call_tool("wta_tournament_players", {"groupId": AO_GROUP, "year": 2025}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"wta unavailable: {e}")
+    events = ep["events"]
+    assert events and {"eventTypeCode", "eventPlayers"} <= set(events[0])
+    assert events[0]["eventPlayers"] and "seed" in events[0]["eventPlayers"][0]
 
 
 @pytest.mark.live
