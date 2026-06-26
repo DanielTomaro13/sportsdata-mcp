@@ -1,0 +1,147 @@
+spec_version: 1
+
+# WTA (wtatennis.com) — the Women's Tennis Association's OFFICIAL data API, the
+# same backend that powers wtatennis.com. Probed live 2026-06-26.
+#
+# HOW IT WORKS: https://api.wtatennis.com/tennis/... is a public REST API (Spring
+# backend). NO auth, no key, no Origin/Referer gate — it returns JSON to a plain
+# request. Not geo-blocked. List endpoints are paginated ({pageInfo, content:[…]})
+# via page + pageSize; the rankings endpoint returns a bare array.
+#
+# SCOPING: tournaments are keyed by a tournamentGroup id + a year (NOT a single id)
+# — e.g. the Australian Open is group 901, so /tournaments/901/2025 is AO 2025.
+# Get the group id + year from wta_tournaments (content[].tournamentGroup.id +
+# .year). Rankings need BOTH `type` and `metric`, and they must agree:
+# rankSingles+singles or rankDoubles+doubles.
+#
+# Read-only official tennis data (rankings, players, tournaments, results).
+
+provider:
+  id: wta
+  display_name: "WTA (wtatennis.com)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/WTA.md"
+  base_urls:
+    default: https://api.wtatennis.com
+  default_headers:
+    accept: "application/json"
+    accept-language: "en"
+    user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 3
+    retry_backoff_seconds: 0.6
+
+endpoints:
+  # ─── rankings ─────────────────────────────────────────────────────────
+  - name: wta_rankings
+    group: wta.tennis
+    capabilities: [sport.rankings]
+    summary: "The WTA rankings — each row is {player:{id, fullName, countryCode, dateOfBirth}, ranking, points, tournamentsPlayed, movement, rankedAt}. Returns a bare ARRAY (not the {pageInfo,content} envelope). REQUIRES `type` + `metric`, which must agree: rankSingles+singles or rankDoubles+doubles. Page with page/pageSize (e.g. pageSize=100 for the top 100)."
+    base: default
+    path: /tennis/players/ranked
+    auth: default
+    params:
+      - { name: type, in: query, type: string, required: true, enum: [rankSingles, rankDoubles], description: "Ranking type — rankSingles or rankDoubles. Must match `metric`." }
+      - { name: metric, in: query, type: string, required: true, enum: [singles, doubles], description: "Ranking metric — singles or doubles. Must match `type` (rankSingles↔singles, rankDoubles↔doubles)." }
+      - { name: page, in: query, type: integer, default: 0, description: "0-based page index." }
+      - { name: pageSize, in: query, type: integer, default: 100, description: "Rows per page (e.g. 100 = top 100)." }
+    response_hint: "array of {player:{id, firstName, lastName, fullName, countryCode, dateOfBirth}, ranking, points, tournamentsPlayed, movement, rankedAt}"
+    examples:
+      - description: "Top 100 WTA singles rankings"
+        params: { type: rankSingles, metric: singles, pageSize: 100 }
+
+  # ─── players ──────────────────────────────────────────────────────────
+  - name: wta_players
+    group: wta.tennis
+    capabilities: [ref.players]
+    summary: "The WTA player catalogue — {pageInfo, content:[{id, firstName, lastName, fullName, countryCode, dateOfBirth}]}. Search by `name` (e.g. 'Swiatek' → Iga Swiatek) or page through all. The player `id` feeds wta_player / wta_player_matches."
+    base: default
+    path: /tennis/players
+    auth: default
+    params:
+      - { name: name, in: query, type: string, description: "Filter by player name (e.g. 'Swiatek', 'Sabalenka')." }
+      - { name: page, in: query, type: integer, default: 0, description: "0-based page index." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
+    response_hint: "{pageInfo:{numPages, totalElements}, content:[{id, firstName, lastName, fullName, countryCode, dateOfBirth, metadata}]}"
+    examples:
+      - description: "Find Iga Swiatek"
+        params: { name: "Swiatek" }
+
+  - name: wta_player
+    group: wta.tennis
+    capabilities: [ref.players, stats.player_profile]
+    summary: "A single WTA player by id — {id, firstName, lastName, fullName, countryCode, dateOfBirth, metadata}. playerId comes from wta_players / wta_rankings."
+    base: default
+    path: /tennis/players/{playerId}
+    auth: default
+    params:
+      - { name: playerId, in: path, type: integer, required: true, description: "WTA player id (from wta_players[].id or wta_rankings[].player.id)." }
+    response_hint: "{id, firstName, lastName, fullName, countryCode, dateOfBirth, metadata}"
+    examples:
+      - description: "Aryna Sabalenka"
+        params: { playerId: 320760 }
+
+  - name: wta_player_matches
+    group: wta.tennis
+    capabilities: [stats.player_game_log, stats.player_career]
+    summary: "One player's match history — {player, matches:[{TournamentName, TournamentLevel, Surface, StartDate, city, Country, PrizeWon, entry_rank_1/2, entry_type_1/2, …}]}. The per-tournament results/log for a player."
+    base: default
+    path: /tennis/players/{playerId}/matches
+    auth: default
+    params:
+      - { name: playerId, in: path, type: integer, required: true, description: "WTA player id (from wta_players[].id)." }
+    response_hint: "{player:{…}, matches:[{TournamentName, TournamentLevel, TournamentType, Surface, StartDate, city, Country, DrawSizes, PrizeMoney, PrizeWon, entry_rank_1, entry_rank_2, entry_type_1, entry_type_2}]}"
+    examples:
+      - description: "Sabalenka's recent matches"
+        params: { playerId: 320760 }
+
+  # ─── tournaments ──────────────────────────────────────────────────────
+  - name: wta_tournaments
+    group: wta.tennis
+    capabilities: [sport.competitions_list]
+    summary: "The WTA tournament calendar — {pageInfo, content:[{tournamentGroup:{id, name, level}, year, title, startDate, endDate, surface, inOutdoor, city, country, singlesDrawSize, doublesDrawSize, prizeMoney, level, status, winners}]}. Take a row's tournamentGroup.id + year for wta_tournament / wta_tournament_matches. Page through with page/pageSize (the list spans all years)."
+    base: default
+    path: /tennis/tournaments
+    auth: default
+    params:
+      - { name: page, in: query, type: integer, default: 0, description: "0-based page index." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
+    response_hint: "{pageInfo:{numPages, totalElements}, content:[{tournamentGroup:{id, name, level}, year, title, startDate, endDate, surface, inOutdoor, city, country, singlesDrawSize, doublesDrawSize, prizeMoney, prizeMoneyCurrency, level, status, winners, liveScoringId}]}"
+    examples:
+      - description: "Browse tournaments"
+        params: { pageSize: 50 }
+
+  - name: wta_tournament
+    group: wta.tennis
+    capabilities: [sport.competition_screen, sport.season_summary]
+    summary: "One tournament edition by tournamentGroup id + year (e.g. group 901 = Australian Open, /901/2025). Full metadata: dates, surface, draw sizes, prize money, level, status, winners. ids from wta_tournaments (content[].tournamentGroup.id + .year)."
+    base: default
+    path: /tennis/tournaments/{groupId}/{year}
+    auth: default
+    params:
+      - { name: groupId, in: path, type: integer, required: true, description: "tournamentGroup id (e.g. 901 = Australian Open) — from wta_tournaments." }
+      - { name: year, in: path, type: integer, required: true, description: "Edition year (e.g. 2025)." }
+    response_hint: "{tournamentGroup:{id, name, level}, year, title, startDate, endDate, surface, inOutdoor, city, country, singlesDrawSize, doublesDrawSize, prizeMoney, level, status, winners}"
+    examples:
+      - description: "Australian Open 2025"
+        params: { groupId: 901, year: 2025 }
+
+  - name: wta_tournament_matches
+    group: wta.tennis
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "All matches/results for one tournament edition (group id + year) — e.g. AO 2025 returns ~302 matches with court, draw level/type, entrant types, match state and ids. Use for draws + results."
+    base: default
+    path: /tennis/tournaments/{groupId}/{year}/matches
+    auth: default
+    params:
+      - { name: groupId, in: path, type: integer, required: true, description: "tournamentGroup id — from wta_tournaments." }
+      - { name: year, in: path, type: integer, required: true, description: "Edition year (e.g. 2025)." }
+    response_hint: "{tournament:{…}, matches:[{MatchID, EventID, EventYear, CourtID, DateSeq, DrawLevelType, DrawMatchType, EntryTypeA, EntryTypeB, GrandSlam, MatchState, LastUpdated}]}"
+    examples:
+      - description: "Australian Open 2025 results"
+        params: { groupId: 901, year: 2025 }

@@ -175,6 +175,17 @@ CONTRACTS: list[Contract] = [
     Contract("nbl_schedule", {"year": 2025, "seasonType": "all"}, ("type", "count", "data"), "data", ("id", "round", "home_team", "away_team")),
     Contract("nbl_players", {"year": 2025}, ("type", "count", "data"), "data", ("jersey_number", "player", "team")),
     Contract("nbl_news", {"limit": 5}, list_at="", item_keys=("id", "title", "slug", "published_date")),
+    # ── WTA (api.wtatennis.com — official, public, no auth; runs in CI) ──
+    Contract(
+        "wta_rankings",
+        {"type": "rankSingles", "metric": "singles", "pageSize": 5},
+        list_at="",
+        item_keys=("player", "ranking", "points", "movement"),
+    ),
+    Contract("wta_players", {"name": "Swiatek"}, ("pageInfo", "content"), "content", ("id", "fullName", "countryCode")),
+    Contract("wta_player", {"playerId": 320760}, ("id", "fullName", "countryCode")),
+    Contract("wta_tournaments", {"pageSize": 5}, ("pageInfo", "content"), "content", ("tournamentGroup", "year", "title")),
+    Contract("wta_tournament_matches", {"groupId": 901, "year": 2025}, ("tournament", "matches")),
 ]
 
 

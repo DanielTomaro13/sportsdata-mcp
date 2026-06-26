@@ -258,6 +258,20 @@ response is enveloped `{type, count, source, data:[…]}`. Season-scoped by `yea
 from `nbl_seasons`. Distinct from the SuperCoach `nbl` fantasy feed — this is the
 official box-score source. See [documentation/NBL.md](documentation/NBL.md).
 
+### WTA — `wtatennis.com` (Women's Tennis Association, official)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `wta.tennis` | 7 | Official WTA API: singles/doubles rankings, player catalogue + profiles + match history, tournament calendar + per-edition results |
+
+The WTA's **official** data API (`api.wtatennis.com/tennis/…`) — public Spring REST,
+**no auth/key, no geo-block**, runs in CI. Rankings need `type`+`metric`
+(rankSingles+singles or rankDoubles+doubles); tournaments are keyed by
+`tournamentGroup.id` + `year` (Australian Open = group 901). Fills the tennis gap on
+the stats side, composing with the bookmakers' live tennis markets. See
+[documentation/WTA.md](documentation/WTA.md). (ATP has no equivalent open API —
+atptour.com is Cloudflare bot-protected — so it isn't modelled.)
+
 ### Racing and Sports — `racingandsports.com.au`
 
 | Group | Tools | Notes |
