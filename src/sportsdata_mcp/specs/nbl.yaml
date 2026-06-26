@@ -1,0 +1,221 @@
+spec_version: 1
+
+# NBL (nbl.com.au) — Australia's National Basketball League, read directly from
+# the site's own data API. Genius Sports powers the underlying stats; nbl.com.au
+# fronts them through a Redis-cached proxy ("rosetta"). Probed live 2026-06-26.
+#
+# HOW IT WORKS: every feed is
+#   https://prod.rosetta.nbl.com.au/get/{route}
+# No token/API key. The proxy is REFERER-GATED — it 403s ("MISSING_API_KEY", a
+# misleading message) unless the request carries an nbl.com.au Origin + Referer.
+# Those two headers are baked into the spec, so the feeds return JSON anonymously.
+# (The site also has a separate Genius widget proxy at /api_cache/nbl/genius and a
+# Directus CMS at /api_cache/nbl/cms with its own Bearer — out of scope here; the
+# rosetta stats API below is the data surface.)
+#
+# Every response is enveloped: {type, fetched, ttlRemaining, count, source, data:[…]}.
+#
+# SEASON SCOPING: most routes take `year` = the season START year (2025 = "NBL26",
+# the current 2025-26 season; 2026 = "NBL27"). `seasonType` ∈ regular | all |
+# in_season | preseason | finals. A few stats routes instead need the season UUID
+# (`seasonId`) — get it from nbl_seasons (data[].id). The NBL runs Sep–Mar, so
+# off-season the "current"/"next" feeds can be empty (the call still resolves).
+#
+# Read-only basketball data — no betting, consistent with the no-money invariant.
+
+provider:
+  id: nbl
+  display_name: "NBL (nbl.com.au)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/NBL.md"
+  base_urls:
+    default: https://prod.rosetta.nbl.com.au
+  default_headers:
+    accept: "application/json"
+    accept-language: "en-AU,en;q=0.9"
+    user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    # The referer-gate: the proxy 403s ("MISSING_API_KEY") without an nbl.com.au
+    # Origin + Referer. The Sec-Fetch-* trio matches a real browser CORS request
+    # (mirrors the production scraper) so the gate can't tighten us out.
+    origin: "https://nbl.com.au"
+    referer: "https://nbl.com.au/"
+    sec-fetch-dest: "empty"
+    sec-fetch-mode: "cors"
+    sec-fetch-site: "same-site"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 3
+    retry_backoff_seconds: 0.6
+
+endpoints:
+  # ─── discovery: seasons ───────────────────────────────────────────────
+  - name: nbl_seasons
+    group: nbl.basketball
+    capabilities: [ref.seasons]
+    summary: "Every NBL season (~73: NBL27, NBL26, blitz/preseason/tournament variants…), each with id (UUID), name, year (season start year), season_type, the Genius external_id, and start/end dates. The discovery entry point — take a season's `id` for nbl_stat_leaders, or its `year` for the year-scoped feeds. Current regular season is the latest `year` with season_type=regular."
+    base: default
+    path: /get/nbl/seasons
+    auth: default
+    response_hint: "{type, count, source, data:[{id, name, year, season_type, external_id, start_date, end_date, competition}]}"
+
+  - name: nbl_season_current
+    group: nbl.basketball
+    capabilities: [ref.seasons]
+    summary: "The current season(s). Convenience shortcut over nbl_seasons; may return empty in the deep off-season (the call still resolves). Use `limit` to cap rows."
+    base: default
+    path: /get/nbl/seasons/current
+    auth: default
+    params:
+      - { name: limit, in: query, type: integer, default: 1, description: "Max rows (default 1)." }
+    response_hint: "{type, count, data:[{id, name, year, season_type, external_id, start_date, end_date}]}"
+
+  # ─── reference: clubs ─────────────────────────────────────────────────
+  - name: nbl_teams
+    group: nbl.basketball
+    capabilities: [ref.teams]
+    summary: "The NBL club catalogue (~78 incl. historical/relocated franchises) — each with id (UUID), name, team_code, team_nickname, logos and brand colours. Join team_id from nbl_players / nbl_schedule back to here."
+    base: default
+    path: /get/nbl/teams
+    auth: default
+    response_hint: "{type, count, data:[{id, external_id, name, team_code, team_nickname, team_logo, color_primary, color_secondary}]}"
+
+  # ─── ladder / standings ───────────────────────────────────────────────
+  - name: nbl_ladder
+    group: nbl.basketball
+    capabilities: [stats.ladder]
+    summary: "The NBL ladder (standings) for one season — 10 clubs with position, played/won/lost, points_percentage, win_percentage, points_for/against, last_5 and current streak. `year` is the season start year (2025 = current NBL26)."
+    base: default
+    path: /get/nbl/standings/{year}/{seasonType}
+    auth: default
+    params:
+      - &year_param { name: year, in: path, type: integer, required: true, description: "Season START year — 2025 = NBL26 (current 2025-26 season), 2026 = NBL27." }
+      - &stype_param { name: seasonType, in: path, type: string, required: true, default: "regular", enum: [regular, all, in_season, preseason, finals], description: "Season phase: regular (the main season ladder), all, in_season, preseason or finals." }
+    response_hint: "{type, count, data:[{id, position, played, won, lost, points_percentage, win_percentage, points_for, points_against, last_5, streak, team}]}"
+    examples:
+      - description: "Current-season ladder"
+        params: { year: 2025, seasonType: regular }
+
+  # ─── schedule / matches ───────────────────────────────────────────────
+  - name: nbl_schedule
+    group: nbl.basketball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Every match for one season — each with start_time, round, match_status (complete/upcoming/live), home/away scores, attendance, match_slug/title, a play_by_play flag, the Genius external_id, and full home_team/away_team objects (name, team_code, logos, colours). `seasonType=all` for the whole season."
+    base: default
+    path: /get/nbl/matches/in/season/{year}/{seasonType}
+    auth: default
+    params:
+      - *year_param
+      - { name: seasonType, in: path, type: string, required: true, default: "all", enum: [all, regular, in_season, preseason, finals], description: "Phase to list (default all)." }
+    response_hint: "{type, count, data:[{id, external_id, start_time, round, match_status, home_score, away_score, attendance, match_slug, match_title, play_by_play, home_team:{id, name, team_code, team_logo, color_primary}, away_team:{…}}]}"
+    examples:
+      - description: "Full NBL26 schedule + results"
+        params: { year: 2025, seasonType: all }
+
+  - name: nbl_match_outcomes
+    group: nbl.basketball
+    capabilities: [sport.match_score, stats.head_to_head]
+    summary: "Per-team match outcomes (results) for a season — win/loss rows by team, for head-to-head and form analysis."
+    base: default
+    path: /get/match/outcomes/for/nbl/teams/in/season/{year}/{seasonType}
+    auth: default
+    params:
+      - *year_param
+      - { name: seasonType, in: path, type: string, required: true, default: "regular", enum: [regular, all, in_season, preseason, finals], description: "Season phase (default regular)." }
+    response_hint: "{type, count, data:[{team, …per-match outcome rows}]}"
+
+  - name: nbl_next_matches
+    group: nbl.basketball
+    capabilities: [sport.fixtures_by_date]
+    summary: "Upcoming matches across all NBL teams for a season (empty in the deep off-season). For the full fixture incl. completed games use nbl_schedule."
+    base: default
+    path: /get/next/matches/for/teams/in/nbl/{year}
+    auth: default
+    params:
+      - *year_param
+    response_hint: "{type, count, data:[{id, start_time, round, home_team, away_team}]}"
+
+  # ─── players / rosters ────────────────────────────────────────────────
+  - name: nbl_players
+    group: nbl.basketball
+    capabilities: [ref.players]
+    summary: "All players for one season (~165) — each with jersey_number, playing_position and embedded player {id, first_name, last_name, …}, team and season objects. The player `id` (UUID) feeds nbl_player_stats / nbl_player_boxscores."
+    base: default
+    path: /get/nbl/players/in/season/{year}
+    auth: default
+    params:
+      - *year_param
+    response_hint: "{type, count, data:[{jersey_number, playing_position, player:{id, first_name, last_name}, team:{id, name, team_code}, season}]}"
+    examples:
+      - description: "All NBL26 players"
+        params: { year: 2025 }
+
+  - name: nbl_team_roster
+    group: nbl.basketball
+    capabilities: [ref.players]
+    summary: "One team's roster for a season. teamId comes from the team objects in nbl_players / nbl_schedule / nbl_ladder."
+    base: default
+    path: /get/nbl/players/for/team/{teamId}/in/season/{year}
+    auth: default
+    params:
+      - { name: teamId, in: path, type: string, required: true, description: "Team id (UUID) — from a team object in nbl_players / nbl_schedule." }
+      - *year_param
+    response_hint: "{type, count, data:[{jersey_number, playing_position, player:{id, first_name, last_name}, team}]}"
+
+  # ─── statistics ───────────────────────────────────────────────────────
+  - name: nbl_player_stats
+    group: nbl.basketball
+    capabilities: [stats.player_season, stats.player_profile]
+    summary: "Season statistics for one player — points/rebounds/assists/blocks/steals/turnovers and their per-game averages, shooting splits (field goals / three-pointers / free throws made-attempted-percentage), fouls, minutes. playerId is the player UUID from nbl_players."
+    base: default
+    path: /get/nbl/statistics/for/player/{playerId}
+    auth: default
+    params:
+      - { name: playerId, in: path, type: string, required: true, description: "Player id (UUID) — from nbl_players[].player.id." }
+    response_hint: "{type, count, data:[{points_average, rebounds_total_average, assists_average, blocks_average, steals_average, turnovers_average, field_goals_percentage, three_pointers_percentage, free_throws_percentage, fouls_average, minutes}]}"
+
+  - name: nbl_player_boxscores
+    group: nbl.basketball
+    capabilities: [stats.player_game_log]
+    summary: "Game-by-game box scores for one player across a season — per match the points/rebounds/assists/blocks/steals/turnovers and playing position. The score-series / game-log source."
+    base: default
+    path: /get/nbl/player_boxscores/for/{playerId}/in/season/{year}/{seasonType}
+    auth: default
+    params:
+      - { name: playerId, in: path, type: string, required: true, description: "Player id (UUID) — from nbl_players[].player.id." }
+      - *year_param
+      - { name: seasonType, in: path, type: string, required: true, default: "regular", enum: [regular, all, in_season, preseason, finals], description: "Season phase (default regular)." }
+    response_hint: "{type, count, data:[{period, playing_position, points, rebounds, assists, blocks, steals, turnovers}]}"
+
+  - name: nbl_team_stats
+    group: nbl.basketball
+    capabilities: [stats.team_season]
+    summary: "Team statistics for a season — totals and per-game averages across assists, rebounds (offensive/defensive), blocks, steals, turnovers, and shooting (field goals / three-pointers / free throws made-attempted-percentage)."
+    base: default
+    path: /get/nbl/team/stats/for/season/{year}/{seasonType}
+    auth: default
+    params:
+      - *year_param
+      - { name: seasonType, in: path, type: string, required: true, default: "regular", enum: [regular, all, in_season, preseason, finals], description: "Season phase (default regular)." }
+    response_hint: "{type, count, data:[{team, assists, assists_average, defensive_rebounds, blocks, steals, turnovers, field_goals_made, field_goals_attempted, field_goals_percentage, three_pointers_percentage}]}"
+    examples:
+      - description: "Team stats, current season"
+        params: { year: 2025, seasonType: regular }
+
+  - name: nbl_stat_leaders
+    group: nbl.basketball
+    capabilities: [stats.leaders_season]
+    summary: "Season statistical leaders (points/rebounds/assists/etc. averages, per player) for one season — pass the season UUID (`seasonId`) from nbl_seasons (data[].id), NOT the year. Use `limit` to cap rows (limit=-1 for all)."
+    base: default
+    path: /get/nbl/stats/leaders/for/season/id/{seasonId}
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: string, required: true, description: "Season UUID — from nbl_seasons (data[].id, the season_type=regular one for the main leaders)." }
+      - { name: limit, in: query, type: integer, default: 50, description: "Max rows; -1 for all." }
+    response_hint: "{type, count, data:[{player, team, points_average, rebounds_total_average, assists_average, field_goals_percentage, three_pointers_made_average, …}]}"
+    examples:
+      - description: "Top 50 leaders for NBL26"
+        params: { seasonId: "1f8e4a79-e98b-457b-85a5-e4b898c6c0bd", limit: 50 }

@@ -159,6 +159,13 @@ CONTRACTS: list[Contract] = [
         item_keys=("id", "team1", "team2", "round"),
     ),
     Contract("supercoach_player", {"sport": "afl", "year": 2026, "id": 1}, ("id", "first_name", "team_id")),
+    # ── NBL (prod.rosetta.nbl.com.au — public, referer-gated; runs in CI) ──
+    # Enveloped {type, count, data:[…]}; NBL26 (year 2025) is the current season.
+    Contract("nbl_seasons", {}, ("type", "count", "data"), "data", ("id", "name", "year", "season_type")),
+    Contract("nbl_teams", {}, ("type", "count", "data"), "data", ("id", "name", "team_code")),
+    Contract("nbl_ladder", {"year": 2025, "seasonType": "regular"}, ("type", "count", "data"), "data", ("position", "won", "lost")),
+    Contract("nbl_schedule", {"year": 2025, "seasonType": "all"}, ("type", "count", "data"), "data", ("id", "round", "home_team", "away_team")),
+    Contract("nbl_players", {"year": 2025}, ("type", "count", "data"), "data", ("jersey_number", "player", "team")),
 ]
 
 

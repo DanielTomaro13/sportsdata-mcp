@@ -244,6 +244,20 @@ The core `supercoach_players` feed is per-round and large (~1–3 MB); use `ppts
 `stats.fantasy_projections` alongside Data Golf. See
 [documentation/SuperCoach.md](documentation/SuperCoach.md).
 
+### NBL — `nbl.com.au` (Australian National Basketball League)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `nbl.basketball` | 13 | Seasons, teams, ladder, schedule (scores), players + rosters, per-player season stats + game-log box scores, team stats, and season stat leaders |
+
+The league's own site data API — a Redis-cached proxy (**"rosetta"**) over Genius
+Sports stats at `prod.rosetta.nbl.com.au/get/…`. **No token**, but **referer-gated**
+(403s without an `nbl.com.au` Origin + Referer — both baked into the spec). Every
+response is enveloped `{type, count, source, data:[…]}`. Season-scoped by `year`
+(the season start year: 2025 = NBL26, current); stat-leaders takes the season UUID
+from `nbl_seasons`. Distinct from the SuperCoach `nbl` fantasy feed — this is the
+official box-score source. See [documentation/NBL.md](documentation/NBL.md).
+
 ### Racing and Sports — `racingandsports.com.au`
 
 | Group | Tools | Notes |
