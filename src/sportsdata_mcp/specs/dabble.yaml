@@ -57,22 +57,25 @@ endpoints:
   - name: dabble_active_competitions
     group: dabble.sport
     capabilities: [sport.competitions_list]
-    summary: "Every currently-bettable competition across all sports (~269) — the discovery entry point. Pick any one's `id` and pass it to dabble_competition_fixtures. Each carries name, sportName, country and a featured flag."
+    summary: "Every currently-bettable competition across all sports (~318) — the discovery entry point. Pick any one's `id` and pass it to dabble_competition_fixtures. Each carries name, sportName, country and a featured flag. Pass `sportId` to filter to one sport's active competitions."
     base: default
     path: /competitions/active
     auth: default
+    params:
+      - { name: sportId, in: query, type: string, description: "Optional — filter active competitions to ONE sport (sportId from dabble_sports). Omit for all sports." }
     response_hint: "{status, data:{activeCompetitions:[{id, name, sportName, country, featured, location, sportId}]}}"
 
   - name: dabble_competitions
     group: dabble.sport
     capabilities: [sport.competitions_list]
-    summary: "Look up competitions by EXACT name (case-sensitive; e.g. 'NRL', 'Premier League', 'AFL Matches' — note 'AFL' alone returns nothing). Returns the matching competition(s) with their id(s). For browsing, prefer dabble_active_competitions."
+    summary: "Look up competitions by EXACT name (`name`, case-sensitive; e.g. 'NRL', 'Premier League', 'AFL Matches' — note 'AFL' alone returns nothing) OR list EVERY competition for a sport (`sportId`, including ones not currently active — ~20 for AFL). Pass at least one filter: bare /competitions is the ~38 MB / 142k-row firehose (deliberately avoid). For browsing currently-bettable comps, prefer dabble_active_competitions."
     base: default
     path: /competitions
     auth: default
     params:
-      - { name: name, in: query, type: string, required: true, description: "Exact competition name (e.g. 'NRL', 'Premier League', 'AFL Matches')." }
-    response_hint: "{status, data:[{id, name, sportId, country}]}  (exact-match only — empty if the name isn't exact)"
+      - { name: name, in: query, type: string, description: "Exact competition name (e.g. 'NRL', 'Premier League', 'AFL Matches')." }
+      - { name: sportId, in: query, type: string, description: "List all competitions for ONE sport (sportId from dabble_sports) — includes non-active ones." }
+    response_hint: "{status, data:[{id, name, sportId, country}]}  (filtered by name or sportId — empty if the exact name isn't found)"
 
   - name: dabble_sports
     group: dabble.sport
@@ -93,7 +96,7 @@ endpoints:
     params:
       - { name: competitionId, in: path, type: string, required: true, description: "Competition UUID — from dabble_active_competitions / dabble_competitions (any competition, not just AFL/NRL)." }
       - { name: includeInPlay, in: query, type: boolean, default: false, description: "Include in-play fixtures." }
-      - { name: exclude, in: query, type: string, api_name: "exclude[]", default: "none", enum: [none, markets, prices, selections], description: "Slim the payload by dropping an embedded block (default none = include all). Pass one of markets/prices/selections to omit it." }
+      - { name: exclude, in: query, type: string_list, api_name: "exclude[]", enum: [markets, prices, selections], description: "Slim the payload by dropping embedded block(s) — pass any of markets / prices / selections (one or more, sent as repeated exclude[] params). Omit to include all." }
     response_hint: "{data:[{id, name, displayName, competitionId, competitionName, advertisedStart, status, inplayAvailable, teams:[{id, name, abbreviation}], markets:[{id, name, resultingType, product, isHandicap, isTotal, isSgmAllowed, status}], selections:[{id, name, marketId, isScratched}], prices:[{marketId, selectionId, price}]}]}  (`product` is engine-derived from resultingType — see dabble_fixture_details.)"
     # Engine-derived product tag so consumers never blend Pick'em multipliers into a
     # fixed-odds comparison. (Fixtures embeds the slim core set, so most tag `single`;

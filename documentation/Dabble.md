@@ -94,21 +94,24 @@ blend `pickem`.
 
 | Tool | Path | Capability |
 |---|---|---|
-| `dabble_active_competitions` | `/competitions/active` | `sport.competitions_list` |
-| `dabble_competitions` | `/competitions?name=` | `sport.competitions_list` |
+| `dabble_active_competitions` | `/competitions/active?sportId=` | `sport.competitions_list` |
+| `dabble_competitions` | `/competitions?name=` \| `?sportId=` | `sport.competitions_list` |
 | `dabble_sports` | `/sports` | — (24 sports) |
 | `dabble_competition_fixtures` | `/frontend-api/competitions/{competitionId}/sport-fixtures?includeInPlay=&exclude[]=` | `sport.fixtures_by_date`, `sport.event_markets`, `sport.prices` |
 | `dabble_fixture_details` | `/frontend-api/sport-fixtures/details/{fixtureId}` | `sport.event_markets`, `sport.prices`, `sport.same_game_multi` |
 
-- `dabble_active_competitions` is the **discovery entry point** — ~269 bettable
-  competitions with `id` + `name` + `sportName`; pick any.
-- `dabble_competitions?name=` is **exact-match** (case-sensitive): `Premier League`
-  and `NRL` resolve, but `AFL` returns nothing (the competition is named
-  `AFL Matches`). Prefer the active list for browsing.
+- `dabble_active_competitions` is the **discovery entry point** — ~318 bettable
+  competitions with `id` + `name` + `sportName`; pick any. Pass **`sportId`** to
+  filter to one sport's active competitions.
+- `dabble_competitions` takes **`name`** (exact-match, case-sensitive: `Premier League`
+  and `NRL` resolve, but `AFL` returns nothing — the competition is named
+  `AFL Matches`) **OR `sportId`** to list EVERY competition for a sport (incl. ones
+  not currently active, ~20 for AFL). Pass at least one filter — bare `/competitions`
+  is the ~38 MB / 142k-row firehose.
 
-- `exclude` (mapped to the wire param `exclude[]`) slims the fixtures payload —
-  pass `markets`, `prices` or `selections` to drop that block (default `none` =
-  include all).
+- `exclude` (wire param `exclude[]`) slims the fixtures payload — pass a **list** of
+  any of `markets` / `prices` / `selections` to drop those block(s) (sent as repeated
+  `exclude[]` params; e.g. `["markets","prices"]` drops both). Omit to include all.
 - `dabble_fixture_details` is **large** (~1 MB+ for a major match — 400+ markets,
   thousands of prices); fetch one fixture at a time.
 

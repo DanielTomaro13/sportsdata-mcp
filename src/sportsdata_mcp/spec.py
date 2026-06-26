@@ -140,7 +140,7 @@ class Provider(BaseModel):
 # ─── Endpoint params ───────────────────────────────────────────────────
 
 ParamLocation = Literal["path", "query", "header", "body", "dispatch"]
-ParamType = Literal["string", "integer", "number", "boolean", "string_csv", "json", "object"]
+ParamType = Literal["string", "integer", "number", "boolean", "string_csv", "string_list", "json", "object"]
 
 
 class Param(BaseModel):

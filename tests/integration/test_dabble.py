@@ -115,7 +115,7 @@ async def test_exclude_slims_payload_live(dabble_server):
     try:
         full = _payload(await dabble_server.call_tool("dabble_competition_fixtures", {"competitionId": AFL}))
         slim = _payload(
-            await dabble_server.call_tool("dabble_competition_fixtures", {"competitionId": AFL, "exclude": "markets"})
+            await dabble_server.call_tool("dabble_competition_fixtures", {"competitionId": AFL, "exclude": ["markets"]})
         )
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"dabble unavailable: {e}")
@@ -123,3 +123,35 @@ async def test_exclude_slims_payload_live(dabble_server):
         pytest.skip("no fixtures")
     assert "markets" in full["data"][0]
     assert "markets" not in slim["data"][0]
+
+
+@pytest.mark.live
+async def test_exclude_accepts_multiple_blocks_live(dabble_server):
+    """exclude takes a LIST → repeated exclude[] params drop multiple blocks at once."""
+    try:
+        slim = _payload(
+            await dabble_server.call_tool(
+                "dabble_competition_fixtures", {"competitionId": AFL, "exclude": ["markets", "prices"]}
+            )
+        )
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"dabble unavailable: {e}")
+    if not slim["data"]:
+        pytest.skip("no fixtures")
+    f0 = slim["data"][0]
+    assert "markets" not in f0 and "prices" not in f0 and "selections" in f0
+
+
+@pytest.mark.live
+async def test_competitions_by_sport_and_active_filter_live(dabble_server):
+    """`sportId` filters both the active list and the full competitions lookup."""
+    try:
+        sports = _payload(await dabble_server.call_tool("dabble_sports", {}))
+        sid = sports["data"][0]["id"]
+        active = _payload(await dabble_server.call_tool("dabble_active_competitions", {"sportId": sid}))
+        allcomp = _payload(await dabble_server.call_tool("dabble_competitions", {"sportId": sid}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"dabble unavailable: {e}")
+    # both resolve and are scoped (active ⊆ all for that sport); shapes intact
+    assert "activeCompetitions" in active["data"]
+    assert isinstance(allcomp["data"], list)

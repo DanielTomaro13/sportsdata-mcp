@@ -42,6 +42,10 @@ _PY_TYPES: dict[str, type] = {
     "number": float,
     "boolean": bool,
     "string_csv": list,
+    # `string_list` = a list sent as REPEATED query params (httpx repeats a list value):
+    # exclude[]=markets&exclude[]=prices, ids[]=1&ids[]=2. Distinct from string_csv,
+    # which comma-joins into a single param.
+    "string_list": list,
     # `json` = any JSON value. Typing it `dict` forced models to wrap arrays in objects
     # (observed live: Entain 500 "cannot unmarshal object into []uuid.UUID" because a
     # correct array could not pass the tool signature).
@@ -75,6 +79,10 @@ def _encode_query_value(p: Param, value: object) -> object:
         if isinstance(value, (list, tuple)):
             return ",".join(str(v) for v in value)
         return str(value)
+    if p.type == "string_list":
+        # Pass a list straight through — httpx emits it as repeated params. A scalar
+        # is wrapped so a single value still produces one repeated-style param.
+        return list(value) if isinstance(value, (list, tuple)) else [value]
     if p.type == "json":
         return json.dumps(value, separators=(",", ":"))
     return value

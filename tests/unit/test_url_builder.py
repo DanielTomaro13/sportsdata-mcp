@@ -69,6 +69,15 @@ def test_build_query_csv_join():
     assert _build_query(ep, {"ids": ["a", "b", "c"]}) == {"ids": "a,b,c"}
 
 
+def test_build_query_string_list_repeats():
+    """`string_list` passes a list through (httpx emits repeated params, e.g.
+    exclude[]=markets&exclude[]=prices) — NOT comma-joined like string_csv. A scalar
+    is wrapped so one value still produces a single repeated-style param."""
+    ep = _ep([{"name": "exclude", "in": "query", "type": "string_list", "api_name": "exclude[]"}])
+    assert _build_query(ep, {"exclude": ["markets", "prices"]}) == {"exclude[]": ["markets", "prices"]}
+    assert _build_query(ep, {"exclude": "markets"}) == {"exclude[]": ["markets"]}
+
+
 def test_build_query_json_accepts_arrays():
     """`json` params are ANY JSON value. Typing them dict-only forced models to wrap
     arrays in objects — reproduced live as Entain's 500 ("cannot unmarshal object
