@@ -229,6 +229,21 @@ Cloudflare-fronted (403s from non-AU IPs, like the other AU books). Works for
 ones across all sports. Read-only odds — no bet placement.
 Composes with the other books via `sport.event_markets` / `sport.prices`.
 
+### SuperCoach — `supercoach.com.au` (News Corp / Champion Data fantasy)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `supercoach.fantasy` | 5 | One uniform surface across **all 7 games** (afl/nrl/epl/nba/nbl/nfl/bbl): competition state, the full per-player feed (price + `ppts1` projection + ownership + matchup), fixtures (with H2H odds), club + single-player catalogues |
+
+News Corp / Champion Data's salary-cap fantasy game. Every feed lives under
+`/{year}/api/{sport}/classic/v1/…` — pass `sport` (one of the seven) and `year`
+(the season key: current calendar year for afl/nrl, currently `2025` for the
+others, which run across the new year). **No auth, not geo-blocked** (runs in CI).
+The core `supercoach_players` feed is per-round and large (~1–3 MB); use `ppts1`
+(the real projection), not `ppts`. Adds the **fantasy / projections** angle via
+`stats.fantasy_projections` alongside Data Golf. See
+[documentation/SuperCoach.md](documentation/SuperCoach.md).
+
 ### Racing and Sports — `racingandsports.com.au`
 
 | Group | Tools | Notes |

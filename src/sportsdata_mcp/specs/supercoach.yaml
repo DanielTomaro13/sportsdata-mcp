@@ -1,0 +1,148 @@
+spec_version: 1
+
+# SuperCoach (supercoach.com.au) — News Corp / Champion Data's salary-cap fantasy
+# game. The public JSON API exposes, per player, every price, score, projection,
+# ownership %, position, availability, news blurb and matchup context. No auth.
+# Probed live 2026-06-26 across all 7 codes.
+#
+# HOW IT WORKS: every feed lives under
+#   https://www.supercoach.com.au/{year}/api/{sport}/classic/v1/...
+# Only two things vary — `sport` (the game) and `year` (the season). The response
+# SHAPE is identical across all seven games; only the sport-specific stat columns
+# inside player_stats[] differ. Send a browser-like User-Agent + Accept: json and
+# nothing else — it is NOT geo-blocked (unlike the AU bookmakers) and needs no
+# token. (An optional account Bearer unlocks user-team endpoints — out of scope;
+# player-trades / userteams / rankings return 401 anonymously.)
+#
+# SPORT codes (exactly): afl, nrl, epl, nba, nbl, nfl, bbl.
+# YEAR is the season key and is NOT the calendar year for every game:
+#   - afl, nrl  → current calendar year (2026 now; in-season Apr–Sep)
+#   - epl, nba, nbl, nfl, bbl → the season's year, currently 2025 (these run across
+#     the new year; 2024 is still served as the prior archive).
+# Discover the live state with supercoach_settings → competition.current_round
+# (last scored) and next_round (the one to project).
+#
+# Read-only fantasy data — no team save / trade, consistent with the no-money
+# invariant. The /competitions firehose has no equivalent here; the surface is the
+# five endpoints below (everything else 404s).
+
+provider:
+  id: supercoach
+  display_name: "SuperCoach (supercoach.com.au)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/SuperCoach.md"
+  base_urls:
+    default: https://www.supercoach.com.au
+  default_headers:
+    accept: "application/json"
+    accept-language: "en-AU,en;q=0.9"
+    user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 3
+    retry_backoff_seconds: 0.8
+
+endpoints:
+  # ─── competition state — the discovery entry point ────────────────────
+  # The shared {sport}/{year} path params are defined here as YAML anchors
+  # (&sport_param / &year_param) and aliased by every later endpoint so the codes
+  # and per-sport year guidance never drift.
+  - name: supercoach_settings
+    group: supercoach.fantasy
+    summary: "Competition state for one game+season: competition.current_round (last round scored), next_round (the one to project), is_lockout / lockout_start / lockout_end, is_closed, num_users, num_leagues. Call this FIRST to learn which round to pass to supercoach_players. Tiny (~15 KB)."
+    base: default
+    path: /{year}/api/{sport}/classic/v1/settings
+    auth: default
+    params:
+      - name: sport
+        in: path
+        type: string
+        required: true
+        enum: &sport_param [afl, nrl, epl, nba, nbl, nfl, bbl]
+        description: &sport_desc "Which SuperCoach game: afl | nrl | epl | nba | nbl | nfl | bbl. Response shape is identical across all seven; only the per-player stat columns differ."
+      - name: year
+        in: path
+        type: integer
+        required: true
+        description: &year_desc "Season key (NOT always the calendar year). afl/nrl = current calendar year (2026 now). epl/nba/nbl/nfl/bbl = the season's year, currently 2025 (2024 archived). When unsure, try the current year, then the prior year if the feed is empty."
+      - { name: min, in: query, type: boolean, default: false, description: "min=true returns a slimmer settings blob; false (default) includes the full competition/system/content sections." }
+    response_hint: "{system, game, content, competition:{current_round, next_round, status, is_lockout, is_partial_lockout, lockout_start, lockout_end, is_closed, num_users, num_leagues}}"
+    examples:
+      - description: "AFL current round / next round"
+        params: { sport: afl, year: 2026 }
+
+  # ─── THE feed — full per-player snapshot for one round ────────────────
+  - name: supercoach_players
+    group: supercoach.fantasy
+    capabilities: [stats.fantasy_projections, stats.player_season, stats.player_game_log, ref.players]
+    summary: "THE feed — every player's full snapshot for one round: price + price_change, avg/avg3/avg5, the ppts1 projection, owned %, positions, availability, dated news and the next-three-opponents matchup context. LARGE (~1–3 MB; 174–1032 players depending on sport). Pass `round` (from supercoach_settings.next_round) for a forward snapshot; loop round=1..current_round with embed=player_match_stats to build a per-round score series. The embed set is CLOSED — only positions, player_stats, player_match_stats, notes, odds add data (anything else is ignored)."
+    base: default
+    path: /{year}/api/{sport}/classic/v1/players-cf
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, enum: *sport_param, description: *sport_desc }
+      - { name: year, in: path, type: integer, required: true, description: *year_desc }
+      - { name: round, in: query, type: integer, description: "Round number. REQUIRED in practice: player_stats are scoped to this round. Omitting it does NOT return the whole season. Use supercoach_settings.next_round for the upcoming-round projection, or loop 1..current_round for history." }
+      - { name: embed, in: query, type: string, default: "positions,player_stats,notes", description: "Comma-separated embeds (CLOSED set): positions, player_stats (price/proj/ownership/season totals — the main one), player_match_stats (that round's per-game {games, points} — for the score series), notes (dated news), odds (AFL Brownlow odds only). Default 'positions,player_stats,notes'." }
+    response_hint: "array of {id, first_name, last_name, team:{name, abbrev}, team_id, played_status:{status}, injury_suspension_status_text, positions:[{position, position_long}], notes:[{note, created_on}], player_stats:[{price, price_change, total_price_change, avg, avg3, avg5, ppts1, ppts, owned, total_games, total_points, opp:{abbrev}, opph, oppavg, ven:{name}, venavg, opp1, opp2, opp3, total_<sport stats…>}], player_match_stats:[{games, points}]}  —  USE ppts1 (real projection, ≈avg, present for afl/nrl; falls back to avg when absent, e.g. nba). AVOID ppts (erratic). LARGE."
+    examples:
+      - description: "AFL round-16 forward snapshot (price + projection + matchup)"
+        params: { sport: afl, year: 2026, round: 16, embed: "positions,player_stats,notes" }
+      - description: "NRL round-10 per-game scores (for the season series)"
+        params: { sport: nrl, year: 2026, round: 10, embed: "player_match_stats" }
+
+  # ─── fixtures + scores + odds ─────────────────────────────────────────
+  - name: supercoach_real_fixture
+    group: supercoach.fantasy
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Fixtures for one game+season — each carries kickoff, both teams, venue/location, final scores (team1_score/team2_score + verbose), live match_status/period, AND the head-to-head bookmaker odds (team1_odds/team2_odds + bookmaker title/link). Pass `round` for one round, or omit it for the whole season (AFL ≈ 207 rows). Paginate with page/page_size."
+    base: default
+    path: /{year}/api/{sport}/classic/v1/real_fixture
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, enum: *sport_param, description: *sport_desc }
+      - { name: year, in: path, type: integer, required: true, description: *year_desc }
+      - { name: round, in: query, type: integer, description: "Round number. Omit for the entire season." }
+      - { name: page, in: query, type: integer, default: 1, description: "1-based page." }
+      - { name: page_size, in: query, type: integer, default: 9998, description: "Rows per page (default 9998 = effectively all)." }
+    response_hint: "array of {id, season, round, kickoff, team1, team2, location, venue, team1_score, team2_score, team1_score_verbose, team2_score_verbose, team1_odds, team2_odds, margin_game, match_status, period, period_status, featured, team1_bookmaker_title, team1_bookmaker_link, …}"
+    examples:
+      - description: "AFL round-16 fixtures + scores + odds"
+        params: { sport: afl, year: 2026, round: 16 }
+
+  # ─── reference: clubs ─────────────────────────────────────────────────
+  - name: supercoach_teams
+    group: supercoach.fantasy
+    capabilities: [ref.teams]
+    summary: "The club/team catalogue for one game+season (AFL 18, NRL 17, EPL 20, NBA 30, NBL 10, NFL 32, BBL 8) — each with id, name and abbrev. Join team_id from supercoach_players back to here."
+    base: default
+    path: /{year}/api/{sport}/classic/v1/teams
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, enum: *sport_param, description: *sport_desc }
+      - { name: year, in: path, type: integer, required: true, description: *year_desc }
+    response_hint: "array of {id, name, abbrev, ...}"
+    examples:
+      - description: "AFL clubs"
+        params: { sport: afl, year: 2026 }
+
+  # ─── reference: one player ────────────────────────────────────────────
+  - name: supercoach_player
+    group: supercoach.fantasy
+    capabilities: [ref.players, stats.player_profile]
+    summary: "A single player's base record by SuperCoach id (id, first/last name, team_id, previous_games/previous_average/previous_total, feed_id). A thin subset of supercoach_players — for the full price/projection/matchup snapshot use supercoach_players with a round."
+    base: default
+    path: /{year}/api/{sport}/classic/v1/players/{id}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, enum: *sport_param, description: *sport_desc }
+      - { name: year, in: path, type: integer, required: true, description: *year_desc }
+      - { name: id, in: path, type: integer, required: true, description: "SuperCoach player id (from supercoach_players[].id)." }
+    response_hint: "{id, first_name, last_name, team_id, previous_games, previous_average, previous_total, feed_id}"
+    examples:
+      - description: "AFL player 1"
+        params: { sport: afl, year: 2026, id: 1 }

@@ -142,6 +142,23 @@ CONTRACTS: list[Contract] = [
     Contract("betfair_navigation", {"nodeIds": ["EVENT_TYPE:7"]}, ("nodes", "edges")),
     Contract("dabble_active_competitions", {}, ("data",)),
     Contract("dabble_competition_fixtures", {"competitionId": "ad4c78ec-e39d-45ee-8cec-ff5d485a3205"}, ("data",)),
+    # ── SuperCoach (supercoach.com.au — public, no auth, not geo-blocked → runs in CI) ──
+    # Uniform surface across all 7 games; AFL (calendar-year, in-season) is the probe.
+    Contract("supercoach_settings", {"sport": "afl", "year": 2026}, ("competition", "system", "game")),
+    Contract("supercoach_teams", {"sport": "afl", "year": 2026}, list_at="", item_keys=("id", "name", "abbrev")),
+    Contract(
+        "supercoach_players",
+        {"sport": "afl", "year": 2026, "round": 1, "embed": "player_stats"},
+        list_at="",
+        item_keys=("id", "first_name", "last_name", "player_stats"),
+    ),
+    Contract(
+        "supercoach_real_fixture",
+        {"sport": "afl", "year": 2026, "round": 1, "page_size": 5},
+        list_at="",
+        item_keys=("id", "team1", "team2", "round"),
+    ),
+    Contract("supercoach_player", {"sport": "afl", "year": 2026, "id": 1}, ("id", "first_name", "team_id")),
 ]
 
 
