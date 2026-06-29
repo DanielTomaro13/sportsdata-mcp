@@ -1,11 +1,12 @@
-name: Release (macOS installer)
+name: Release (installers)
 
 # Tag-triggered standalone-installer release (commerce Phase 3). On `vX.Y.Z` it builds
-# the PyInstaller onedir, wraps it as sportsdata-mcp.app, and — WHEN the Apple signing
-# secrets are present — codesigns + notarizes + staples a DMG and attaches it to the
-# GitHub release. With no secrets it still builds and uploads an UNSIGNED .app zip, so
-# the pipeline is exercisable today (workflow_dispatch) and turns into a shippable DMG the
-# moment the Apple Developer ID secrets exist. Direct download, not the App Store.
+# the PyInstaller onedir for BOTH macOS and Windows and attaches them to the GitHub
+# release. macOS: wrapped as sportsdata-mcp.app and — WHEN the Apple signing secrets are
+# present — codesigned + notarized + stapled into a DMG; otherwise an UNSIGNED .app zip.
+# Windows: the onedir (sportsdata-mcp.exe + runtime) zipped, UNSIGNED for now (no
+# Authenticode cert) so it shows a SmartScreen "more info → run anyway" prompt until a
+# cert is added. The pipeline is exercisable today (workflow_dispatch). Direct download.
 #
 # Secrets to add when ready (Settings → Secrets → Actions):
 #   APPLE_CERT_P12_BASE64   base64 of the exported "Developer ID Application" .p12
@@ -101,4 +102,49 @@ jobs:
           files: |
             dist/*.dmg
             dist/*-unsigned.zip
+          fail_on_unmatched_files: false
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+
+      - name: Install (editable + build extra)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m venv .venv
+          .venv/Scripts/python.exe -m pip install -e ".[build]"
+
+      - name: Build onedir bundle (UNSIGNED)
+        shell: bash
+        run: sh scripts/build-installer.sh
+
+      - name: Package the onedir as a zip
+        shell: bash
+        run: |
+          VERSION="$(.venv/Scripts/python.exe -c 'import sportsdata_mcp; print(sportsdata_mcp.__version__)')"
+          # Zip the whole onedir folder → the customer gets sportsdata-mcp.exe + its runtime.
+          # UNSIGNED (no Authenticode cert yet): Windows SmartScreen shows "Windows protected
+          # your PC" → More info → Run anyway. The mirror of the macOS xattr step.
+          powershell -Command "Compress-Archive -Path dist/sportsdata-mcp -DestinationPath dist/sportsdata-mcp-$VERSION-windows.zip -Force"
+          echo "built dist/sportsdata-mcp-$VERSION-windows.zip (UNSIGNED)"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sportsdata-mcp-windows
+          path: dist/*-windows.zip
+          if-no-files-found: error
+
+      - name: Attach to the GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: dist/*-windows.zip
           fail_on_unmatched_files: false

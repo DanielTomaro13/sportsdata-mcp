@@ -15,15 +15,22 @@ set -eu
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="sportsdata-mcp"
-VERSION="$("$REPO/.venv/bin/python" -c 'import sportsdata_mcp; print(sportsdata_mcp.__version__)' 2>/dev/null \
-           || python -c 'import sportsdata_mcp; print(sportsdata_mcp.__version__)')"
+# Resolve the venv python — Unix layout (.venv/bin) or Windows layout (.venv/Scripts), so
+# this same script drives the macOS and the windows-latest (git-bash) release builds.
+VPY="$REPO/.venv/bin/python"
+[ -x "$VPY" ] || VPY="$REPO/.venv/Scripts/python.exe"
+[ -x "$VPY" ] || VPY="python"
+VERSION="$("$VPY" -c 'import sportsdata_mcp; print(sportsdata_mcp.__version__)')"
 
 echo "building $APP_NAME $VERSION (onedir, direct-download)"
 cd "$REPO"
 
 PY="$REPO/.venv/bin/pyinstaller"
+[ -x "$PY" ] || PY="$REPO/.venv/Scripts/pyinstaller.exe"
 [ -x "$PY" ] || PY="pyinstaller"
 
+# --copy-metadata for fastmcp + httpx so the bundled `version` command reports their real
+# versions instead of "?" (importlib.metadata can't read a dist-info that wasn't collected).
 "$PY" \
   --name "$APP_NAME" \
   --onedir \
@@ -32,9 +39,11 @@ PY="$REPO/.venv/bin/pyinstaller"
   --collect-all fastmcp \
   --collect-submodules cryptography \
   --copy-metadata sportsdata-mcp \
+  --copy-metadata fastmcp \
+  --copy-metadata httpx \
   --noconfirm \
   --clean \
-  "$REPO/src/sportsdata_mcp/__main__.py" || {
+  src/sportsdata_mcp/__main__.py || {
     echo "pyinstaller failed — did you run: pip install -e '.[build]' ?" >&2; exit 1; }
 
 # NOTE: the distributable is the .app produced by make-macos-app.sh + packaged with
