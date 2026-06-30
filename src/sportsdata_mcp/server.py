@@ -136,6 +136,17 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     # lifespan refreshes it so a cancellation/downgrade takes effect mid-session.
     set_live_groups(licensed)
 
+    # Operator off-switch (workbench global toggle): SPORTSDATA_MCP_DISABLED_PROVIDERS is a
+    # comma-separated provider list to exclude entirely. Applied AFTER wildcard expansion +
+    # the licence gate, so it works even when groups are "*" — a disabled provider's tools
+    # simply never register. Narrows only; can never widen past the licence.
+    _disabled = {p.strip() for p in os.environ.get("SPORTSDATA_MCP_DISABLED_PROVIDERS", "").split(",") if p.strip()}
+    if _disabled:
+        _drop = {g for prov in _disabled for g in provider_groups.get(prov, [])}
+        if _drop:
+            cfg.enabled_groups = [g for g in cfg.enabled_groups if g not in _drop]
+            log.info("disabled providers %s → dropped %d group(s)", sorted(_disabled), len(_drop))
+
     enabled = set(cfg.enabled_groups)
 
     # The provider HTTP clients are created eagerly by register_all (below) so that
