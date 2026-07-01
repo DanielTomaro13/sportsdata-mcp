@@ -113,8 +113,18 @@ AU books via `list_tools_by_capability`:
 
 ## Not modelled
 
-- `EventDetailExpertTipQuery` — captured hash has **drifted** (`PERSISTED_QUERY_NOT_FOUND`);
-  re-capture from the live bundle to add it.
+- `EventDetailExpertTipQuery` — **dead surface, do not chase** (investigated 2026-07-02).
+  The expert-tips feature is switched off for Unibet AU (`showNewBadgePreviewAndTips:
+  false` in `rsa/api/graphql/config`), so no client traffic ever registers the hash.
+  The deployed racing client's own query doesn't even validate against the production
+  schema (`mediaStreamFixtureId` isn't in the `EventDetailExpertTip` type), and a
+  schema-fixed query registered via APQ full-text POST executes but returns
+  `{viewer:{expertTips:[]}}` — no content. The gateway also does not retain APQ
+  registrations across requests, so a pinned hash can never be kept alive by us.
+- `LinkedEventScreenQuery` — fires on race pages alongside `EventQuery`
+  (variables `eventKey, clientCountryCode, linkedEventKeys`; hash captured live
+  2026-07-02: `d322aad1faedcbea7f86e14838f6ec5b9093ab536d0fab558999d3044c24e762`).
+  Appears to return linked/same-meeting event context; add it if a use case shows up.
 - **UI / app config** (probed, all 200 but not sports data): `rsa/api/v1/configuration/client`
   (analytics keys + internal beacon URLs), `rsa/api/graphql/config` (carousel/lobby
   display settings), `settings-api.kambicdn.com/ubau.json` + `ubau__microFrontends.json`
