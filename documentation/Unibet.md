@@ -15,6 +15,22 @@ against live traffic (probed 2026-06-04). Two surfaces under one provider:
 > when the front-end bundle ships; a `PERSISTED_QUERY_NOT_FOUND` error means a hash
 > needs recapturing.
 
+### Recapturing a drifted hash
+
+`sportsdata-mcp refresh-hashes` does **not** work here — the racing app is a
+SystemJS micro-frontend whose hashes live in lazy-loaded chunks, not in a
+discoverable bundle (no `hash_refresh` block in the spec). Recapture from live
+traffic instead:
+
+1. Open `https://www.unibet.com.au/racing` with devtools (or Playwright) and
+   filter network requests to `rsa.unibet.com.au/api/v1/graphql`.
+2. Trigger the operation — e.g. click into any race to fire `EventQuery`; the
+   lobby fires `OddsLadderQuery` on load.
+3. Copy `extensions.persistedQuery.sha256Hash` from the request URL and update
+   the operation's `sha256` in `specs/unibet.yaml` (`graphql.operations`).
+
+(EventQuery drifted and was recaptured this way on 2026-07-02.)
+
 ## Hosts
 
 | Host | Role |

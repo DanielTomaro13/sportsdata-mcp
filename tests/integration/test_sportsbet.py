@@ -96,14 +96,16 @@ async def test_all_racing_live(sportsbet_server):
 
 @pytest.mark.live
 async def test_sports_classes_live(sportsbet_server):
-    today = dt.date.today()
-    week = today + dt.timedelta(days=7)
+    # The gateway requires naive datetimes (YYYY-MM-DDTHH:MM:SS); a bare date is a 400.
+    now = dt.datetime.now().replace(microsecond=0)
+    week = now + dt.timedelta(days=7)
     try:
         res = await sportsbet_server.call_tool(
             "sportsbet_sports_classes",
-            {"fromDate": today.isoformat(), "toDate": week.isoformat()},
+            {"fromDate": now.isoformat(), "toDate": week.isoformat()},
         )
     except (MCPToolError, RuntimeError) as e:
         pytest.xfail(f"sportsbet sports gateway unavailable: {e}")
     data = _structured(res)
     assert isinstance(data, dict)
+    assert "classList" in data

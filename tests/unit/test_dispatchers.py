@@ -13,6 +13,7 @@ from sportsdata_mcp.spec import (
     Dispatcher,
     GraphQLBlock,
     GraphQLOperation,
+    HashRefresh,
     Provider,
     Spec,
     TemplatedOperation,
@@ -149,9 +150,18 @@ def _graphql_dispatcher() -> Dispatcher:
     )
 
 
-def _graphql_spec() -> Spec:
+def _graphql_spec(*, refreshable: bool = True) -> Spec:
     return Spec(
-        provider=Provider(id="entain", display_name="Entain", base_urls={"default": "https://api.ladbrokes.com.au"}),
+        provider=Provider(
+            id="entain",
+            display_name="Entain",
+            base_urls={"default": "https://api.ladbrokes.com.au"},
+            hash_refresh=(
+                HashRefresh(bundle_host="https://www.ladbrokes.com.au", bundle_url_pattern="/assets/ops-*.js")
+                if refreshable
+                else None
+            ),
+        ),
         graphql=GraphQLBlock(operations=[GraphQLOperation(name="HomeSportsScreen", sha256=_HASH)]),
     )
 
@@ -192,6 +202,19 @@ async def test_graphql_persisted_not_found():
     sent = http.calls[0]["params"]
     assert sent["operationName"] == "HomeSportsScreen"
     assert _HASH in sent["extensions"]
+
+
+async def test_graphql_persisted_not_found_without_hash_refresh():
+    """Providers with no hash_refresh block (e.g. unibet) must not be told to run
+    refresh-hashes — the CLI would just error with 'nothing to refresh'."""
+    envelope = {"errors": [{"message": "PersistedQueryNotFound", "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]}
+    http = _ApolloHTTP(envelope)
+    handler = make_graphql_dispatcher(_graphql_dispatcher(), _graphql_spec(refreshable=False), http)
+    with pytest.raises(PersistedQueryNotFoundError) as ei:
+        await handler(operation="HomeSportsScreen", variables={})
+    assert ei.value.code == "PERSISTED_QUERY_NOT_FOUND"
+    assert "refresh-hashes" not in str(ei.value)
+    assert "Recapture" in str(ei.value)
 
 
 async def test_graphql_success_passes_body_through():

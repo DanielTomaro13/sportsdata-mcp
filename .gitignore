@@ -21,6 +21,9 @@ env/
 /sportsdata-mcp.yaml
 /config.yaml
 
+# PyInstaller writes <name>.spec into the cwd on every build (scripts/build-installer.sh)
+/sportsdata-mcp.spec
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/

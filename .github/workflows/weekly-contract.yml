@@ -1,7 +1,7 @@
 # Weekly structure-drift check (§: agents depend on documented response shapes).
 # Runs the live contract suite against the real upstreams: FAILs when an API we
 # carry changes shape; SKIPs transient/geo-blocked feeds (AU bookmakers skip on
-# GitHub runners — they are covered by local runs, see documentation/Contributing).
+# GitHub runners — cover them locally with `pytest -m live`).
 name: weekly-contracts
 on:
   schedule:
@@ -16,3 +16,25 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev]"
       - run: pytest -m contract -q
+
+  # Live tool probes. Drift XFAILs rather than failing the suite (so geo-blocked
+  # feeds don't page anyone), which means a green run alone proves little — the
+  # grep step below turns the one geo-independent drift signal (a persisted-query
+  # hash the gateway no longer knows) into a hard failure. Endpoint drift on
+  # AU-only bookmakers can't be seen from GitHub's runners; check the xfail lines
+  # in this job's log, or run `pytest -m live -rxs` from an AU network.
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: pytest -m live -q -rxs tests/integration | tee live-report.txt
+      - name: Fail on persisted-query hash drift
+        run: |
+          if grep -Eq "PERSISTED_QUERY_NOT_FOUND|no longer registered|Recapture the hash" live-report.txt; then
+            echo "::error::A GraphQL persisted-query hash has drifted — see documentation/Unibet.md (recapture) or run refresh-hashes."
+            exit 1
+          fi

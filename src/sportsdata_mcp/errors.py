@@ -30,10 +30,17 @@ class AuthMissingError(ToolError):
 class PersistedQueryNotFoundError(ToolError):
     """A GraphQL persisted hash is no longer registered with the gateway."""
 
-    def __init__(self, *, operation: str, hash_prefix: str, refresh_cmd: str) -> None:
+    def __init__(self, *, operation: str, hash_prefix: str, refresh_cmd: str | None) -> None:
+        # Only providers with a hash_refresh block can self-serve via the CLI; the rest
+        # need the hash recaptured from live front-end traffic (see the provider doc).
+        fix = (
+            f"Run `{refresh_cmd}` and restart the MCP server."
+            if refresh_cmd
+            else "Recapture the hash from the live site's network traffic (see the provider doc) and update the spec."
+        )
         super().__init__(
             f"GraphQL operation '{operation}' (hash {hash_prefix}…) is no longer registered "
-            f"with the gateway. Run `{refresh_cmd}` and restart the MCP server.",
+            f"with the gateway. {fix}",
             recoverable=True,
             code="PERSISTED_QUERY_NOT_FOUND",
         )

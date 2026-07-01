@@ -181,7 +181,7 @@ Run `sportsdata-mcp list-groups` for live counts and descriptions.
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `tab.racing` | 8 | Dates, meetings, racecards (fixed + parimutuel), form, next-to-go, jackpots, futures |
+| `tab.racing` | 9 | Dates, meetings, racecards (fixed + parimutuel), form, next-to-go, jackpots, futures |
 | `tab.sports` | 9 | Sports/competitions tree, full match markets + SGM, focused match markets, next-to-go, results, multi-builder |
 | `tab.discovery` | 4 | Featured/live recommendations + `tab_cms_call` over the CMS content feeds |
 

@@ -28,7 +28,7 @@ endpoints:
     response_hint: "{meetings:[{competitionId, name, raceType, events:[{eventId, raceNumber, advertisedStartTime}]}]}"
     examples:
       - description: "All racing for a given day"
-        params: {eventDate: "2026-05-25"}
+        params: {eventDate: "2026-07-02"}
 
   - name: sportsbet_racing_event_meeting
     group: sportsbet.racing
@@ -195,11 +195,14 @@ endpoints:
     path: /sportsbook-sports/Sportsbook/Sports/Classes
     auth: default
     params:
-      - { name: fromDate, in: query, type: string, required: true, description: "Window start, YYYY-MM-DD." }
-      - { name: toDate, in: query, type: string, required: true, description: "Window end, YYYY-MM-DD." }
+      - { name: fromDate, in: query, type: string, required: true, description: "Window start — naive datetime YYYY-MM-DDTHH:MM:SS (a bare date is rejected with HTTP 400)." }
+      - { name: toDate, in: query, type: string, required: true, description: "Window end — naive datetime YYYY-MM-DDTHH:MM:SS (a bare date is rejected with HTTP 400)." }
       - { name: includeLiveEvents, in: query, type: boolean, description: "Include events currently in-play." }
       - { name: excludeNonLiveEvents, in: query, type: boolean, description: "Return only in-play events." }
-    response_hint: "{classes:[{classId, name, competitions:[{competitionId, name}]}]}"
+    response_hint: "{classList:[{classId, className, classDisplayOrder}]}"
+    examples:
+      - description: "Sports with events in the next 24 hours"
+        params: {fromDate: "2026-07-02T10:00:00", toDate: "2026-07-03T10:00:59"}
 
   - name: sportsbet_nav_hierarchy
     group: sportsbet.sports
