@@ -1,0 +1,51 @@
+# Nightly spec-contract drift check.
+#
+# `sportsdata-mcp doctor` probes one representative endpoint per provider group
+# (reachability + auth + REST contract). Books change unofficial APIs without
+# notice — this turns silent drift into a red run (GitHub emails the owner when
+# a scheduled workflow fails) instead of a customer-visible breakage.
+#
+# Some AU books geo/bot-block cloud IPs, so those providers fail here even when
+# they work from a residential machine. `.github/drift-known-blocked.txt` lists
+# them; the job goes red only when a provider OUTSIDE that list fails — i.e. on
+# NEW drift. Full unblocked coverage still happens on the operator's machine
+# (`sportsdata-mcp doctor` locally / the agents ops plane).
+
+name: drift
+on:
+  schedule:
+    - cron: "0 18 * * *" # 04:00 AEST — quiet hours, before the AU sporting day
+  workflow_dispatch: {}
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - name: Run doctor (all providers)
+        id: doctor
+        # Doctor exits nonzero on any FAIL — including known-blocked ones — so the
+        # real verdict is computed in the next step. `|| true` keeps this one green.
+        run: |
+          sportsdata-mcp doctor 2>&1 | tee doctor.log || true
+      - name: Fail only on NEW drift (outside the known-blocked list)
+        run: |
+          # A failing provider = a "[provider/group]" header whose probe line said FAIL.
+          sed 's/\x1b\[[0-9;]*m//g' doctor.log | awk '
+            /^\[/ { split($1, a, "[\\[/]"); prov = a[2] }
+            /→ FAIL/ { print prov }
+          ' | sort -u > failed.txt
+          sort -u .github/drift-known-blocked.txt | grep -v "^#" | grep -v "^$" > known.txt || true
+          comm -23 failed.txt known.txt > new-drift.txt
+          echo "── failing providers:"; cat failed.txt || true
+          echo "── known-blocked from CI:"; cat known.txt || true
+          if [ -s new-drift.txt ]; then
+            echo "::error::NEW provider drift detected:"; cat new-drift.txt
+            exit 1
+          fi
+          echo "no new drift — all failures are the known cloud-IP blocks"
