@@ -1,6 +1,17 @@
-# Providers that geo/bot-block GitHub's cloud IPs — they FAIL in the nightly
-# drift workflow even when healthy. The drift job alerts only on providers NOT
-# in this list. Keep it honest: remove an entry if a provider becomes reachable
-# (a stale entry here silently masks real drift for that provider).
+# Providers the nightly drift check cannot probe from GitHub's cloud IPs — they
+# FAIL in CI even when healthy. The drift job alerts only on providers NOT in
+# this list. Keep it honest: remove an entry if a provider becomes reachable
+# (a stale entry here silently masks real drift for that provider). Full
+# unblocked coverage stays the operator machine's job (local doctor / ops plane).
 #
-# Calibrated from the first workflow_dispatch run — see .github/workflows/drift.yml.
+# Calibrated 2026-07-02 (run 28560807151):
+# — no API key available on CI (auth-required, not drift):
+datagolf
+twitter
+# — geo/bot-blocked from cloud IPs (403 / bot challenge / edge 503):
+betfair
+betr
+entain
+sportsbet
+tab
+unibet
