@@ -29,12 +29,20 @@ jobs:
       - run: pip install -e ".[dev]"
       - name: Run doctor (all providers)
         id: doctor
-        # Doctor exits nonzero on any FAIL — including known-blocked ones — so the
-        # real verdict is computed in the next step. `|| true` keeps this one green.
+        # No config file exists on a runner, so the group set MUST come from the env —
+        # without it doctor probes nothing and exits 0 (a vacuous green caught on the
+        # first calibration run). Doctor exits nonzero on any FAIL — including
+        # known-blocked ones — so the real verdict is computed in the next step.
+        env:
+          SPORTSDATA_MCP_GROUPS: "*"
         run: |
           sportsdata-mcp doctor 2>&1 | tee doctor.log || true
       - name: Fail only on NEW drift (outside the known-blocked list)
         run: |
+          # Empty probe set = misconfiguration, never success.
+          if ! grep -q "^\[" <(sed 's/\x1b\[[0-9;]*m//g' doctor.log); then
+            echo "::error::doctor probed nothing — group selection is broken"; exit 1
+          fi
           # A failing provider = a "[provider/group]" header whose probe line said FAIL.
           sed 's/\x1b\[[0-9;]*m//g' doctor.log | awk '
             /^\[/ { split($1, a, "[\\[/]"); prov = a[2] }
