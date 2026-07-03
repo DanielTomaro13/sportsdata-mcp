@@ -113,30 +113,22 @@ variable first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name
 | `SPORTSDATA_MCP_GROUPS` | Comma-separated group list; overrides `enabled_groups`. |
 | `SPORTSDATA_MCP_CONFIG` | Path to a config file (see resolution order above). |
 | `SPORTSDATA_MCP_MAX_BYTES` | Global response-size cap in bytes for every provider that doesn't set its own `max_response_bytes`. `0` (the default) means no cap. |
-| `SPORTSDATA_LICENSE` | A licence key (`sd_live_…`). When set, the signed entitlement decides which feed groups are served — see [Licensed builds](#licensed-builds). Unset = no gate. |
-| `SPORTSDATA_ENTITLEMENT_URL` | Entitlement service base URL. **Required** for a licensed build — the baked default (`…workers.dev`) is a placeholder; set this to your deployed Worker URL. |
-| `SPORTSDATA_ENTITLEMENT_PUBKEY` | Override the baked Ed25519 verify key (raw, base64url). Normally unset. |
+| `SPORTSDATA_LICENSE` | **Dormant** — the product is free; nothing requires a licence. The signed-entitlement machinery remains for anyone self-hosting gated premium feeds (see below). |
+| `SPORTSDATA_ENTITLEMENT_URL` / `SPORTSDATA_ENTITLEMENT_PUBKEY` | Only relevant with the dormant entitlement gate above. Normally unset. |
 
-### Licensed builds
+### The (dormant) entitlement gate
 
-A self-host build run by a paying customer sets a single value — `SPORTSDATA_LICENSE`
-(everything else has a sensible default). On start, the server fetches a **signed
-entitlement** from the entitlement service, verifies it offline against a baked Ed25519
-public key, and serves **only the feed groups the licence grants** (caching the result so
-a brief outage doesn't drop a customer's feeds). The licence is a **ceiling**: a
-configured `enabled_groups` can narrow within it but never exceed it. Adding a feed is
-purely a billing change — the next start picks up the new entitlement, with no config edit
-or re-download. The gate is **opt-in** (no `SPORTSDATA_LICENSE` → unchanged) and
-**fail-closed** (licence set but unresolvable → no feeds). A licensed server also
-**re-checks the entitlement every ~15 min**, so a cancellation or downgrade takes effect
-mid-session (a transient outage keeps the last-known grant — it never drops a paying
-customer offline). See `services/entitlement/` in the agents repo for the service itself.
+This project used to be a paid product. It's free now — **no licence exists or is
+needed, and every group serves by default** — but the signed-entitlement machinery
+(Ed25519-verified feed grants, offline caching, 15-min revalidation) is kept dormant
+rather than deleted: it's tested, harmless when unset, and useful to anyone
+self-hosting this server who wants to gate premium feeds for their own users. Set
+`SPORTSDATA_LICENSE` + `SPORTSDATA_ENTITLEMENT_URL` against your own issuing service
+to activate it; leave them unset (the default) and nothing changes.
 
-**Credentialed feeds.** A few feeds run on *our* upstream credential (DataGolf's paid
-key) and so are never shipped inside a licensed build — when a licence is set and no local
-key is present, the MCP routes those providers through the entitlement service's
-`/proxy/<id>`, which attaches the credential server-side. Supply your own `DATAGOLF_KEY`
-and the MCP calls the upstream directly instead.
+**Keyed feeds.** A few providers need an upstream credential you supply yourself —
+e.g. `DATAGOLF_KEY` for DataGolf, `X_BEARER_TOKEN` for Twitter/X. Everything else
+needs no key at all.
 
 Meta-tools (`list_available_groups`, `list_tools_by_capability`, `list_resources`)
 are always registered regardless of what is enabled, so a fresh install can still
