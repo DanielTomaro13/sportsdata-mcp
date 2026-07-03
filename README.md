@@ -1,5 +1,9 @@
 # sportsdata-mcp
 
+**Free & open source (MIT).** Live sports data and cross-book betting odds as
+MCP tools — ~500 tools across 28 providers, in Claude Desktop, Cursor, or any
+MCP client. Zero config: install, run `setup`, and the full catalogue serves.
+
 An [MCP](https://modelcontextprotocol.io) server that exposes sports-data APIs
 (bookmakers, league/governing-body feeds, aggregators) as tools, configurable so
 you only load the tool groups you need. A capability-tag system makes tools from
@@ -17,19 +21,24 @@ enable.
 
 ## Install
 
-This is a **private repository** — it is not published to PyPI. Install from source
-(you need read access to the repo):
+**Prebuilt app** (no Python needed): grab the latest
+[release](https://github.com/DanielTomaro13/sportsdata-mcp/releases/latest)
+(macOS + Windows), unzip, and run `sportsdata-mcp setup` — it writes the config
+for Claude Desktop / Cursor for you. The macOS build is unsigned for now:
+right-click → Open the first time.
+
+From source:
 
 ```bash
-git clone git@github.com:DanielTomaro13/sportsdata-mcp.git
+git clone https://github.com/DanielTomaro13/sportsdata-mcp.git
 cd sportsdata-mcp
 pip install -e .                # add ".[dev]" for the test + lint toolchain
 ```
 
-Or run it directly with `uvx` from the private repo (requires SSH access):
+Or run it directly with `uvx`:
 
 ```bash
-uvx --from git+ssh://git@github.com/DanielTomaro13/sportsdata-mcp.git sportsdata-mcp serve
+uvx --from git+https://github.com/DanielTomaro13/sportsdata-mcp.git sportsdata-mcp serve
 ```
 
 ## Quickstart
