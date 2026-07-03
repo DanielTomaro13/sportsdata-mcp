@@ -1,5 +1,10 @@
 # sportsdata-mcp
 
+[![CI](https://github.com/DanielTomaro13/sportsdata-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/DanielTomaro13/sportsdata-mcp/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DanielTomaro13/sportsdata-mcp)](https://github.com/DanielTomaro13/sportsdata-mcp/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![sportsdata-mcp MCP server](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp/badges/score.svg)](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp)
+
 **Free & open source (MIT).** Live sports data and cross-book betting odds as
 MCP tools — ~500 tools across 28 providers, in Claude Desktop, Cursor, or any
 MCP client. Zero config: install, run `setup`, and the full catalogue serves.
