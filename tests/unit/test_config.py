@@ -13,12 +13,30 @@ from sportsdata_mcp.config import (
 
 
 def test_defaults_when_no_file(tmp_path, monkeypatch):
+    # Free-by-default: a fresh install with no config anywhere serves the FULL
+    # catalogue (the wildcard), not an empty server.
     monkeypatch.delenv("SPORTSDATA_MCP_CONFIG", raising=False)
     monkeypatch.delenv("SPORTSDATA_MCP_GROUPS", raising=False)
     monkeypatch.chdir(tmp_path)
     cfg = load_config()
-    assert cfg.enabled_groups == []
+    assert cfg.enabled_groups == ["*"]
     assert cfg.providers == {}
+
+
+def test_explicit_groups_still_narrow(tmp_path, monkeypatch):
+    monkeypatch.delenv("SPORTSDATA_MCP_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SPORTSDATA_MCP_GROUPS", "nba.stats")
+    assert load_config().enabled_groups == ["nba.stats"]
+
+
+def test_setup_block_is_licence_free_by_default():
+    from sportsdata_mcp.setup_client import server_block
+
+    free = server_block("", "/usr/local/bin/sportsdata-mcp")
+    assert free == {"command": "/usr/local/bin/sportsdata-mcp", "args": ["serve"]}
+    keyed = server_block("sd_live_x", "/usr/local/bin/sportsdata-mcp")
+    assert keyed["env"] == {"SPORTSDATA_LICENSE": "sd_live_x"}
 
 
 def test_reads_config_file(tmp_path, monkeypatch):

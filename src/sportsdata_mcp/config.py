@@ -92,6 +92,12 @@ def load_config(explicit_path: Path | None = None, specs_dir: Path | None = None
     if env_groups:
         cfg.enabled_groups = [g.strip() for g in env_groups.split(",") if g.strip()]
 
+    # Free-by-default: nothing configured anywhere means the FULL catalogue, not an
+    # empty server (a fresh install must work out of the box). A config file or env
+    # that explicitly names groups still narrows exactly as before.
+    if not cfg.enabled_groups:
+        cfg.enabled_groups = ["*"]
+
     # SPORTSDATA_MCP_MAX_BYTES sets the global response-size cap; 0 disables it.
     env_max = os.environ.get("SPORTSDATA_MCP_MAX_BYTES")
     if env_max:

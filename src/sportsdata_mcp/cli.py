@@ -156,7 +156,8 @@ def refresh_hashes(provider: str, dry_run: bool) -> None:
 
 
 @cli.command()
-@click.option("--license", "license_key", required=True, help="Your sportsdata licence key (sd_live_…).")
+@click.option("--license", "license_key", default="",
+              help="Optional licence key — the MCP is free; only needed for gated premium feeds.")
 @click.option(
     "--client",
     type=click.Choice(["claude-desktop", "cursor", "both"]),
@@ -167,7 +168,8 @@ def refresh_hashes(provider: str, dry_run: bool) -> None:
 @click.option("--command", "command", default=None, help="Override the launch command (defaults to this binary).")
 @click.option("--print", "print_only", is_flag=True, help="Print the config block instead of writing it.")
 def setup(license_key: str, client: str, command: str | None, print_only: bool) -> None:
-    """Register this MCP into your AI client(s) with your licence — the 'set it up for me' step."""
+    """Register this MCP into your AI client(s) — the 'set it up for me' step. Free:
+    no licence needed; the full catalogue serves out of the box."""
     import json as _json
 
     from .setup_client import CLIENTS, client_config_path, full_config, register

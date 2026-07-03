@@ -44,7 +44,12 @@ def client_config_path(client: str) -> Path:
 
 
 def server_block(license_key: str, command: str) -> dict:
-    return {"command": command, "args": ["serve"], "env": {"SPORTSDATA_LICENSE": license_key}}
+    # Free product: no licence needed. The env block carries a key only when one is
+    # supplied (dormant premium-feed machinery) — an empty env{} would be noise.
+    block: dict = {"command": command, "args": ["serve"]}
+    if license_key:
+        block["env"] = {"SPORTSDATA_LICENSE": license_key}
+    return block
 
 
 def full_config(license_key: str, command: str) -> dict:
