@@ -26,6 +26,12 @@ enable.
 
 ## Install
 
+**One-liner** (any MCP client config, via [uv](https://docs.astral.sh/uv/)):
+
+```bash
+uvx sportsdata-mcp serve        # or: pip install sportsdata-mcp
+```
+
 **Prebuilt app** (no Python needed): grab the latest
 [release](https://github.com/DanielTomaro13/sportsdata-mcp/releases/latest)
 (macOS + Windows), unzip, and run `sportsdata-mcp setup` — it writes the config
@@ -40,11 +46,7 @@ cd sportsdata-mcp
 pip install -e .                # add ".[dev]" for the test + lint toolchain
 ```
 
-Or run it directly with `uvx`:
 
-```bash
-uvx --from git+https://github.com/DanielTomaro13/sportsdata-mcp.git sportsdata-mcp serve
-```
 
 ## Quickstart
 
