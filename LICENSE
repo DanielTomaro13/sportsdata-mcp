@@ -1,30 +1,21 @@
-Copyright (c) 2026 Daniel Tomaro. All rights reserved.
+MIT License
 
-PROPRIETARY AND CONFIDENTIAL
+Copyright (c) 2026 Daniel Tomaro
 
-This software and its associated source code, specifications, documentation, and
-all other files in this repository (collectively, the "Software") are the private,
-proprietary, and confidential property of Daniel Tomaro (the "Owner").
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-No license or right of any kind is granted to any person or entity. Without the
-prior, express, written permission of the Owner, you may NOT:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-  - use, run, or evaluate the Software;
-  - copy, reproduce, or store the Software, in whole or in part;
-  - modify, adapt, translate, or create derivative works from the Software;
-  - publish, distribute, sublicense, sell, rent, lease, or otherwise transfer the
-    Software or access to it; or
-  - disclose the Software, or any part of it, to any third party.
-
-Access to this repository does not constitute a grant of any of the rights above.
-Any unauthorized use, copying, or distribution of the Software, by any means and in
-any form, is strictly prohibited and may violate applicable law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE OWNER BE LIABLE FOR
-ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
-OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For licensing enquiries, contact the Owner.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

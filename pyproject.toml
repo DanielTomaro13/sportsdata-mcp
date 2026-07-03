@@ -4,12 +4,12 @@ version = "0.17.2"
 description = "MCP server for sports-data APIs (bookmakers, league data, aggregators). Capability-tag system enables cross-provider composition."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "Proprietary"}
+license = { text = "MIT" }
 authors = [{name = "Daniel Tomaro"}]
 keywords = ["mcp", "model-context-protocol", "sports", "sports-data", "betting", "odds", "statistics"]
 classifiers = [
   "Development Status :: 4 - Beta",
-  "License :: Other/Proprietary License",
+  "License :: OSI Approved :: MIT License",
   # Safety net: PyPI rejects any upload carrying a "Private ::" classifier, so this
   # private package can't be accidentally published.
   "Private :: Do Not Upload",
