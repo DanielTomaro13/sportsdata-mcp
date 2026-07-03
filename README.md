@@ -659,3 +659,7 @@ Every push/PR runs three jobs (`.github/workflows/ci.yml`):
 **Proprietary and confidential.** Copyright (c) 2026 Daniel Tomaro. All rights
 reserved. No use, copying, modification, or distribution is permitted without the
 owner's prior written consent — see [`LICENSE`](./LICENSE).
+
+<!-- MCP registry ownership marker -->
+
+mcp-name: io.github.danieltomaro13/sportsdata-mcp

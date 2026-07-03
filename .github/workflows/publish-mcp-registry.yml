@@ -1,0 +1,28 @@
+# Publish server.json to the official MCP registry (registry.modelcontextprotocol.io).
+#
+# Auth is GitHub OIDC — the io.github.danieltomaro13/* namespace is proven by this
+# repo's identity, no tokens. Dispatch-only ON PURPOSE: the registry validates that
+# the PyPI package's README carries our `mcp-name:` marker, so the matching PyPI
+# version must be live BEFORE this runs (publish-pypi first, then this). Keep the
+# version in server.json in lockstep with pyproject.toml.
+
+name: publish-mcp-registry
+on:
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC — proves the io.github.* namespace
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --version
+      - name: Login (GitHub OIDC) + publish
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
