@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "name": "io.github.danieltomaro13/sportsdata-mcp",
+  "name": "io.github.DanielTomaro13/sportsdata-mcp",
   "description": "Live sports data & cross-book betting odds — ~500 tools, 28 providers, free, zero-config.",
   "repository": {
     "url": "https://github.com/DanielTomaro13/sportsdata-mcp",

@@ -662,4 +662,4 @@ owner's prior written consent — see [`LICENSE`](./LICENSE).
 
 <!-- MCP registry ownership marker -->
 
-mcp-name: io.github.danieltomaro13/sportsdata-mcp
+mcp-name: io.github.DanielTomaro13/sportsdata-mcp
