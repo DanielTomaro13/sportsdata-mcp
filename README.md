@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![sportsdata-mcp MCP server](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp/badges/score.svg)](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp)
 
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=sportsdata&config=eyJjb21tYW5kIjogInV2eCIsICJhcmdzIjogWyJzcG9ydHNkYXRhLW1jcCIsICJzZXJ2ZSJdfQ==)
+
 **Free & open source (MIT).** Live sports data and cross-book betting odds as
 MCP tools — ~500 tools across 28 providers, in Claude Desktop, Cursor, or any
 MCP client. Zero config: install, run `setup`, and the full catalogue serves.
