@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 
 import httpcore
 import httpx
@@ -79,6 +80,14 @@ def shared_resolver() -> DohResolver:
     return _SHARED
 
 
+async def close_shared_resolver() -> None:
+    """Close and drop the process-wide resolver (its DoH httpx client)."""
+    global _SHARED
+    if _SHARED is not None:
+        await _SHARED.aclose()
+        _SHARED = None
+
+
 class _DohBackend(httpcore.AnyIOBackend):
     """Swaps the connect IP for opted-in hosts; SNI/Host are untouched, so
     httpcore still starts TLS against the real hostname."""
@@ -103,9 +112,17 @@ class _DohBackend(httpcore.AnyIOBackend):
         )
 
 
-def doh_transport(hosts: frozenset[str], *, http2: bool, verify: bool = True) -> httpx.AsyncHTTPTransport:
+def doh_transport(
+    hosts: frozenset[str], *, http2: bool, verify: bool = True,
+    limits: httpx.Limits | None = None,
+) -> httpx.AsyncHTTPTransport:
     """An httpx transport that resolves ``hosts`` via DoH. Other hosts (e.g. the
-    DoH servers, redirects off-domain) fall through to the OS resolver."""
-    transport = httpx.AsyncHTTPTransport(http2=http2, verify=verify)
+    DoH servers, redirects off-domain) fall through to the OS resolver. A custom
+    transport bypasses client-level http2/verify/limits, so they are threaded
+    through here to keep the provider's throttle caps in force."""
+    kwargs: dict[str, Any] = {"http2": http2, "verify": verify}
+    if limits is not None:
+        kwargs["limits"] = limits
+    transport = httpx.AsyncHTTPTransport(**kwargs)
     transport._pool._network_backend = _DohBackend(shared_resolver(), hosts)
     return transport

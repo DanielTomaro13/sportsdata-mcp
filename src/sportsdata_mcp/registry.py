@@ -256,6 +256,11 @@ class Registered:
     async def aclose(self) -> None:
         for client in self.http_clients:
             await client.aclose()
+        # close the process-wide DoH resolver's client too (a provider may have
+        # created it lazily); harmless if none did
+        from .dns import close_shared_resolver
+
+        await close_shared_resolver()
 
 
 def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:

@@ -79,7 +79,10 @@ class HTTPClient:
                 h for h in (urlparse(u).hostname for u in provider.base_urls.values()) if h
             )
             if hosts:
-                transport = doh_transport(hosts, http2=True)
+                transport = doh_transport(
+                    hosts, http2=True,
+                    limits=httpx.Limits(max_connections=20, max_keepalive_connections=5),
+                )
         self._client = httpx.AsyncClient(
             transport=transport,
             timeout=httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0),
