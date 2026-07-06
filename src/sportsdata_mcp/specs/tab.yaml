@@ -135,6 +135,22 @@ endpoints:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{raceNumber, formData:[{runnerNumber, runnerName, pastPerformances:[]}]}"
 
+  - name: tab_racing_runner_form
+    group: tab.racing
+    capabilities: [racing.race_card]
+    summary: "DETAILED per-runner form: full past-start history with positions, margins, distances and dates."
+    base: default
+    path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}/form/{runnerNumber}
+    auth: oauth
+    params:
+      - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
+      - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
+      - { name: venueMnemonic, in: path, type: string, description: "Venue code." }
+      - { name: raceNumber, in: path, type: integer, description: "Race number." }
+      - { name: runnerNumber, in: path, type: integer, description: "Saddle/box number." }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+    response_hint: "{runnerName, runnerNumber, previousStarts/pastPerformances:[{position, fieldSize?, distance, date, margin, ...}]}"
+
   - name: tab_racing_next_to_go
     group: tab.racing
     capabilities: [racing.next_to_jump]
