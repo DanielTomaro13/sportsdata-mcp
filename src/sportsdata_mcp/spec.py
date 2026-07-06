@@ -57,6 +57,12 @@ class AuthOAuthRefresh(BaseModel):
     value_prefix: str = "Bearer "
     # Refresh this many seconds BEFORE `expires_in` elapses (clock-skew margin).
     expiry_margin_seconds: int = 60
+    # Optional auth: when the credential envs are NOT set, requests go out
+    # anonymous instead of failing — for providers whose endpoints serve both
+    # tiers (TAB: public reads work keyless; personal keys use the sanctioned
+    # authenticated tier). Auth-required providers keep the default (a loud
+    # AuthMissingError).
+    optional: bool = False
 
 
 class AuthKalshiRSA(BaseModel):

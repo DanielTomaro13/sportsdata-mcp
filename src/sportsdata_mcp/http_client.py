@@ -125,7 +125,13 @@ class HTTPClient:
         elif isinstance(spec, AuthStaticQuery):
             provider = StaticQueryAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthOAuthRefresh):
-            provider = OAuthRefreshProvider(spec, self._client, self._secrets)
+            if spec.optional and not (
+                os.environ.get(spec.client_id_env) or (self._secrets or {}).get(spec.client_id_env)
+            ):
+                # optional tier with no credentials configured → anonymous
+                provider = NullAuthProvider()
+            else:
+                provider = OAuthRefreshProvider(spec, self._client, self._secrets)
         elif isinstance(spec, AuthKalshiRSA):
             provider = KalshiRSASigner(spec, self._secrets)
         elif isinstance(spec, AuthAFLWMCTok):

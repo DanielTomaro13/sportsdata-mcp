@@ -36,15 +36,18 @@ provider:
   auth:
     default:
       type: none
-    # OPTIONAL — no public endpoint uses it yet. Fully self-managing: the
-    # client_credentials grant mints ~3h access tokens on demand from
-    # TAB_CLIENT_ID/TAB_CLIENT_SECRET (verified live; expires_in 10800). Secrets are
-    # env-only (DataGolf rule); form-encoded by contract (JSON bodies rejected).
+    # Every endpoint rides this key: with TAB_CLIENT_ID/TAB_CLIENT_SECRET set,
+    # the client_credentials grant mints ~3h access tokens on demand (verified
+    # live; expires_in 10800) and requests use TAB's sanctioned authenticated
+    # tier; WITHOUT the envs it degrades to the anonymous public tier
+    # (optional: true) — keyless installs keep working. Secrets are env-only
+    # (DataGolf rule); form-encoded by contract (JSON bodies rejected).
     oauth:
       type: oauth_refresh
       token_url: https://api.beta.tab.com.au/oauth/token
       client_id_env: TAB_CLIENT_ID
       client_secret_env: TAB_CLIENT_SECRET
+      optional: true
   # Akamai throttles bursts (RST-drops) and the engine can't retry a transport
   # reset — so keep the sustained rate low and retry the HTTP-status transients.
   defaults:
@@ -65,7 +68,7 @@ endpoints:
     summary: "Racing dates that have meetings (today, tomorrow, future), each linking to its meetings."
     base: default
     path: /tab-info-service/racing/dates
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction: NSW, VIC, QLD, ACT, SA, TAS or NT." }
     response_hint: "{dates:[{meetingDate, dateName, _links:{meetings}}]}"
@@ -76,7 +79,7 @@ endpoints:
     summary: "All race meetings (thoroughbred/greyhound/harness) for a date, each with its races."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings
-    auth: default
+    auth: oauth
     params:
       - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction (NSW, VIC, …)." }
@@ -92,7 +95,7 @@ endpoints:
     summary: "The races for one meeting (by race type + venue code), each linking to its full racecard."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races
-    auth: default
+    auth: oauth
     params:
       - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
       - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R thoroughbred, G greyhound, H harness." }
@@ -109,7 +112,7 @@ endpoints:
     summary: "Full racecard for one race: runners with fixed + parimutuel odds, form ratings, pools, bet types; results + dividends once run."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}
-    auth: default
+    auth: oauth
     params:
       - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
       - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
@@ -123,7 +126,7 @@ endpoints:
     summary: "Detailed form guide for one race (past performances, ratings, comments per runner)."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}/form
-    auth: default
+    auth: oauth
     params:
       - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
       - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
@@ -138,7 +141,7 @@ endpoints:
     summary: "Races about to jump across all codes, ordered by start time; each links to its racecard."
     base: default
     path: /tab-info-service/racing/next-to-go/races
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
       - { name: includeFixedOdds, in: query, type: boolean, default: true, description: "Inline fixed-odds prices." }
@@ -151,7 +154,7 @@ endpoints:
     summary: "Current racing jackpot / carryover pools across meetings."
     base: default
     path: /tab-info-service/racing/jackpots
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{jackpots:[{poolType, meeting, amount}]}"
@@ -162,7 +165,7 @@ endpoints:
     summary: "Futures racing meetings (ante-post / long-dated markets like Cup outrights)."
     base: default
     path: /tab-info-service/racing/dates/futures/meetings
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
       - { name: returnOffers, in: query, type: boolean, description: "Inline bonus-bet offers." }
@@ -175,7 +178,7 @@ endpoints:
     summary: "Racecard for one FUTURES market: futures URLs put the race NAME (not a number) in the race slot, so the integer-typed tab_racing_race cannot reach them."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceName}
-    auth: default
+    auth: oauth
     params:
       - { name: date, in: path, type: string, description: "Meeting date from the futures listing, YYYY-MM-DD." }
       - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }
@@ -192,7 +195,7 @@ endpoints:
     summary: "All sports offered, each linking to its competitions (HATEOAS root for the sports tree)."
     base: default
     path: /tab-info-service/sports
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{sports:[{id, name, displayName, _links:{self}}]}"
@@ -203,7 +206,7 @@ endpoints:
     summary: "One sport by name with its competitions. Also fronts the racing-adjacent pseudo-sports (Jockey Challenge, Racing Extras)."
     base: default
     path: /tab-info-service/sports/{sport}
-    auth: default
+    auth: oauth
     params:
       - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football", "Rugby League", "Jockey Challenge". Pass raw spaces.' }
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
@@ -218,7 +221,7 @@ endpoints:
     summary: "Competition page: its matches, bet options and (optionally) top markets."
     base: default
     path: /tab-info-service/sports/{sport}/competitions/{competition}
-    auth: default
+    auth: oauth
     params:
       - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football".' }
       - { name: competition, in: path, type: string, description: 'Competition name, e.g. "AFL", "AFL Futures".' }
@@ -235,7 +238,7 @@ endpoints:
     summary: "Full match book: all markets + bet options, Same Game Multi, contestants, live state and stats."
     base: default
     path: /tab-info-service/sports/{sport}/competitions/{competition}/matches/{match}
-    auth: default
+    auth: oauth
     params:
       - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football".' }
       - { name: competition, in: path, type: string, description: 'Competition name, e.g. "AFL".' }
@@ -252,7 +255,7 @@ endpoints:
     summary: "Just the markets + selections + prices for one match (leaner than the full match object)."
     base: default
     path: /tab-info-service/sports/{sport}/competitions/{competition}/matches/{match}/markets
-    auth: default
+    auth: oauth
     params:
       - { name: sport, in: path, type: string, description: 'Sport name, e.g. "AFL Football".' }
       - { name: competition, in: path, type: string, description: 'Competition name, e.g. "AFL".' }
@@ -268,7 +271,7 @@ endpoints:
     summary: "Sport events about to close, ordered by close time (next-to-go sports feed)."
     base: default
     path: /tab-info-service/sports/nextToGo
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
       - { name: limit, in: query, type: integer, default: 20, description: "Max events to return." }
@@ -284,7 +287,7 @@ endpoints:
     summary: "Recently resulted sport events with final scores / settled markets."
     base: default
     path: /tab-info-service/sports/results
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{sports:[{name, competitions:[{matches:[{name, results}]}]}]}"
@@ -295,7 +298,7 @@ endpoints:
     summary: "Multi-builder items for one sport (suggested legs / combinations for building multis)."
     base: default
     path: /multi-builder/items/{sport}
-    auth: default
+    auth: oauth
     params:
       - { name: sport, in: path, type: string, description: 'Sport code/name, e.g. "NRL", "AFL".' }
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
@@ -306,7 +309,7 @@ endpoints:
     summary: "Trending sports propositions / bets across the book."
     base: default
     path: /trending-bets-service/propositions-sports
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "[{sportName, competitionName, matchName, matchId, ...}]  (top-level array)"
@@ -317,7 +320,7 @@ endpoints:
     summary: "Editorially featured events across racing + sports for the homepage carousel."
     base: default
     path: /recommendation-service/featured-events
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{nextToGoRaces:[{raceName, raceNumber, raceStartTime}], prioritySports:[{name, competitionName}], nextToGoMatches:[{name, startTime}]}"
@@ -331,7 +334,7 @@ endpoints:
     summary: "Summary of events currently in-play / live across sports."
     base: default
     path: /recommendation-service/live-events-summary
-    auth: default
+    auth: oauth
     params:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{liveMatches:{count, sports:[{name, displayName, count}]}, _links}"
@@ -341,7 +344,7 @@ endpoints:
     summary: "Featured items for one recommendation category (e.g. Jockey Challenge, Racing Extras). 404s when the category isn't currently featured."
     base: default
     path: /recommendation-service/{category}/featured
-    auth: default
+    auth: oauth
     params:
       - { name: category, in: path, type: string, description: 'Recommendation category, e.g. "Jockey Challenge", "Racing Extras". Pass raw spaces.' }
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
@@ -362,7 +365,7 @@ dispatchers:
       query defaults (platform, os, jurisdiction, authentication-status); override
       jurisdiction via query_params if needed. Read tab://cms/operations for the list.
     base: cms
-    auth: default
+    auth: oauth
     method: GET
     catalog_resource: "tab://cms/operations"
     params:
