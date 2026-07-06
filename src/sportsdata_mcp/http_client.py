@@ -171,7 +171,13 @@ class HTTPClient:
             needs_auth = auth_spec is not None and not isinstance(auth_spec, AuthNone)
             if needs_auth:
                 ap = self._auth_provider(auth_key)
-                if isinstance(ap, KalshiRSASigner):
+                # An OPTIONAL auth spec with no credentials resolves to the null
+                # provider (whose get() raises by contract) — the request must go
+                # out anonymous, exactly as the anonymous public tier expects
+                # (lived: every keyless TAB call raised RuntimeError otherwise).
+                if isinstance(ap, NullAuthProvider):
+                    needs_auth = False
+                elif isinstance(ap, KalshiRSASigner):
                     # Per-request signer (timestamp in the signature) — headers are
                     # computed fresh on every attempt inside the loop below. Inactive
                     # (no credentials) signs nothing: the request stays anonymous.
