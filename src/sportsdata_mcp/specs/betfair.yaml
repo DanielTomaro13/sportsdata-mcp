@@ -68,13 +68,13 @@ endpoints:
 
   - name: betfair_markets_by_event
     group: betfair.exchange
-    capabilities: [sport.event_markets, sport.prices]
-    summary: "All markets + back/lay prices for one or more events (by event id, when you don't have market ids yet)."
+    capabilities: [sport.event_markets]
+    summary: "Market STRUCTURE for an event (market ids, names, runners) — probed live 2026-07-06: this route STRIPS exchange prices (runners come back without the exchange block) and 400s on multi-id batches. For prices, feed the market ids into betfair_market_prices; for bulk market-id discovery, betfair_navigation with attachments=MENU,EVENT,MARKET returns 1000+ MARKET nodes per event type in one call."
     base: ero
     path: /www/sports/exchange/readonly/v1/byevent
     auth: default
     params:
-      - { name: eventIds, in: query, type: string_csv, required: true, description: "Comma-separated event ids, e.g. 35652256 (from betfair_navigation EVENT nodes)." }
+      - { name: eventIds, in: query, type: string_csv, required: true, description: "Event ids, e.g. 35652256 (from betfair_navigation EVENT nodes). Prefer ONE id per call — multi-id batches return 400." }
       - { name: types, in: query, type: string_csv, default: "MARKET_STATE,MARKET_RATES,MARKET_DESCRIPTION,EVENT,RUNNER_DESCRIPTION,RUNNER_STATE,RUNNER_EXCHANGE_PRICES_BEST,RUNNER_METADATA,MARKET_LINE_RANGE_INFO", description: "Which data sections to include (CSV)." }
       - { name: currencyCode, in: query, type: string, default: AUD, description: "Currency for prices/volumes." }
       - { name: locale, in: query, type: string, default: en, description: "Locale." }
@@ -106,7 +106,7 @@ endpoints:
     auth: default
     params:
       - { name: nodeIds, in: query, type: string_csv, required: true, description: 'Node ids to start from, e.g. "EVENT_TYPE:7" (Horse Racing), "EVENT_TYPE:1" (Soccer), "COMP:11897406", "EVENT:35652256".' }
-      - { name: attachments, in: query, type: string_csv, default: "MENU,EVENT", description: "Attachment types to inline (MENU, EVENT, MARKET)." }
+      - { name: attachments, in: query, type: string_csv, default: "MENU,EVENT", description: "Attachment types to inline (MENU, EVENT, MARKET). Include MARKET for bulk market-id discovery — 1000+ MARKET nodes per event type in one call (verified live 2026-07-06), ready for betfair_market_prices." }
       - { name: maxInDistance, in: query, type: integer, default: 0, description: "How many parent levels to walk up." }
       - { name: maxOutDistance, in: query, type: integer, default: 2, description: "How many child levels to walk down." }
       - { name: maxResults, in: query, type: integer, default: 10, description: "Max nodes to return." }
