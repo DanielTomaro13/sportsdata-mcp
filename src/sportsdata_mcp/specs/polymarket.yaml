@@ -42,6 +42,14 @@ provider:
     retry_statuses: [429, 500, 502, 503, 504]
     max_retries: 2
     retry_backoff_seconds: 0.5
+    # Some networks (an ISP/router) return a dead sinkhole IP for polymarket.com
+    # hostnames while the real host is a reachable Cloudflare edge — observed on
+    # an AU residential line 2026-07-06 (every *.polymarket.com → one unreachable
+    # Azure IP; public DNS returns the true Cloudflare IPs). Resolve via DoH so
+    # the poisoned OS resolver is bypassed. SNI/Host stay the real hostname, so
+    # TLS still verifies against Polymarket's certificate — only the A-record is
+    # trusted from a public resolver. Harmless where the OS DNS is already correct.
+    resolve_via_doh: true
 
 endpoints:
   # ─── polymarket.gamma — discovery: markets, events, tags ──────────────

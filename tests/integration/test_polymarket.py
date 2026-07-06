@@ -1,9 +1,11 @@
 """Polymarket — registration checks (offline) + live probes against the public read hosts.
 
-All three hosts (gamma-api / clob / data-api) are anonymous for reads. Polymarket
-drops connections at the network edge from restricted jurisdictions (observed:
-AU IPs time out on connect) — the live tests ``xfail`` there and pass from
-unrestricted regions (e.g. US CI runners). Run with::
+All three hosts (gamma-api / clob / data-api) are anonymous for reads. On some
+networks the OS resolver returns a dead sinkhole IP for ``*.polymarket.com``
+(observed on an AU residential line 2026-07-06: every host → one unreachable
+Azure IP, while public DNS returns the real Cloudflare edge) — the spec's
+``resolve_via_doh`` bypasses that by resolving through DoH. The live tests
+still ``xfail`` where even DoH cannot reach the edge (a genuine block). Run::
 
     pytest -m live tests/integration/test_polymarket.py
 """
@@ -41,6 +43,46 @@ def _rows(data):
     if isinstance(data, dict) and "result" in data:
         return data["result"]
     return data
+
+
+# ─── offline: DoH resolution path ─────────────────────────────────────────
+
+
+def test_polymarket_opts_into_doh():
+    """The spec resolves via DoH so a poisoned OS resolver cannot blind the feed."""
+    from sportsdata_mcp.spec_loader import load_all_specs
+
+    spec = next(s for s in load_all_specs() if s.provider.id == "polymarket")
+    assert spec.provider.defaults.resolve_via_doh is True
+
+
+async def test_doh_backend_swaps_ip_keeps_hostname(monkeypatch):
+    """The backend connects to the DoH-resolved IP but leaves host/SNI untouched
+    (httpcore starts TLS against the original hostname, so certs still verify)."""
+    from sportsdata_mcp.dns import DohResolver, _DohBackend
+
+    resolver = DohResolver()
+
+    async def fake_resolve(host):
+        assert host == "gamma-api.polymarket.com"
+        return "104.18.34.205"
+
+    monkeypatch.setattr(resolver, "resolve", fake_resolve)
+
+    seen: dict[str, str] = {}
+
+    async def fake_super_connect(self, host, port, **kw):
+        seen["host"] = host
+        return object()  # a stand-in stream; connect_tcp only returns it
+
+    monkeypatch.setattr("httpcore.AnyIOBackend.connect_tcp", fake_super_connect)
+    backend = _DohBackend(resolver, frozenset({"gamma-api.polymarket.com"}))
+
+    await backend.connect_tcp("gamma-api.polymarket.com", 443)
+    assert seen["host"] == "104.18.34.205"  # dialled the real edge IP
+    # a host NOT in the override set falls through to the OS resolver unchanged
+    await backend.connect_tcp("example.com", 443)
+    assert seen["host"] == "example.com"
 
 
 # ─── offline: registration ──────────────────────────────────────────────

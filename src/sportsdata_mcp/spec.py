@@ -117,6 +117,13 @@ class ProviderDefaults(BaseModel):
     retry_statuses: list[int] = Field(default_factory=list)
     max_retries: int = 0
     retry_backoff_seconds: float = 0.5
+    # Resolve this provider's hostnames via DNS-over-HTTPS (Cloudflare/Google by raw
+    # IP, so no system DNS is consulted) instead of the OS resolver. Set when a
+    # network poisons the provider's domain — e.g. an ISP/router returning a dead
+    # sinkhole IP for a lawful host. SNI/Host stay the real hostname, so TLS still
+    # verifies against the provider's certificate; only the A-record is trusted from
+    # a public resolver. Off by default — the OS resolver is used for everyone else.
+    resolve_via_doh: bool = False
 
 
 class Provider(BaseModel):

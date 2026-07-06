@@ -66,7 +66,22 @@ class HTTPClient:
         timeout = cfg.request_timeout(provider.id, spec_default=defaults.request_timeout_seconds, default=30.0)
         self._max_bytes = cfg.max_response_bytes_for(provider.id)
         self._secrets = cfg.secrets
+        # DoH transport for providers whose hostnames a network poisons (spec
+        # opt-in). The override set is THIS provider's own base-url hosts, so no
+        # other traffic is affected.
+        transport = None
+        if defaults.resolve_via_doh:
+            from urllib.parse import urlparse
+
+            from .dns import doh_transport
+
+            hosts = frozenset(
+                h for h in (urlparse(u).hostname for u in provider.base_urls.values()) if h
+            )
+            if hosts:
+                transport = doh_transport(hosts, http2=True)
         self._client = httpx.AsyncClient(
+            transport=transport,
             timeout=httpx.Timeout(connect=5.0, read=timeout, write=10.0, pool=5.0),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=5),
             headers=provider.default_headers,
