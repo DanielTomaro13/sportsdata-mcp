@@ -75,6 +75,21 @@ endpoints:
       - { name: categories, in: query, type: json, required: true, description: "JSON array of racing category UUIDs." }
     response_hint: "{category_race_map:{}, race_summaries:{<race_id>:{race_name, meeting_name, advertised_start, race_form}}}"
 
+  - name: entain_racing_racecard
+    group: entain.rest
+    capabilities: [racing.race_card]
+    summary: "Full priced racecard for one race — entrants, fixed-odds fluctuations, form."
+    base: default
+    path: /rest/v1/racing/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: "racecard", description: "Upstream RPC method (racecard)." }
+      - { name: id, in: query, type: string, required: true, description: "Race UUID from the meetings route." }
+    response_hint: "{status, data:{races:{}, markets:{}, prices:{}, entrants:{}, price_fluctuations:{<entrant_id>:[floats — LAST is the live fixed win price]}, meetings:{}}}"
+    examples:
+      - description: "One priced racecard"
+        params: {id: "7f553143-1ed4-4ef8-a622-46c7563e6c83"}
+
   - name: entain_racing_search
     group: entain.rest
     summary: "Racing search facets (barrier/country/jockey/trainer buckets); optional full-text."
