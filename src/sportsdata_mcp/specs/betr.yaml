@@ -149,14 +149,15 @@ endpoints:
 
   - name: betr_master_event
     group: betr.sport
-    capabilities: [sport.match_detail]
-    summary: "One sport match's detail header (teams, start time, live/SGM/futures flags) by master event id."
+    capabilities: [sport.match_detail, sport.event_markets]
+    summary: "One sport match's markets by master event id — a market GROUP per call (Events[].Outcomes[] with prices; GroupLinks names the other groups: totals, lines, race-to, periods)."
     base: default
     path: /MasterEvent
     auth: default
     params:
       - { name: MasterEventId, in: query, type: integer, required: true, description: "Master event (match) id, e.g. 2095084 (from a category / SGM feed)." }
-    response_hint: "{MasterEvent:{MasterEventId, MasterEventName, CategoryId, CategoryName, MinAdvertisedStartTime, IsLive, HasSameGameMulti, IsOpenForBetting}}"
+      - { name: GroupTypeCode, in: query, type: string, description: 'Market group to return, from the default response''s GroupLinks (e.g. "G25" Popular, "G26" Totals, "G175" Race to). Omit for the default (popular) group.' }
+    response_hint: "{MasterEvent:{MasterEventId, MasterEventName, CategoryId, MinAdvertisedStartTime, IsLive, IsOpenForBetting}, Events:[{EventId, EventName, Outcomes:[{OutcomeName, Price, MarketTypeCode, MarketDesc, Points}]}], GroupLinks:[{GroupTypeCode, GroupName}]}"
 
   - name: betr_pop_sgm_category
     group: betr.sport
