@@ -13,6 +13,10 @@ provider:
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/BetR.md"
   base_urls:
     default: https://web20-api.bluebet.com.au
+  defaults:
+    retry_statuses: [429, 500, 502, 503]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
   default_headers:
     User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
     Accept: "application/json, text/plain, */*"

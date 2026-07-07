@@ -47,13 +47,15 @@ class _TokenBucket:
             elapsed = now - self._updated
             self._tokens = min(self.burst, self._tokens + elapsed * self.rate)
             self._updated = now
-            if self._tokens >= 1.0:
-                self._tokens -= 1.0
+            # debit BEFORE sleeping, allowing a negative balance: releasing
+            # the lock undebited let N concurrent waiters each compute the
+            # same near-zero wait and fire together after one refill — a
+            # thundering herd at exactly the upstreams the limiter protects
+            self._tokens -= 1.0
+            if self._tokens >= 0.0:
                 return
-            wait = (1.0 - self._tokens) / self.rate
+            wait = -self._tokens / self.rate
         await asyncio.sleep(wait)
-        async with self._lock:
-            self._tokens = max(0.0, self._tokens - 1.0)
 
 
 class HTTPClient:
