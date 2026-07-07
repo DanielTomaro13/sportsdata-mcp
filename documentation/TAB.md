@@ -80,6 +80,7 @@ tab_racing_race(date, raceType, venue, raceNumber) → runners, odds, pools, res
 | `tab_sports` | `/tab-info-service/sports` | `sport.competitions_list` | All sports (HATEOAS root). |
 | `tab_sport` | `/tab-info-service/sports/{sport}` | `sport.competitions_list` | One sport + its competitions. Also fronts `Jockey Challenge` / `Racing Extras`. |
 | `tab_competition` | `/…/sports/{sport}/competitions/{competition}` | `sport.competition_screen` | Competition page: matches + bet options + top markets. |
+| `tab_tournament` | `/…/competitions/{competition}/tournaments/{tournament}` | `sport.competition_screen` | Tournament page nested inside a competition (tennis, golf). Competitions whose page shows `matches: []` list their events here. |
 | `tab_match` | `/…/competitions/{competition}/matches/{match}` | `sport.event_markets`, `sport.match_detail`, `sport.same_game_multi` | **Full match book** — markets, Same Game Multi, contestants, in-play, stats. |
 | `tab_match_markets` | `/…/matches/{match}/markets` | `sport.event_markets`, `sport.prices` | Just the markets + selections + prices (leaner than the full match object). |
 | `tab_sports_next_to_go` | `/tab-info-service/sports/nextToGo` | — | Sport events about to close, by close time. |
@@ -93,6 +94,9 @@ tab_racing_race(date, raceType, venue, raceNumber) → runners, odds, pools, res
 tab_sports                                  → sport name (e.g. "AFL Football")
 tab_sport(sport)                             → competition name (e.g. "AFL")
 tab_competition(sport, competition)          → match name (e.g. "Adelaide v Geelong")
+tab_tournament(sport, competition, tournament) → matches for tournament-nested sports
+                                               (tennis, golf: the competition page
+                                               itself shows matches: [])
 tab_match(sport, competition, match)         → every market + SGM + stats
 ```
 

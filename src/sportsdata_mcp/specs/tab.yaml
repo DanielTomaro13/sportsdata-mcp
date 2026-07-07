@@ -248,6 +248,24 @@ endpoints:
       - description: "AFL competition page"
         params: {sport: "AFL Football", competition: "AFL"}
 
+  - name: tab_tournament
+    group: tab.sports
+    capabilities: [sport.competition_screen]
+    summary: "Tournament page nested inside a competition (tennis, golf and other tournament-structured sports): its matches with top markets. Competitions whose page shows matches:[] list their events here."
+    base: default
+    path: /tab-info-service/sports/{sport}/competitions/{competition}/tournaments/{tournament}
+    auth: oauth
+    params:
+      - { name: sport, in: path, type: string, description: 'Sport name, e.g. "Tennis".' }
+      - { name: competition, in: path, type: string, description: 'Competition name, e.g. "Wimbledon".' }
+      - { name: tournament, in: path, type: string, description: 'Tournament name from the competition page, e.g. "Wimbledon Mens Singles". Pass raw spaces.' }
+      - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
+      - { name: numTopMarkets, in: query, type: integer, default: 5, description: "Top markets to inline per match." }
+    response_hint: "{id, name, matches:[{id, name, startTime, markets:[...]}], betOptions}"
+    examples:
+      - description: "Wimbledon Mens Singles matches"
+        params: {sport: "Tennis", competition: "Wimbledon", tournament: "Wimbledon Mens Singles"}
+
   - name: tab_match
     group: tab.sports
     capabilities: [sport.event_markets, sport.match_detail, sport.same_game_multi]
