@@ -1,6 +1,6 @@
 [project]
 name = "sportsdata-mcp"
-version = "0.21.2"
+version = "0.22.0"
 description = "MCP server for sports-data APIs (bookmakers, league data, aggregators). Capability-tag system enables cross-provider composition."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,8 @@ dependencies = [
   "pydantic>=2.5,<3",
   "pyyaml>=6.0,<7",
   "click>=8.1,<9",
+  # refresh-hashes prints persisted-query documents from bundle ASTs (Entain APQ).
+  "graphql-core>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +62,8 @@ packages = ["src/sportsdata_mcp"]
 include = [
   "src/sportsdata_mcp/**/*.py",
   "src/sportsdata_mcp/specs/*.yaml",
+  # Printed persisted-query documents (APQ self-heal sidecars, written by refresh-hashes).
+  "src/sportsdata_mcp/specs/*.documents.json",
 ]
 
 [tool.pytest.ini_options]

@@ -3,17 +3,29 @@
 One tool calls any of a provider's persisted GraphQL operations by name. Hashes
 are stored server-side in the spec's `graphql.operations` block; the model only
 ever supplies an operation name + variables (discovered via the catalogue resource).
+
+Gateways keep APQ registrations in an evictable cache (Entain flushed 113/127
+ops on 2026-07-07 with no bundle change), so a not-found answer does NOT mean
+the hash is stale. When the provider ships a printed-documents sidecar
+(``specs/{provider}.documents.json``, written by ``refresh-hashes``), the
+handler self-heals exactly like a browser: retry once as a POST carrying the
+full query text + its sha256, which re-registers the pair for everyone.
 """
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
+import logging
 from collections.abc import Callable
 
 from ..errors import PersistedQueryNotFoundError, ToolError
 from ..http_client import HTTPClient
 from ..spec import Dispatcher, Spec
+from ..spec_loader import load_operation_documents
+
+log = logging.getLogger("sportsdata_mcp.graphql")
 
 
 def _is_persisted_query_not_found(body: object) -> bool:
@@ -38,8 +50,10 @@ def _is_persisted_query_not_found(body: object) -> bool:
 
 def make_graphql_dispatcher(disp: Dispatcher, spec: Spec, http: HTTPClient) -> Callable:
     ops_by_name = {op.name: op for op in (spec.graphql.operations if spec.graphql else [])}
+    documents: dict[str, str] | None = None  # sidecar loaded lazily, on first not-found
 
     async def handler(*, operation: str, variables: dict | None = None):
+        nonlocal documents
         op = ops_by_name.get(operation)
         if not op:
             raise ToolError(
@@ -64,17 +78,50 @@ def make_graphql_dispatcher(disp: Dispatcher, spec: Spec, http: HTTPClient) -> C
             headers=disp.default_headers,
             auth_key=disp.auth,
         )
-        if _is_persisted_query_not_found(body):
-            raise PersistedQueryNotFoundError(
-                operation=operation,
-                hash_prefix=op.sha256[:16],
-                refresh_cmd=(
-                    f"sportsdata-mcp refresh-hashes {spec.provider.id}"
-                    if spec.provider.hash_refresh is not None
-                    else None
-                ),
+        if not _is_persisted_query_not_found(body):
+            return body
+
+        # Gateway evicted (or never had) the hash. Self-heal like a browser: POST
+        # the full document with its own sha256 — APQ accepts any self-consistent
+        # pair and re-registers it, so subsequent hash-only calls succeed again.
+        if documents is None:
+            documents = load_operation_documents(spec.provider.id)
+        query = documents.get(operation)
+        if query is not None:
+            sha = hashlib.sha256(query.encode()).hexdigest()
+            log.warning(
+                "persisted query '%s' not registered (provider=%s); re-registering via APQ retry",
+                operation,
+                spec.provider.id,
             )
-        return body
+            retry_body = await http.request_json(
+                method="POST",
+                base=disp.base or "default",
+                url=disp.endpoint or "",
+                headers=disp.default_headers,
+                json_body={
+                    "operationName": operation,
+                    "query": query,
+                    "variables": variables or {},
+                    "extensions": {"persistedQuery": {"version": 1, "sha256Hash": sha}},
+                },
+                auth_key=disp.auth,
+            )
+            if not _is_persisted_query_not_found(retry_body):
+                # The registered pair is (sha, query); later calls in this process
+                # should send that hash rather than re-triggering the retry.
+                op.sha256 = sha
+                return retry_body
+
+        raise PersistedQueryNotFoundError(
+            operation=operation,
+            hash_prefix=op.sha256[:16],
+            refresh_cmd=(
+                f"sportsdata-mcp refresh-hashes {spec.provider.id}"
+                if spec.provider.hash_refresh is not None
+                else None
+            ),
+        )
 
     handler.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
         parameters=[

@@ -1,25 +1,35 @@
 """Refresh persisted-query sha256 hashes from a provider's deployed JS bundle.
 
-Entain's GraphQL gateway only accepts the hash currently registered by the live
-front-end bundle; that hash rotates on every deploy (see the "hash drift" note in
-documentation/Entain.md). This module re-extracts the operation→hash table from
-the current bundle and writes the fresh hashes back into the provider spec.
+Entain's gateway keeps APQ registrations in an evictable cache, and an APQ pair
+only has to be self-consistent (``sha256Hash == sha256(query)``) — it does not
+have to match the hash precomputed in the JS bundle's manifest. So instead of
+trusting the manifest (which can point at hashes the gateway has evicted, and
+which diverges from the yaml after a reseed), this module extracts each
+operation's AST from the bundle, prints it with graphql-core, hashes the printed
+text, REGISTERS that pair with the gateway, and writes both the hashes (into the
+spec yaml) and the printed documents (into ``{provider}.documents.json``, the
+sidecar the runtime dispatcher uses to self-heal future evictions).
 
-The extraction is provider-agnostic — it is driven entirely by the spec's
-``provider.hash_refresh`` block plus its ``graphql.operations`` list — but Entain
-is the only provider that needs it today.
+Ops whose AST cannot be found in the bundle fall back to the manifest-extracted
+hash (no self-heal document available for those).
+
+The flow is provider-agnostic — driven by the spec's ``provider.hash_refresh``
+block plus its ``graphql.operations`` list — but Entain is the only provider
+that needs it today.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
 
 from ..spec import Spec
+from .entain_documents import document_hash, extract_document, print_document
 
 _DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)",
@@ -67,6 +77,13 @@ class DiffResult:
     changed: list[HashChange]
     unchanged: list[str]
     missing_from_bundle: list[str]
+    # Ops whose printed document was extracted (and written to the sidecar on a
+    # non-dry run) — these self-heal at runtime. Manifest-only ops are the rest.
+    documents: dict[str, str] = field(default_factory=dict)
+    documents_written: int = 0
+    # Changed ops whose gateway registration POST did not stick (best-effort:
+    # the runtime APQ retry re-registers them on first use anyway).
+    register_failed: list[str] = field(default_factory=list)
 
 
 def _glob_to_regex(pattern: str) -> re.Pattern[str]:
@@ -94,20 +111,13 @@ def extract_operations(bundle_js: str) -> dict[str, str]:
     return out
 
 
-def fetch_latest_hashes(
+def fetch_bundle(
     host: str,
     pattern: str,
-    *,
-    client: httpx.Client | None = None,
-    timeout: float = 30.0,
+    client: httpx.Client,
     echo: Callable[[str], None] = lambda _s: None,
-) -> tuple[str, int, dict[str, str]]:
-    """Fetch the landing page, locate + download the bundle, extract hashes.
-
-    Returns ``(bundle_url, bundle_bytes, {name: hash})``.
-    """
-    own = client is None
-    client = client or httpx.Client(timeout=timeout, headers=_DEFAULT_HEADERS, follow_redirects=True)
+) -> tuple[str, str]:
+    """Fetch the landing page, locate + download the bundle. Returns ``(url, js_text)``."""
     try:
         echo(f"🔍 Fetching {host}")
         landing = client.get(host)
@@ -119,14 +129,32 @@ def fetch_latest_hashes(
         echo(f"   → {url}")
         bundle = client.get(url)
         bundle.raise_for_status()
-        size = len(bundle.content)
-        echo(f"🔍 Downloading bundle ({size // 1024} KB) … done")
-        echo("🔍 Extracting [name, sha256] pairs from minified bundle")
-        ops = extract_operations(bundle.text)
-        echo(f"   → {len(ops)} operations")
-        return url, size, ops
+        echo(f"🔍 Downloading bundle ({len(bundle.content) // 1024} KB) … done")
+        return url, bundle.text
     except httpx.HTTPError as e:
         raise RefreshError(f"fetch failed: {e}") from e
+
+
+def fetch_latest_hashes(
+    host: str,
+    pattern: str,
+    *,
+    client: httpx.Client | None = None,
+    timeout: float = 30.0,
+    echo: Callable[[str], None] = lambda _s: None,
+) -> tuple[str, int, dict[str, str]]:
+    """Fetch + locate the bundle, extract the manifest ``{name: hash}`` table.
+
+    Returns ``(bundle_url, bundle_bytes, {name: hash})``.
+    """
+    own = client is None
+    client = client or httpx.Client(timeout=timeout, headers=_DEFAULT_HEADERS, follow_redirects=True)
+    try:
+        url, text = fetch_bundle(host, pattern, client, echo)
+        echo("🔍 Extracting [name, sha256] pairs from minified bundle")
+        ops = extract_operations(text)
+        echo(f"   → {len(ops)} operations")
+        return url, len(text.encode()), ops
     finally:
         if own:
             client.close()
@@ -171,6 +199,48 @@ def apply_changes(spec_path: Path, changes: list[HashChange]) -> int:
     return len(applied)
 
 
+def _gateway_endpoint(spec: Spec) -> tuple[str, dict[str, str]] | None:
+    """Resolve the persisted-query gateway URL + headers from the spec's dispatcher."""
+    disp = next((d for d in spec.dispatchers if d.kind == "graphql_persisted"), None)
+    if disp is None:
+        return None
+    base = spec.provider.base_urls.get(disp.base or "default")
+    if base is None:
+        return None
+    return base.rstrip("/") + (disp.endpoint or ""), {**spec.provider.default_headers, **disp.default_headers}
+
+
+def register_with_gateway(client: httpx.Client, gateway: str, headers: dict[str, str], name: str, query: str, sha: str) -> bool:
+    """POST the (query, sha) pair so the gateway's APQ cache stores it, then probe.
+
+    Empty variables: ops with required variables fail validation AFTER the APQ
+    layer stores the pair, and no session cookie is sent — nothing (including
+    mutations) actually executes.
+    """
+    ext = {"persistedQuery": {"version": 1, "sha256Hash": sha}}
+    try:
+        client.post(
+            gateway,
+            headers=headers,
+            json={"operationName": name, "query": query, "variables": {}, "extensions": ext},
+        )
+        probe = client.get(
+            gateway,
+            headers=headers,
+            params={"operationName": name, "variables": "{}", "extensions": json.dumps(ext)},
+        )
+        return "PersistedQueryNotFound" not in probe.text
+    except httpx.HTTPError:
+        return False
+
+
+def write_documents(spec_path: Path, provider_id: str, documents: dict[str, str]) -> Path:
+    """Write the printed-documents sidecar next to the spec yaml."""
+    path = spec_path.parent / f"{provider_id}.documents.json"
+    path.write_text(json.dumps(documents, indent=1, sort_keys=True) + "\n")
+    return path
+
+
 def run_refresh(
     spec: Spec,
     spec_path: Path,
@@ -179,19 +249,66 @@ def run_refresh(
     client: httpx.Client | None = None,
     echo: Callable[[str], None] = print,
 ) -> DiffResult:
-    """Full refresh: fetch bundle, diff against spec, optionally write back."""
+    """Full refresh: fetch bundle, print + hash each op's document, diff against the
+    spec, then (unless dry-run) register changed pairs with the gateway and write
+    the yaml hashes + the documents sidecar."""
     hr = spec.provider.hash_refresh
     if hr is None:
         raise RefreshError(f"provider '{spec.provider.id}' has no hash_refresh block configured")
-    url, size, latest = fetch_latest_hashes(hr.bundle_host, hr.bundle_url_pattern, client=client, echo=echo)
-    changed, unchanged, missing = diff_operations(spec, latest)
-    if write and changed:
-        apply_changes(spec_path, changed)
-    return DiffResult(
-        bundle_url=url,
-        bundle_bytes=size,
-        extracted=len(latest),
-        changed=changed,
-        unchanged=unchanged,
-        missing_from_bundle=missing,
-    )
+
+    own = client is None
+    client = client or httpx.Client(timeout=30.0, headers=_DEFAULT_HEADERS, follow_redirects=True)
+    try:
+        url, bundle = fetch_bundle(hr.bundle_host, hr.bundle_url_pattern, client, echo)
+        echo("🔍 Extracting operation documents (AST literals) from bundle")
+        manifest = extract_operations(bundle)
+        documents: dict[str, str] = {}
+        latest: dict[str, str] = {}
+        for op in spec.graphql.operations if spec.graphql else []:
+            doc = extract_document(bundle, op.name)
+            if doc is not None:
+                query = print_document(doc)
+                documents[op.name] = query
+                latest[op.name] = document_hash(query)
+            elif op.name in manifest:
+                # No AST in the bundle — fall back to the manifest hash. Usable,
+                # but the runtime cannot self-heal this op if it gets evicted.
+                latest[op.name] = manifest[op.name]
+        echo(f"   → {len(documents)} documents, {len(latest) - len(documents)} manifest-only")
+
+        changed, unchanged, missing = diff_operations(spec, latest)
+        result = DiffResult(
+            bundle_url=url,
+            bundle_bytes=len(bundle.encode()),
+            extracted=len(latest),
+            changed=changed,
+            unchanged=unchanged,
+            missing_from_bundle=missing,
+            documents=documents,
+        )
+        if not write:
+            return result
+
+        # New hashes are sha256(printed doc) — self-consistent but not yet in the
+        # gateway's APQ cache. Register them now so calls succeed immediately; if
+        # one doesn't stick, the runtime dispatcher's APQ retry heals it on first use.
+        gateway_info = _gateway_endpoint(spec)
+        to_register = [c for c in changed if c.name in documents]
+        if to_register and gateway_info is None:
+            echo("   ⚠ no graphql_persisted dispatcher/base URL — skipping gateway registration")
+        elif to_register:
+            gateway, headers = gateway_info
+            echo(f"🔍 Registering {len(to_register)} changed pair(s) with {gateway}")
+            for c in to_register:
+                if not register_with_gateway(client, gateway, headers, c.name, documents[c.name], c.new):
+                    result.register_failed.append(c.name)
+
+        if changed:
+            apply_changes(spec_path, changed)
+        if documents:
+            write_documents(spec_path, spec.provider.id, documents)
+            result.documents_written = len(documents)
+        return result
+    finally:
+        if own:
+            client.close()

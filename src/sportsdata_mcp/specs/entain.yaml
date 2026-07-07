@@ -18,9 +18,10 @@ provider:
   auth:
     default:
       type: none
-  # Used by `sportsdata-mcp refresh-hashes entain`: the persisted-query sha256
-  # hashes drift on every front-end deploy, so they are re-extracted from the
-  # current production JS bundle on demand.
+  # Used by `sportsdata-mcp refresh-hashes entain`: operation documents are
+  # extracted from the current production JS bundle, printed, hashed, and
+  # registered with the gateway; the printed texts land in
+  # entain.documents.json so the runtime can self-heal APQ cache evictions.
   hash_refresh:
     bundle_host: "https://www.ladbrokes.com.au"
     bundle_url_pattern: "/assets/vendor-graphql-ops-web-*.js"
@@ -214,8 +215,9 @@ dispatchers:
     summary: |
       Call any of Entain's 127 persisted GraphQL operations against
       api.ladbrokes.com.au/gql/router by name + variables. Hashes are managed
-      server-side; if an op returns PERSISTED_QUERY_NOT_FOUND the bundle has
-      drifted — run `sportsdata-mcp refresh-hashes entain`. GraphQL IDs are
+      server-side; a PERSISTED_QUERY_NOT_FOUND (gateway APQ-cache eviction) is
+      self-healed automatically by re-POSTing the stored query document. If it
+      still surfaces, run `sportsdata-mcp refresh-hashes entain`. GraphQL IDs are
       type-prefixed (RacingRace:<uuid>, SportingEvent:<uuid>): variable type
       ID! wants the prefixed form, UUID! wants the bare uuid. Read
       entain://graphql/operations for the full op list + variable signatures.
@@ -232,15 +234,15 @@ graphql:
     - { name: AccountBetTransaction, sha256: "be9a0c8f6718e80f5a940c72c02fca840b4ae35b6573470d7a916e3e4075111f", variables: "transactionId: ID!" }
     - { name: AccountGetBetCombinations, sha256: "88bc8db19cc5b60eefb6bfe5c7c46d101f6abb4e2548dd7bb6834b2302d45ac2", variables: "id: ID!, groupId: String, first: Int, after: String" }
     - { name: AccountGetBetTransaction, sha256: "5d1d864fdc1ad3fbf1a19468ed7ca9e904fe05657af7fe0208787082d678c259", variables: "id: ID!, groupId: String, includeCashOutCheck: Boolean, includeEntrantTrackers: Boolean, includeMultisPreview: Boolean, eventId: UUID" }
-    - { name: AccountListPendingBetTransactions, sha256: "8758e97324af15f763965338e14c5a6568c1ad6a2fce65290b2282ef865da424", variables: "groupId: String, first: Int, after: String, orderBy: PendingBetsSortOrder, includeCashOutChecks: Boolean, includeMultisPreview: Boolean, eventId: UUID" }
+    - { name: AccountListPendingBetTransactions, sha256: "6e66f585caa10998eaca19c2fd317a9f929b4420956bb199da3b93105293b042", variables: "groupId: String, first: Int, after: String, orderBy: PendingBetsSortOrder, includeCashOutChecks: Boolean, includeMultisPreview: Boolean, eventId: UUID" }
     - { name: AccountListResultedBetTransactions, sha256: "f1d11ba9553b313f28a49936d57d1dfdcee1d36e2c8650c6653a8672abc477b8", variables: "first: Int, after: String, betStatuses: [BetStatus!], groupId: String, includeMultisPreview: Boolean" }
     - { name: BetStakeLimit, sha256: "ae61efdedef97b5ea457a61b92a5faee45c8aefe29909dd3fbce214d00866761", variables: "" }
     - { name: BlackbookEntries, sha256: "3d511b6c9ab9078934b32338919f9b5bead5e35fd84e943e64daebf469791450", variables: "categories: [RacingCategory!], orderBy: BlackbookListEntriesOrderBy, view: BlackbookListEntriesView, pageSize: Int, after: String" }
     - { name: BlackbookEntriesWithRaces, sha256: "f98eda0e50cf04f9bf1810b1805e18ae4f6a0ecb4b2c42d7fef10a43e051dfec", variables: "categories: [RacingCategory!], orderBy: BlackbookListEntriesOrderBy, view: BlackbookListEntriesView, pageSize: Int, after: String" }
-    - { name: BlackbookRaceEntrantInfo, sha256: "1de3f28631ad07111fe7944e94a60b18f47a3b79ba9451f0eb1593e2b51e2c39", variables: "raceId: ID!" }
+    - { name: BlackbookRaceEntrantInfo, sha256: "1537383ef609916c048e8b5f0d8aa69eabdc2b3be3ba98f16ab5d0336a2eb409", variables: "raceId: ID!" }
     - { name: CheckPinComplexity, sha256: "448ca33cebdb6b2de7257a2ea82b2b56d61a95a6da5aea6324f2ad9b442edff9", variables: "pin: String!, dateOfBirth: String!" }
     - { name: ClientAccountCasinoTransactions, sha256: "aa9b424842196b20cffff60f27c890f85587d146a5eca1f35223c92717e36c2d", variables: "after: String, first: Int, groupId: String, transactionStartDate: DateTime!, transactionEndDate: DateTime!" }
-    - { name: ClientAccountSportsbookTransactions, sha256: "833152158954a4baef18235631ac15ea8b29063611cf37de7f1c953bdee2dfb0", variables: "after: String, first: Int, groupId: String, transactionStartDate: DateTime!, transactionEndDate: DateTime!" }
+    - { name: ClientAccountSportsbookTransactions, sha256: "660cab2c5e17e14edca24bdbf42f8363e517aaeef0911aed7a0b0c0d265e3228", variables: "after: String, first: Int, groupId: String, transactionStartDate: DateTime!, transactionEndDate: DateTime!" }
     - { name: ClientAddressLookup, sha256: "b5a626d0ac38157fc54fbfecb52340f569b0b6602fd9351c650c5ddb5b12e958", variables: "partialAddress: String!, pageSize: Int" }
     - { name: ClientContactUs, sha256: "1f03bab4879e4f1144c32a3a21145da08239a2741f6b7e1b5e4223b86a06b8b2", variables: "" }
     - { name: ClientCouponsOffers, sha256: "85bcce358add529837bdee27497ceda6578d6a82a0a6849b93859fd0a5ad55cd", variables: "" }
@@ -280,9 +282,9 @@ graphql:
     - { name: GamingRewardsSummary, sha256: "f13d03cea1bb925b5c9a703b97757da97a223632f2c20f9d77f171159684c260", variables: "" }
     - { name: GamingSuppliers, sha256: "dd0e0beef8130c056443613059dadd63d5aecb07a8221c33c74b0435557ff267", variables: "after: String, first: Int" }
     - { name: GenerateBetslip, sha256: "54123be08a003605db2d8c10ea11bd9dd92ffb2b719426a861c599e2381f3c51", variables: "input: BetslipInput!" }
-    - { name: GroupBetMembershipHistory, sha256: "47d0cf32b5a16fc8a6561c02669ab72b80338aaae4853c3cd1460429647082ed", variables: "month: Int!, year: Int!, first: Int, after: String" }
+    - { name: GroupBetMembershipHistory, sha256: "c71a9d99c12d65fca8942bd1684915e462442f8edf8e6395f193227e7eff200f", variables: "month: Int!, year: Int!, first: Int, after: String" }
     - { name: HomeScreen, sha256: "1ea01491d5c4cec6eb6dafc716b834d654db6f623137cae41aff3edf2f411f14", variables: "includeQuickLinks: Boolean, excludeCategoryIds: [UUID!], excludeLoggedInOnly: Boolean, quicklinksShortTitle: Boolean" }
-    - { name: HomeSportsScreen, sha256: "037713861ea85abf81fb9f5b585b3679b90c27a0189a036c385485b48a186ab6", variables: "includeMajorEvents: Boolean, includeQuicklinks: Boolean, quicklinksShortTitle: Boolean, platform: QuickLinkPlatform, excludeCategoryIds: [UUID!], includeFeaturedEvents: Boolean, featuredEventsEventCount: Int, featuredEventsPlatform: QuickLinkPlatform, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, includeFeaturedComps: Boolean, featuredCompCount: Int, featuredCompStatuses: [SportingMarketStatus!], featuredCompEventCount: Int, includeInPlayEvents: Boolean, inPlayEventCount: Int", verified: true }
+    - { name: HomeSportsScreen, sha256: "e251b60aa96d10c4ac5c4d701cdccbbd2dc6fdea14fc2f3c874868125d80809f", variables: "includeMajorEvents: Boolean, includeQuicklinks: Boolean, quicklinksShortTitle: Boolean, platform: QuickLinkPlatform, excludeCategoryIds: [UUID!], includeFeaturedEvents: Boolean, featuredEventsEventCount: Int, featuredEventsPlatform: QuickLinkPlatform, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, includeFeaturedComps: Boolean, featuredCompCount: Int, featuredCompStatuses: [SportingMarketStatus!], featuredCompEventCount: Int, includeInPlayEvents: Boolean, inPlayEventCount: Int", verified: true }
     - { name: HomepageNextToJumpRaces, sha256: "a5d85b43c98d2f3c6eea60fe4a5791b0e098c02b73e7a4028eaffb84e763375d", variables: "first: Int, categories: [RacingCategory!]" }
     - { name: InitiateOtherVerificationProcess, sha256: "ebef9b29ceedf3deac02edb97a80794ea021538dcd38a35c1a6685af4a0074de", variables: "" }
     - { name: ListEntrantRunners, sha256: "bad12ca4a5bd6063687f3c0733f9239f718c6aafaf9348eb49c5db8f6d169a00", variables: "entrantIds: [ID!]!" }
@@ -325,29 +327,29 @@ graphql:
     - { name: RacingNextToGoFavourites, sha256: "dfe32879c41ab4b48595bf10105873ae691b2fe45a6baee7b2866a248bd3fb42", variables: "first: Int, after: String, categories: [RacingCategory!]" }
     - { name: RacingProBetEntrants, sha256: "fe07e3ecb8a8503095a8758a227e47d301cbda3890e40d0579b450d30031d4b4", variables: "marketId: ID!" }
     - { name: RacingQuickBet, sha256: "33920cc3bd0c2f0cdb225e434a01fb05376239241e8f731dfe0e08f206719550", variables: "entrantId: ID!, raceId: ID!, marketId: ID!, meetingId: ID!" }
-    - { name: RacingRace, sha256: "75b11f6779b77eedfb0b7a2207c30d6e09613f3726f2014559ed30e25d7fd4e2", variables: "raceId: ID!, shouldFetchPools: Boolean" }
+    - { name: RacingRace, sha256: "fcb0cedc16f7b72559311f2fc717b9f3f36c5cedc9ad9aaacb6719876a482091", variables: "raceId: ID!, shouldFetchPools: Boolean" }
     - { name: RacingRaceAskFormAssistant, sha256: "3fe3b946a74a0fe06d041828a05a12215b791ab210eb69c7c84b0d17a756b750", variables: "raceId: UUID!, question: String!, promptId: UUID" }
     - { name: RacingRaceCardScreenWeb, sha256: "ae7f2ab3cb889681f3a3cb38905d52987e3429d15a2fbfb863a1ab902ab44396", variables: "id: ID!, isLoggedIn: Boolean!, includePlaceExtra: Boolean!", verified: true }
     - { name: RacingRaceCardScreenWebAuthed, sha256: "7973cd4e99ab9f41841b906f04463feb72dec5910510485b3a971915b9f62664", variables: "id: ID!, promotionSubdivision: Subdivision, promotionEligibility: [PromotionEligibility!], excludeClientPromotions: Boolean!, includePlaceExtra: Boolean!" }
     - { name: RacingRaceGetFormAssistantMessages, sha256: "b4f25a079ca4ec18a93c40158780c0fed75455085019719de1d35b1d426cfd0b", variables: "raceId: UUID!, isLoggedIn: Boolean!" }
     - { name: RacingSideMenuNextToJumpRaces, sha256: "0d30cd4a0034f0511e23805e3a571f48fa2c0563fa25020f06b9e8ddd8409eb7", variables: "first: Int, regions: [Region!], categories: [RacingCategory!]" }
-    - { name: RacingVideoChannels, sha256: "160653ed87b09847c05d10f480b18a608a895a4fc958178e007c13cd61c20fcf", variables: "", verified: true }
+    - { name: RacingVideoChannels, sha256: "ffd1a609498da34e5dec51c4ad5d88319d4dcf5424cfc53e6a4827a7347c1b3d", variables: "", verified: true }
     - { name: RegisterExpressionOfInterest, sha256: "872abd3e514b7c10cc8ba125cbad7c0f833f30c16cbc5948086d3e11298a5357", variables: "input: RegisterExpressionOfInterestInput!" }
     - { name: SkipExternalClientVerification, sha256: "2d530d0b4bee041a11a3e37dc5747b00567add81fb259def0320fb338ed39057", variables: "" }
-    - { name: SportingCategories, sha256: "e32cd40f8962491f27966f35327ea1f32de8603c2c39f50269232713e18ebd62", variables: "marketControlExclude: Boolean", verified: true }
-    - { name: SportingCategoryScreen, sha256: "63c055ddd1abae99bce8b74c2fb9d42134fc00935db6c3ab693fa2705292d3b4", variables: "category: SportingCategory!, statuses: [SportingMarketStatus!], excludeCategoryIds: [UUID!], includeRegions: Boolean, includeLeagues: Boolean, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, upcomingEventsStatuses: [SportingMarketStatus!], includeFutures: Boolean, futuresCountOnly: Boolean, futuresGroupBy: SportingEventsGroup", verified: true }
+    - { name: SportingCategories, sha256: "be80e9eca6d4684c7a1228513e43828511621569c533e555f292ed5b844f97c9", variables: "marketControlExclude: Boolean", verified: true }
+    - { name: SportingCategoryScreen, sha256: "65b151319c50a4cbda4064b06094a4034feb583db1e0639a333b4844f7065064", variables: "category: SportingCategory!, statuses: [SportingMarketStatus!], excludeCategoryIds: [UUID!], includeRegions: Boolean, includeLeagues: Boolean, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, upcomingEventsStatuses: [SportingMarketStatus!], includeFutures: Boolean, futuresCountOnly: Boolean, futuresGroupBy: SportingEventsGroup", verified: true }
     - { name: SportingCompetitionPopularSameGameMultis, sha256: "41e6733e8bb2b42a7fc3774522cb31d33cea41b69e2dbfe295fe974f95edd4b6", variables: "competitionIds: [ID!]!, first: Int, countPerEventCount: [Int!], promotions: Boolean!, promotionSubdivision: Subdivision, promotionEligibility: [PromotionEligibility!]" }
     - { name: SportingCompetitionScreen, sha256: "cf590d65e9153eb316674aa55b7087e43da69f9e6060cf26e24a3bf94ad568e3", variables: "category: SportingCategory!, regionSlug: String, competitionSlug: String!, excludeCategoryIds: [UUID!], statuses: [SportingMarketStatus!], includeLeagues: Boolean, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, includeFutures: Boolean, futuresCountOnly: Boolean, futuresGroupBy: SportingEventsGroup", verified: true }
     - { name: SportingEntrantFormData, sha256: "652b42d4b1b0acd84076d37019199f7c70bd400410015e6ca237e4d9f0843f5e", variables: "eventId: ID!" }
     - { name: SportingEventEntrantFormData, sha256: "7f0a08d08dc6217007d304e9675bbd539f187c7786b71e7115de56880028affa", variables: "id: ID!" }
     - { name: SportingEventPopularSameGameMultis, sha256: "fb70f2d423ea3d47ec982d5ab741d5600f8fe0df3302d54d418d842e9fdad4be", variables: "eventId: ID!, first: Int, promotions: Boolean!, promotionSubdivision: Subdivision, promotionEligibility: [PromotionEligibility!]" }
-    - { name: SportingEventScreen, sha256: "e501e04347fa213db82050a96fa5f7bd1f174c93c3d4d25fa9718dde191766a9", variables: "id: ID!, includeInfoHub: Boolean!, includeWidgets: Boolean!", verified: true }
+    - { name: SportingEventScreen, sha256: "1b142aaee3d56a2bcd9edfa54064ae10d6b4c3986b0f6e53bbc03c4ab671c203", variables: "id: ID!, includeInfoHub: Boolean!, includeWidgets: Boolean!", verified: true }
     - { name: SportingEvents, sha256: "91f20306db981e40beb3103a8944bdd1cdc91588e9b1fe0ae8963d9162431fe9", variables: "first: Int, after: String, category: SportingCategory, regionSlug: String, competitionSlug: String, statuses: [SportingMarketStatus!], eventTypes: [SportingEventType!], groupByLeague: Boolean, detailedView: Boolean" }
     - { name: SportingIconSets, sha256: "692f29c9a6f90a07dfe6ffeb700c818b66f584d77b962948084d336cc9498fd8", variables: "categoryIds: [UUID!]", verified: true }
     - { name: SportingInPlayEvents, sha256: "bbbe0d420080d134331331aedd9ab603313b80ae9b306720a75b207e88ece328", variables: "includeInPlayFilters: Boolean, includeGroupedInPlayEvents: Boolean, includeInPlayEvents: Boolean, category: SportingCategory, regionSlug: String, competitionSlug: String, excludeCategoryIds: [UUID!]" }
-    - { name: SportingInPlayScreen, sha256: "6c8faf1e1be32fb70f93aedf50612f9c4b7d9e0590107381a07f293e5b828ba2", variables: "excludeCategoryIds: [UUID!]", verified: true }
+    - { name: SportingInPlayScreen, sha256: "0c551bd79af74cdf94a6de06e944edec76ef56b3cda964d6e2cc0007e9ba1a78", variables: "excludeCategoryIds: [UUID!]", verified: true }
     - { name: SportingInPlaySideMenu, sha256: "ee697c440b81e8947374ecad321fa7487f0b9242aba41b794017dedebc45c2b6", variables: "inPlayEventCount: Int" }
-    - { name: SportingLandingScreen, sha256: "1ae67ef284e46c34adb3395292ab1f1887e56bd7a60b24645e87c68611c3d1fd", variables: "includeCategories: Boolean, statuses: [SportingMarketStatus!], includeQuicklinks: Boolean, quicklinksShortTitle: Boolean, platform: QuickLinkPlatform, excludeCategoryIds: [UUID!], includeFeaturedEvents: Boolean, featuredEventsEventCount: Int, featuredEventsType: QuickLinkType, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, includeFeaturedComps: Boolean, featuredCompCount: Int, featuredCompStatuses: [SportingMarketStatus!], featuredCompEventCount: Int, includeInPlayEvents: Boolean, inPlayEventCount: Int" }
+    - { name: SportingLandingScreen, sha256: "29495598048e8d28ab8e280cc8d61612f643506361b4d94eb099ae955846cbb9", variables: "includeCategories: Boolean, statuses: [SportingMarketStatus!], includeQuicklinks: Boolean, quicklinksShortTitle: Boolean, platform: QuickLinkPlatform, excludeCategoryIds: [UUID!], includeFeaturedEvents: Boolean, featuredEventsEventCount: Int, featuredEventsType: QuickLinkType, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, includeFeaturedComps: Boolean, featuredCompCount: Int, featuredCompStatuses: [SportingMarketStatus!], featuredCompEventCount: Int, includeInPlayEvents: Boolean, inPlayEventCount: Int" }
     - { name: SportingLiveBettingFastCode, sha256: "7b93fbd69dee64bbbe1648013743c243c53797f46465b627ee640b7cec9541a8", variables: "entrantId: UUID!" }
     - { name: SportingPromotedMarkets, sha256: "e176c9669946ed7dd2657a55b2b51e03a63ee4e73d01e61afbc4b5e643fd3ec5", variables: "excludeCategoryIds: [UUID!]" }
     - { name: SportingRegionScreen, sha256: "0264667fd00affd776678b9fc001cc410a92d9b3a7c0401698363bf57e5b2dd5", variables: "category: SportingCategory!, regionSlug: String!, statuses: [SportingMarketStatus!], excludeCategoryIds: [UUID!], includeRegions: Boolean, includeLeagues: Boolean, includeUpcomingEvents: Boolean, upcomingEventsCount: Int, upcomingEventsGroupBy: SportingEventsGroup, includeFutures: Boolean, futuresCountOnly: Boolean, futuresGroupBy: SportingEventsGroup" }

@@ -7,6 +7,7 @@ identically from a source checkout, an installed wheel, or ``uvx``.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from importlib import resources
@@ -28,6 +29,30 @@ CURRENT_SPEC_VERSION = 1
 def packaged_specs_dir() -> Path:
     """Filesystem path to the packaged ``specs/`` directory (source checkout or unzipped wheel)."""
     return Path(str(resources.files("sportsdata_mcp") / "specs"))
+
+
+def documents_path(provider_id: str) -> Path:
+    """Path of a provider's printed-documents sidecar (``{provider}.documents.json``)."""
+    return packaged_specs_dir() / f"{provider_id}.documents.json"
+
+
+def load_operation_documents(provider_id: str) -> dict[str, str]:
+    """Printed GraphQL query documents keyed by operation name, from the sidecar
+    written by ``refresh-hashes``. The graphql_persisted dispatcher uses these for
+    the standard Apollo APQ retry when a gateway evicts a hash. Providers without
+    a sidecar get an empty map (no self-heal, the not-found error surfaces as before)."""
+    path = documents_path(provider_id)
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("could not read %s (%s) — APQ self-heal disabled for %s", path.name, e, provider_id)
+        return {}
+    if not isinstance(raw, dict):
+        log.warning("%s is not a JSON object — APQ self-heal disabled for %s", path.name, provider_id)
+        return {}
+    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
 
 
 def load_capabilities(path: Path | None = None) -> CapabilityCatalogue:

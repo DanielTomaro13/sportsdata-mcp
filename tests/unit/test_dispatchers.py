@@ -188,33 +188,106 @@ async def test_graphql_unknown_operation_is_recoverable():
     assert not http.calls  # never reached the network
 
 
-async def test_graphql_persisted_not_found():
-    """A stale hash → Apollo HTTP-200 errors[] envelope → PERSISTED_QUERY_NOT_FOUND."""
-    envelope = {"errors": [{"message": "PersistedQueryNotFound", "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]}
-    http = _ApolloHTTP(envelope)
+_PQNF = {"errors": [{"message": "PersistedQueryNotFound", "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]}
+_DOC = "query HomeSportsScreen {\n  ping\n}"
+
+
+class _SequenceHTTP:
+    """Returns each body in turn (last one sticks), recording every request."""
+
+    def __init__(self, *bodies: object) -> None:
+        self.bodies = list(bodies)
+        self.calls: list[dict] = []
+
+    async def request_json(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.bodies.pop(0) if len(self.bodies) > 1 else self.bodies[0]
+
+
+def _no_documents(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "sportsdata_mcp.dispatchers.graphql_persisted.load_operation_documents", lambda _pid: {}
+    )
+
+
+def _with_document(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "sportsdata_mcp.dispatchers.graphql_persisted.load_operation_documents",
+        lambda _pid: {"HomeSportsScreen": _DOC},
+    )
+
+
+async def test_graphql_persisted_not_found(monkeypatch):
+    """A stale hash + no stored document → Apollo errors[] envelope → PERSISTED_QUERY_NOT_FOUND."""
+    _no_documents(monkeypatch)
+    http = _ApolloHTTP(_PQNF)
     handler = make_graphql_dispatcher(_graphql_dispatcher(), _graphql_spec(), http)
     with pytest.raises(PersistedQueryNotFoundError) as ei:
         await handler(operation="HomeSportsScreen", variables={})
     assert ei.value.code == "PERSISTED_QUERY_NOT_FOUND"
     assert ei.value.recoverable is True
     assert "refresh-hashes entain" in str(ei.value)
-    # The hash + extensions were sent before the gateway rejected it.
+    # The hash + extensions were sent before the gateway rejected it; no retry
+    # was possible without a document.
+    assert len(http.calls) == 1
     sent = http.calls[0]["params"]
     assert sent["operationName"] == "HomeSportsScreen"
     assert _HASH in sent["extensions"]
 
 
-async def test_graphql_persisted_not_found_without_hash_refresh():
+async def test_graphql_persisted_not_found_without_hash_refresh(monkeypatch):
     """Providers with no hash_refresh block (e.g. unibet) must not be told to run
     refresh-hashes — the CLI would just error with 'nothing to refresh'."""
-    envelope = {"errors": [{"message": "PersistedQueryNotFound", "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]}
-    http = _ApolloHTTP(envelope)
+    _no_documents(monkeypatch)
+    http = _ApolloHTTP(_PQNF)
     handler = make_graphql_dispatcher(_graphql_dispatcher(), _graphql_spec(refreshable=False), http)
     with pytest.raises(PersistedQueryNotFoundError) as ei:
         await handler(operation="HomeSportsScreen", variables={})
     assert ei.value.code == "PERSISTED_QUERY_NOT_FOUND"
     assert "refresh-hashes" not in str(ei.value)
     assert "Recapture" in str(ei.value)
+
+
+async def test_graphql_persisted_self_heals_via_apq_retry(monkeypatch):
+    """An evicted hash retries once as a POST with the stored document + its
+    sha256 (the standard Apollo APQ re-registration), and later calls use the
+    just-registered hash."""
+    import hashlib
+
+    _with_document(monkeypatch)
+    spec = _graphql_spec()
+    http = _SequenceHTTP(_PQNF, {"data": {"ping": 1}})
+    handler = make_graphql_dispatcher(_graphql_dispatcher(), spec, http)
+
+    out = await handler(operation="HomeSportsScreen", variables={"x": 1})
+    assert out == {"data": {"ping": 1}}
+    assert len(http.calls) == 2
+    retry = http.calls[1]
+    assert retry["method"] == "POST"
+    assert retry["url"] == "/gql/router"
+    body = retry["json_body"]
+    doc_sha = hashlib.sha256(_DOC.encode()).hexdigest()
+    assert body["operationName"] == "HomeSportsScreen"
+    assert body["query"] == _DOC
+    assert body["variables"] == {"x": 1}
+    assert body["extensions"]["persistedQuery"]["sha256Hash"] == doc_sha
+
+    # The in-memory op now carries the registered hash — the next call GETs it
+    # straight through, no retry.
+    await handler(operation="HomeSportsScreen", variables={})
+    assert len(http.calls) == 3
+    assert doc_sha in http.calls[2]["params"]["extensions"]
+    assert spec.graphql.operations[0].sha256 == doc_sha
+
+
+async def test_graphql_persisted_retry_still_not_found_raises(monkeypatch):
+    """If the APQ retry itself comes back not-found, the original error surfaces."""
+    _with_document(monkeypatch)
+    http = _ApolloHTTP(_PQNF)  # both the GET and the retry POST return the envelope
+    handler = make_graphql_dispatcher(_graphql_dispatcher(), _graphql_spec(), http)
+    with pytest.raises(PersistedQueryNotFoundError):
+        await handler(operation="HomeSportsScreen", variables={})
+    assert len(http.calls) == 2  # GET + one retry, never more
 
 
 async def test_graphql_success_passes_body_through():

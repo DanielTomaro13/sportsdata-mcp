@@ -750,11 +750,14 @@ Example observed on 2026-05-25:
 - `RacingRaceCardScreenWeb` was registered with hash `7085b5bef9cd71304cbd8264c229ab347711e32e341d7eefd03920645eedff81` → call worked.
 - The same operation's hash in the current `vendor-graphql-ops-web-*.js` bundle is `d59b563bacb7984ed87e6a843669aa7f02d03e93a0cc98f505f859c6190cbbc7` → call returned `PersistedQueryNotFound`.
 
-Both hashes are valid documents — only one is currently registered. The practical implications:
+Both hashes are valid documents — only one is currently registered. Worse, the gateway's APQ cache is **evictable**: on 2026-07-07 it flushed 113 of 127 registrations with no bundle change at all, so "the bundle's hash" and "the registered hash" can both go stale independently.
 
-1. **Always re-extract the hash table from the current bundle** before relying on it.
-2. If a fresh hash returns `PersistedQueryNotFound`, the gateway hasn't picked up the new bundle yet, or the operation has been retired. Fall back to POST with the full query document (see below) or re-discover the working hash by sniffing browser traffic.
-3. The hashes listed in the [full operation catalogue](#graphql-operations--full-catalogue-127-entries) below are what the **JS bundle** currently registers — not all of them necessarily resolve at the gateway today.
+Since then the stack handles this end-to-end (an APQ pair only has to be *self-consistent* — `sha256Hash == sha256(query)` — not bundle-matching):
+
+1. **Runtime self-heal**: the `graphql_persisted` dispatcher answers `PersistedQueryNotFound` by re-POSTing the operation's printed document from `specs/entain.documents.json` with its own sha256 (the standard Apollo APQ retry browsers do), which re-registers the pair and returns the data in the same call.
+2. **`sportsdata-mcp refresh-hashes entain`** no longer trusts the bundle's manifest hashes: it extracts each operation's `Document` AST from the bundle, prints it with graphql-core, hashes the printed text, registers the pair with the gateway, and writes both the hashes (spec yaml) and the printed documents (`entain.documents.json` sidecar). It can therefore never "restore" dead evicted hashes.
+3. `scripts/reseed_entain_apq.py` remains as a manual probe/bulk-reseed tool (`--dry-run` reports how many yaml hashes the gateway currently recognises).
+4. The hashes listed in the [full operation catalogue](#graphql-operations--full-catalogue-127-entries) below are what the **JS bundle** registered at capture time — the live spec yaml is the source of truth.
 
 ### POST fallback (full query body)
 

@@ -17,6 +17,17 @@ against live traffic (probed 2026-06-04). Two surfaces under one provider:
 
 ### Recapturing a drifted hash
 
+**First check it isn't transient.** The gateway's APQ cache flaps: a hash can
+return `PERSISTED_QUERY_NOT_FOUND` intermittently (some cache nodes evicted,
+others not) and self-heal from organic browser traffic re-registering the pair
+via the standard APQ retry. Observed 2026-07-07: `MeetingsByDateRange` failed
+on 19 ingest cycles scattered across 04:18–17:09 AEST with successes in
+between, then recovered — the hash never changed. Before recapturing, re-probe
+the existing hash a few times (a plain GET with the spec's hash + valid
+variables); if it resolves, the spec is fine and the errors were flapping.
+Only recapture when the miss is persistent across probes AND the front-end
+bundle actually shipped.
+
 `sportsdata-mcp refresh-hashes` does **not** work here — the racing app is a
 SystemJS micro-frontend whose hashes live in lazy-loaded chunks, not in a
 discoverable bundle (no `hash_refresh` block in the spec). Recapture from live

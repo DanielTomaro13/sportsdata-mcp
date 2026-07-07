@@ -133,6 +133,27 @@ def refresh_hashes(provider: str, dry_run: bool) -> None:
     for c in result.changed:
         click.echo(f"   • {c.name}: {c.old[:8]}…{c.old[-7:]} → {c.new[:8]}…{c.new[-7:]}  ✏️", err=True)
     click.echo(f"   • {len(result.unchanged)} unchanged", err=True)
+    manifest_only = result.extracted - len(result.documents)
+    if manifest_only:
+        click.echo(
+            click.style(
+                f"   ⚠ {manifest_only} op(s) have no printed document (manifest hash only) — "
+                f"no runtime APQ self-heal for those",
+                fg="yellow",
+            ),
+            err=True,
+        )
+    if result.register_failed:
+        click.echo(
+            click.style(
+                f"   ⚠ gateway registration did not stick for {len(result.register_failed)} op(s): "
+                f"{', '.join(result.register_failed[:5])}"
+                + (" …" if len(result.register_failed) > 5 else "")
+                + " — the runtime APQ retry will re-register them on first use",
+                fg="yellow",
+            ),
+            err=True,
+        )
     if result.missing_from_bundle:
         click.echo(
             click.style(
@@ -144,12 +165,21 @@ def refresh_hashes(provider: str, dry_run: bool) -> None:
             err=True,
         )
     click.echo("", err=True)
+    if dry_run:
+        if result.changed:
+            click.echo(
+                click.style(f"(dry-run) {len(result.changed)} hash(es) would be refreshed — not written.", fg="yellow")
+            )
+        else:
+            click.echo(click.style(f"✓ {spec_path.name} already up to date (0 hashes changed)", fg="green"))
+        return
+    if result.documents_written:
+        click.echo(
+            f"📄 {result.documents_written} printed document(s) → {provider}.documents.json "
+            f"(runtime APQ self-heal)"
+        )
     if not result.changed:
         click.echo(click.style(f"✓ {spec_path.name} already up to date (0 hashes changed)", fg="green"))
-    elif dry_run:
-        click.echo(
-            click.style(f"(dry-run) {len(result.changed)} hash(es) would be refreshed — not written.", fg="yellow")
-        )
     else:
         click.echo(click.style(f"✅ {spec_path.name} updated ({len(result.changed)} hashes refreshed)", fg="green"))
         click.echo("   Restart the MCP server for changes to take effect.")

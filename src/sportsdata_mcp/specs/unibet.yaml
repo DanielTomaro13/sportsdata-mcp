@@ -158,7 +158,7 @@ dispatchers:
 graphql:
   operations:
     - { name: FuturesQuery, sha256: "02384778de280ffcfef9e1de4a74e088e299e78ed264013bcdc0a17f58dd3aa8", variables: "", verified: true }
-    - { name: MeetingsByDateRange, sha256: "6126ca780c4d2e5092c50a8fb0dc15b3693eca18fa896372cf28829dd9a5e533", variables: "startDateTime: String!, endDateTime: String!, countryCodes: String, clientCountryCode: String, raceTypes: [String]", verified: true }
+    - { name: MeetingsByDateRange, sha256: "6126ca780c4d2e5092c50a8fb0dc15b3693eca18fa896372cf28829dd9a5e533", variables: "startDateTime: String!, endDateTime: String!, countryCodes: String, clientCountryCode: String, raceTypes: [String]!", verified: true }
     - { name: EventQuery, sha256: "fd256aba334b359ae57e55a4eddf6d1ad8f4559a5d13b08dc924ccaa5bc51b38", variables: "clientCountryCode: String, eventKey: String!, fetchTRC: Boolean", verified: true }
     - { name: FormQuery, sha256: "071b061653a4cddb6cbfc580b5ada3973ab2988afa8369a9f4b3432c3a347539", variables: "eventKey: String!", verified: true }
     - { name: SpecialsQuery, sha256: "6b8e727b684563d3efd273ca0803328467f8e662a00e4bde51cd7f42fa956773", variables: "locationClass: String", verified: true }

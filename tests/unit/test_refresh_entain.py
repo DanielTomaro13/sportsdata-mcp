@@ -161,6 +161,100 @@ def test_fetch_latest_hashes_raises_when_bundle_missing():
         fetch_latest_hashes(HOST, PATTERN, client=client)
 
 
+# ─── document flow: printed docs → self-consistent hashes → sidecar + registration ──
+
+_AST_LITERAL = (
+    "{kind:`Document`,definitions:[{kind:`OperationDefinition`,operation:`query`,"
+    "name:{kind:`Name`,value:`HomeSportsScreen`},selectionSet:{kind:`SelectionSet`,"
+    "selections:[{kind:`Field`,name:{kind:`Name`,value:`ping`}}]}}]}"
+)
+_PRINTED = "query HomeSportsScreen {\n  ping\n}"
+
+
+def _spec_with_dispatcher(*ops: tuple[str, str]) -> Spec:
+    from sportsdata_mcp.spec import Dispatcher
+
+    spec = _spec(*ops)
+    return spec.model_copy(
+        update={
+            "dispatchers": [
+                Dispatcher(
+                    name="entain_graphql_call",
+                    group="entain.graphql",
+                    kind="graphql_persisted",
+                    summary="x",
+                    endpoint="/gql/router",
+                    catalog_resource="entain://graphql/operations",
+                )
+            ]
+        }
+    )
+
+
+def test_run_refresh_document_flow_writes_sidecar_and_registers(tmp_path: Path):
+    import hashlib
+    import json as _json
+
+    p = tmp_path / "entain.yaml"
+    p.write_text(_SPEC_TEXT + "\n")
+    spec = _spec_with_dispatcher(("HomeSportsScreen", OLD), ("RacingRace", SAME))
+    doc_sha = hashlib.sha256(_PRINTED.encode()).hexdigest()
+
+    bundle_url = f"{HOST}/assets/vendor-graphql-ops-web-ABC123.js"
+    # HomeSportsScreen ships as an AST literal; RacingRace only in the manifest.
+    bundle_js = f"x={_AST_LITERAL};y={{name:\"RacingRace\",hash:\"{SAME}\"}}"
+    gateway_calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == HOST:
+            return httpx.Response(200, html='<script src="/assets/vendor-graphql-ops-web-ABC123.js"></script>')
+        if url == bundle_url:
+            return httpx.Response(200, text=bundle_js)
+        if request.url.path == "/gql/router":
+            gateway_calls.append(request)
+            return httpx.Response(200, json={"data": {}})
+        raise AssertionError(f"unexpected request: {url}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = run_refresh(spec, p, client=client, echo=lambda _s: None)
+
+    # The hash is sha256(printed document), not any manifest value.
+    assert [c.name for c in result.changed] == ["HomeSportsScreen"]
+    assert result.changed[0].new == doc_sha
+    assert result.unchanged == ["RacingRace"]  # manifest fallback still matched
+    assert f'sha256: "{doc_sha}"' in p.read_text()
+
+    # The pair was registered with the gateway (POST) and probed (GET).
+    assert [r.method for r in gateway_calls] == ["POST", "GET"]
+    posted = _json.loads(gateway_calls[0].content)
+    assert posted["query"] == _PRINTED
+    assert posted["extensions"]["persistedQuery"]["sha256Hash"] == doc_sha
+    assert result.register_failed == []
+
+    # The sidecar carries the printed document for runtime self-heal.
+    sidecar = tmp_path / "entain.documents.json"
+    assert result.documents_written == 1
+    assert _json.loads(sidecar.read_text()) == {"HomeSportsScreen": _PRINTED}
+
+
+def test_run_refresh_dry_run_touches_nothing(tmp_path: Path):
+    p = tmp_path / "entain.yaml"
+    p.write_text(_SPEC_TEXT + "\n")
+    spec = _spec_with_dispatcher(("HomeSportsScreen", OLD))
+    bundle_url = f"{HOST}/assets/vendor-graphql-ops-web-ABC123.js"
+    landing = httpx.Response(200, html='<script src="/assets/vendor-graphql-ops-web-ABC123.js"></script>')
+    bundle = httpx.Response(200, text=f"x={_AST_LITERAL}")
+    client = _mock_client({HOST: landing, bundle_url: bundle})  # no gateway route: any POST would KeyError
+
+    result = run_refresh(spec, p, write=False, client=client, echo=lambda _s: None)
+    assert [c.name for c in result.changed] == ["HomeSportsScreen"]
+    assert result.documents == {"HomeSportsScreen": _PRINTED}
+    assert result.documents_written == 0
+    assert p.read_text() == _SPEC_TEXT + "\n"
+    assert not (tmp_path / "entain.documents.json").exists()
+
+
 def test_run_refresh_writes_changed_hash(tmp_path: Path):
     p = tmp_path / "entain.yaml"
     p.write_text(_SPEC_TEXT + "\n")
