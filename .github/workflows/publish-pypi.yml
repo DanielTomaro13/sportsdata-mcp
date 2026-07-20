@@ -10,6 +10,14 @@
 
 name: publish-pypi
 on:
+  # Tag push is the reliable trigger: release.yml creates the GitHub Release with
+  # the default GITHUB_TOKEN, and releases created that way do NOT fire
+  # `release: published` for other workflows (Actions' anti-recursion rule), so
+  # v0.20–v0.22 shipped installers but silently never reached PyPI. Tag push has
+  # no such gate. (release/dispatch kept as belt-and-braces; PyPI ignores a
+  # re-upload of an existing version.)
+  push:
+    tags: ["v*"]
   release:
     types: [published]
   workflow_dispatch: {}
@@ -31,3 +39,7 @@ jobs:
           python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+        with:
+          # tag-push + release + dispatch can overlap for one version; a
+          # re-upload of an already-published version is then a clean no-op
+          skip-existing: true
