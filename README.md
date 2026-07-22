@@ -28,10 +28,15 @@ Claude queries five books at once and comes back with:
 **$4.75** at Sportsbet — a **30% spread** on identical risk. That gap is
 invisible unless something is reading every book at once.*
 
-**Most sports MCP servers wrap a single source.** This one reads 28 — eleven
-bookmakers, two prediction markets (Kalshi, Polymarket), the Betfair exchange,
-and fourteen official league/stats feeds — and makes them interchangeable, so
-"compare odds across books" is one question, not twenty-eight integrations.
+**What this one is for: comparing prices, not just fetching scores.** Plenty of
+sports MCP servers will get you fixtures and standings. This one is built around
+*disagreement between books* — eleven bookmakers, the Betfair exchange, and two
+prediction markets (Kalshi, Polymarket) side by side on the same market, plus
+fourteen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
+Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
+harness with tote pools and exchange money — which most catalogues skip
+entirely. Capability tags make providers interchangeable, so "compare odds
+across books" is one question rather than twenty-eight integrations.
 
 ### Built on this server
 
