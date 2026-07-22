@@ -7,9 +7,55 @@
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=sportsdata&config=eyJjb21tYW5kIjogInV2eCIsICJhcmdzIjogWyJzcG9ydHNkYXRhLW1jcCIsICJzZXJ2ZSJdfQ==)
 
-**Free & open source (MIT).** Live sports data and cross-book betting odds as
-MCP tools — ~500 tools across 28 providers, in Claude Desktop, Cursor, or any
-MCP client. Zero config: install, run `setup`, and the full catalogue serves.
+**Ask your AI which bookmaker is paying more — and get a real answer.**
+
+Free & open source (MIT). ~500 tools across 28 providers in Claude Desktop,
+Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
+
+> **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
+
+Claude queries five books at once and comes back with:
+
+| Book | Eels | Panthers |
+|-----------|------:|---------:|
+| Betfair | 1.18 | **6.20** |
+| BetR | 1.17 | 5.00 |
+| PointsBet | 1.17 | 4.80 |
+| Pinnacle | 1.17 | 4.78 |
+| Sportsbet | **1.19** | 4.75 |
+
+*Real captured odds. The same bet on Penrith pays **$6.20** at Betfair and
+**$4.75** at Sportsbet — a **30% spread** on identical risk. That gap is
+invisible unless something is reading every book at once.*
+
+**Most sports MCP servers wrap a single source.** This one reads 28 — eleven
+bookmakers, two prediction markets (Kalshi, Polymarket), the Betfair exchange,
+and fourteen official league/stats feeds — and makes them interchangeable, so
+"compare odds across books" is one question, not twenty-eight integrations.
+
+### Built on this server
+
+Two live terminals, both open source, both running on nothing but these tools:
+
+[**sportsdata-ai.com/sports**](https://sportsdata-ai.com/sports) — prediction
+markets + exchange as a de-vigged sharp line, every book measured against it.
+
+![Sports board](docs/assets/sportsboard.png)
+
+[**sportsdata-ai.com/board**](https://sportsdata-ai.com/board) — racing money
+flow: which runners are firming, fair price vs the field, win%/ROI scorecard.
+
+![Racing board](docs/assets/racingboard.png)
+
+### Try these once it's installed
+
+- *"Compare head-to-head odds across every book for tonight's NRL games."*
+- *"Which AFL games have the biggest price disagreement between bookmakers?"*
+- *"What does Betfair imply for the Panthers vs what Sportsbet is offering?"*
+- *"Show me Pinnacle's line on every MLB game today."*
+- *"Pull the ladder and last five results for Hawthorn."*
+
+---
 
 An [MCP](https://modelcontextprotocol.io) server that exposes sports-data APIs
 (bookmakers, league/governing-body feeds, aggregators) as tools, configurable so
