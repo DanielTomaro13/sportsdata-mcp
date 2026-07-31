@@ -89,6 +89,20 @@ CONTRACTS: list[Contract] = [
     # ── ESPN (site.api.espn.com — public) ──
     Contract("espn_scoreboard", {"sport": "baseball", "league": "mlb"}, ("leagues", "events")),
     Contract("espn_teams", {"sport": "baseball", "league": "mlb"}, ("sports",)),
+    # ── ESPN Fantasy (lm-api-reads.fantasy.espn.com — public) ──
+    # Seed: the games catalogue (no ids at all) + public league 1234, whose 2018 season
+    # is complete and frozen, so neither shape drifts with the calendar.
+    Contract("espnfantasy_games", {}, list_at="", item_keys=("abbrev", "id", "currentSeasonId")),
+    Contract(
+        "espnfantasy_league_settings",
+        {"game": "ffl", "seasonId": 2018, "leagueId": 1234},
+        ("settings", "status"),
+    ),
+    Contract(
+        "espnfantasy_draft",
+        {"game": "ffl", "seasonId": 2018, "leagueId": 1234},
+        ("draftDetail",),
+    ),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

@@ -115,3 +115,48 @@ def test_guard_preserves_signature_and_annotations():
     guarded = _guard(inner, "fake_tool", "test.group")
     assert list(inspect.signature(guarded).parameters) == ["eventId"]
     assert guarded.__annotations__ == {"eventId": int, "return": dict}
+
+
+# ─── header params: JSON documents must not be stringified as Python reprs ──
+
+
+def _header_endpoint():
+    from sportsdata_mcp.spec import Endpoint, Param
+
+    return Endpoint(
+        name="demo_filtered",
+        group="demo.public.core",
+        summary="demo",
+        path="/things",
+        params=[
+            Param(name="fantasy_filter", **{"in": "header"}, type="json", api_name="x-fantasy-filter"),
+            Param(name="trace", **{"in": "header"}, type="string", api_name="x-trace"),
+        ],
+    )
+
+
+def test_json_header_param_is_serialised_as_json():
+    """A dict header must go out as JSON. `str(dict)` yields single-quoted pseudo-JSON
+    that upstreams reject — ESPN's `x-fantasy-filter` silently returns the unfiltered
+    set, which is indistinguishable from a working call."""
+    from sportsdata_mcp.registry import _build_headers
+
+    out = _build_headers(
+        _header_endpoint(),
+        {"fantasy_filter": {"players": {"limit": 5, "filterActive": {"value": True}}}},
+    )
+    assert out["x-fantasy-filter"] == '{"players":{"limit":5,"filterActive":{"value":true}}}'
+    assert json.loads(out["x-fantasy-filter"])["players"]["limit"] == 5
+    assert "'" not in out["x-fantasy-filter"]
+
+
+def test_non_json_header_params_are_unchanged():
+    from sportsdata_mcp.registry import _build_headers
+
+    assert _build_headers(_header_endpoint(), {"trace": "abc-123"}) == {"x-trace": "abc-123"}
+
+
+def test_omitted_header_params_are_dropped():
+    from sportsdata_mcp.registry import _build_headers
+
+    assert _build_headers(_header_endpoint(), {}) == {}

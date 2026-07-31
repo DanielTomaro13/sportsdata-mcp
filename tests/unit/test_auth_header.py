@@ -122,3 +122,57 @@ def test_env_only_still_requires_var(monkeypatch):
     spec = AuthStaticHeader(type="static_header", header="X-Key", env="TEST_REQUIRED")
     with pytest.raises(AuthMissingError):
         StaticHeaderAuthProvider(spec)
+
+
+# ─── optional tier: unset credential means anonymous, not an error ─────────
+
+
+def _optional_provider() -> Provider:
+    """ESPN Fantasy's shape: public leagues anonymous, private ones cookie-authed."""
+    return Provider(
+        id="demo",
+        display_name="Demo",
+        base_urls={"default": "https://api.demo.test"},
+        auth={
+            "private": AuthStaticHeader(
+                type="static_header", header="Cookie", env="DEMO_COOKIE", optional=True
+            )
+        },
+    )
+
+
+async def _roundtrip(monkeypatch) -> dict[str, str]:
+    seen: dict[str, str] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.update(req.headers)
+        return httpx.Response(200, json={"ok": True}, headers={"content-type": "application/json"})
+
+    http = HTTPClient(_optional_provider(), Config())
+    http._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await http.request_json(method="GET", base="default", url="/league/1", auth_key="private")
+    await http.aclose()
+    return seen
+
+
+async def test_optional_header_unset_goes_out_anonymous(monkeypatch):
+    """The public tier must still work: no env var → no Cookie header, no exception."""
+    monkeypatch.delenv("DEMO_COOKIE", raising=False)
+    seen = await _roundtrip(monkeypatch)
+    assert "cookie" not in {k.lower() for k in seen}
+
+
+async def test_optional_header_is_sent_once_configured(monkeypatch):
+    """Setting the env var upgrades the very same tools to the authenticated tier."""
+    monkeypatch.setenv("DEMO_COOKIE", "espn_s2=abc; SWID={xyz}")
+    seen = await _roundtrip(monkeypatch)
+    assert seen.get("cookie") == "espn_s2=abc; SWID={xyz}"
+
+
+async def test_non_optional_header_still_raises_when_unset(monkeypatch):
+    """`optional` must not weaken the default contract for required credentials."""
+    monkeypatch.delenv("DEMO_KEY", raising=False)
+    http = HTTPClient(_provider(), Config())
+    with pytest.raises(AuthMissingError):
+        await http.request_json(method="GET", base="default", url="/v2/thing", auth_key="default")
+    await http.aclose()

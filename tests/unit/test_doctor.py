@@ -170,3 +170,49 @@ async def test_probe_endpoint_reports_tool_error_as_fail():
     outcome = await _probe_endpoint(_StubHTTP(), _provider(), ep, {}, lines.append)
     assert outcome == "fail"
     assert any("DEMO_KEY" in line for line in lines)
+
+
+# ─── optional auth: unconfigured is a SKIP, never a FAIL ──────────────────
+
+
+async def test_optional_static_header_auth_skips_instead_of_failing(monkeypatch):
+    """An `optional` static_header with no credential resolves to the null provider.
+    Doctor must report that as an anonymous SKIP — minting it raises by contract, and
+    a FAIL here would make every public-tier install look broken."""
+    from sportsdata_mcp.config import Config
+    from sportsdata_mcp.doctor import _Result, _run_provider
+    from sportsdata_mcp.spec import AuthStaticHeader, Provider, Spec
+
+    monkeypatch.delenv("DEMO_COOKIE", raising=False)
+    spec = Spec(
+        provider=Provider(
+            id="demo",
+            display_name="Demo",
+            base_urls={"default": "https://api.demo.test"},
+            auth={
+                "private": AuthStaticHeader(
+                    type="static_header", header="Cookie", env="DEMO_COOKIE", optional=True
+                )
+            },
+        ),
+        endpoints=[
+            Endpoint(
+                name="demo_thing",
+                group="demo.public.core",
+                summary="demo",
+                path="/thing",
+                auth="private",
+            )
+        ],
+    )
+    lines: list[str] = []
+    res = _Result()
+    # The endpoint probe itself fails (api.demo.test doesn't resolve) — that's the
+    # network, not auth. Assert on the auth step only.
+    await _run_provider(spec, {"demo.public.core"}, Config(), lines.append, res)
+
+    auth_idx = next(i for i, line in enumerate(lines) if "auth:private" in line)
+    assert "optional auth not configured" in lines[auth_idx + 1]
+    assert not any("NullAuthProvider" in line for line in lines), (
+        "minting an unconfigured optional credential must be skipped, not attempted"
+    )

@@ -23,6 +23,12 @@ class AuthStaticHeader(BaseModel):
     # Prepended to the resolved value — e.g. "Bearer " so the env var holds the
     # bare token (X/Twitter), not the header syntax.
     value_prefix: str = ""
+    # Optional tier: when the env var is unset the request goes out ANONYMOUS instead
+    # of raising AuthMissingError. For upstreams whose public tier needs no credential
+    # but whose private tier reads the same paths with one (ESPN Fantasy: public
+    # leagues are open, private leagues need the espn_s2/SWID cookie). Mirrors
+    # AuthOAuthRefresh.optional.
+    optional: bool = False
 
 
 class AuthStaticQuery(BaseModel):

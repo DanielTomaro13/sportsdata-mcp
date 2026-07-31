@@ -123,7 +123,13 @@ class HTTPClient:
         if spec is None or isinstance(spec, AuthNone):
             provider: AuthProvider = NullAuthProvider()
         elif isinstance(spec, AuthStaticHeader):
-            provider = StaticHeaderAuthProvider(spec, self._secrets)
+            if spec.optional and not (
+                (spec.env and (os.environ.get(spec.env) or (self._secrets or {}).get(spec.env))) or spec.value
+            ):
+                # optional tier with no credential configured → anonymous
+                provider = NullAuthProvider()
+            else:
+                provider = StaticHeaderAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthStaticQuery):
             provider = StaticQueryAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthOAuthRefresh):

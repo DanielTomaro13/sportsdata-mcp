@@ -393,6 +393,24 @@ All ESPN tools are parametric over `sport` + `league` slugs (e.g. `football`/`nf
 carries. Browse each dispatcher's operations in its `espn://{site,core,web,cdn}/operations`
 resource.
 
+### ESPN Fantasy — your own fantasy league
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `espnfantasy.reference` | 6 | Games catalogue (resolves the current season + week), season status, pro teams + bye weeks, player universe, scoring presets, player news |
+| `espnfantasy.league` | 14 | Settings, teams, rosters, standings, matchups, draft board, transactions, message board, league history, plus the undocumented `allon` mega-view |
+| `espnfantasy.scoring` | 5 | Box scores (lineups with actual **and** projected points), matchup scores, scoreboard, live scoring, positional ratings |
+| `espnfantasy.players` | 2 | Free-agent / waiver pool with ownership and projections; deep per-player stat splits |
+
+The **fantasy** platform, not the ESPN scoreboard (that's `espn.*` above) — one URL per
+league whose payload is chosen by a repeatable `view` param, covering all five games
+(`ffl` football, `flb` baseball, `fba` basketball, `fhl` hockey, `wfba` WNBA) via a
+`game` param on every tool. **Public leagues need no credentials**; set
+`ESPN_FANTASY_COOKIE` to `espn_s2=…; SWID={…}` and the same tools reach your private
+leagues. Fantasy `playerId`s are ESPN athlete ids, so rosters here join straight to the
+real-world `espn.*` feeds. See [documentation/ESPNFantasy.md](documentation/ESPNFantasy.md)
+for the view catalogue, the `x-fantasy-filter` cookbook and the id decoder tables.
+
 ### OpenF1 — `api.openf1.org` (Formula 1, no key)
 
 | Group | Tools | Notes |

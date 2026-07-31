@@ -99,9 +99,24 @@ capabilities:
     description: "Event-level play-by-play log of a game."
   - id: stats.fantasy_projections
     description: "Fantasy-points projections / DFS pricing."
-    single_provider: true
   - id: stats.win_probability
     description: "In-game win-probability time series for a contest."
+
+  # ─── Fantasy leagues (a user's own managed league, not the pro competition) ──
+  # ESPN Fantasy is the only provider today; drop `single_provider` if a second
+  # fantasy platform (Yahoo, Sleeper, DraftKings) is ever added.
+  - id: fantasy.league_settings
+    description: "A fantasy league's configuration: scoring rules, roster slots, schedule, waivers, keepers."
+    single_provider: true
+  - id: fantasy.rosters
+    description: "Fantasy team rosters / weekly lineups (which players a fantasy manager holds and starts)."
+    single_provider: true
+  - id: fantasy.matchups
+    description: "Fantasy head-to-head matchups for a scoring period, with each side's points."
+    single_provider: true
+  - id: fantasy.free_agents
+    description: "Players available in a fantasy league (free agents / waivers) with ownership and ratings."
+    single_provider: true
 
   # ─── Sport — fixtures (non-betting data sources) ─────────────────────
   - id: sport.fixtures_by_date

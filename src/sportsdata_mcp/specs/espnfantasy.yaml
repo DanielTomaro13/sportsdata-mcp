@@ -1,0 +1,541 @@
+spec_version: 1
+
+# ESPN Fantasy (v3) — the FANTASY LEAGUE platform, not the pro-sport scoreboard.
+# Distinct from the `espn` provider (site.api/core.api ESPN, real NFL/NBA/... data):
+# this one reads a *user's own fantasy league* — settings, teams, rosters, matchups,
+# draft, transactions, free agents — across all five ESPN fantasy games.
+#
+#   game  code   sport                   game code is a PATH segment on every call
+#   ────  ────   ─────                   (see the `game` param; default ffl)
+#   FFL   ffl    Fantasy Football (NFL)
+#   FLB   flb    Fantasy Baseball (MLB)
+#   FBA   fba    Fantasy Basketball (NBA)
+#   FHL   fhl    Fantasy Hockey (NHL)
+#   WFBA  wfba   Fantasy Women's Basketball (WNBA)
+#
+# THE VIEW MODEL — the single most important thing about this API. Nearly every
+# league call is the SAME url; the `view` query param decides what comes back.
+# Views are ADDITIVE and must be sent as REPEATED params (`?view=mTeam&view=mRoster`).
+# A comma-joined list (`?view=mTeam,mRoster`) is SILENTLY IGNORED — the server
+# returns the bare league skeleton and no error, so a wrong list type looks like an
+# empty league rather than a failure. Hence every `view` param below is
+# `type: string_list` (the engine emits repeated params); NEVER string_csv.
+# An unrecognised view is likewise ignored silently (no 400).
+#
+# AUTH. Public leagues need nothing. Private leagues need the browser cookie pair
+# espn_s2 + SWID, sent as one Cookie header from ESPN_FANTASY_COOKIE (auth key
+# `private`, `optional: true` → unset means the call still goes out anonymous, which
+# is exactly right for public leagues). See documentation/ESPNFantasy.md for how to
+# copy the cookies. A private league without the cookie returns HTTP 401.
+#
+# SEASON SPLIT. Seasons >= 2018 live at /seasons/{seasonId}/segments/0/leagues/{id}.
+# Earlier seasons (and cross-season history) live at /leagueHistory/{id}?seasonId=,
+# which returns a single-element ARRAY, not an object — see espnfantasy_league_history.
+#
+# Probed live 2026-07-02 against public league 1234 (season 2018) + the 2025/2026
+# game-level endpoints.
+
+provider:
+  id: espnfantasy
+  display_name: "ESPN Fantasy (fantasy football / baseball / basketball / hockey / WNBA)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/ESPNFantasy.md"
+  base_urls:
+    default: https://lm-api-reads.fantasy.espn.com/apis/v3/games
+    # Player news rides on a different host and is NOT under lm-api-reads.
+    news: https://site.api.espn.com/apis/fantasy/v3/games
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+    # Private-league tier. The env var holds the WHOLE cookie string, e.g.
+    #   ESPN_FANTASY_COOKIE='espn_s2=AEB7%2F...; SWID={1A2B3C4D-...}'
+    # optional → when unset the request is sent anonymously (public leagues work).
+    private:
+      type: static_header
+      header: Cookie
+      env: ESPN_FANTASY_COOKIE
+      optional: true
+  defaults:
+    rate_limit_rps: 4
+    # `allon` and mRoster on a 12-team league run to several MB.
+    request_timeout_seconds: 45
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── espnfantasy.reference (6) — no league id required ────────────────
+  - name: espnfantasy_games
+    group: espnfantasy.reference
+    capabilities: [ref.seasons]
+    summary: "All five ESPN fantasy games with each one's CURRENT season id and scoring period — call this first to resolve seasonId/scoringPeriodId."
+    base: default
+    path: /
+    auth: default
+    response_hint: "[{abbrev:'FFL', id, name, proSportAbbrev, currentSeasonId, currentSeason:{id, currentScoringPeriod:{id}, startDate, endDate}}]  (top-level array of 5)"
+    examples:
+      - description: "Resolve the current NFL fantasy season + week"
+        params: {}
+
+  - name: espnfantasy_season
+    group: espnfantasy.reference
+    capabilities: [ref.seasons]
+    summary: "One game-season's status: current scoring period, start/end dates, whether it is active."
+    base: default
+    path: /{game}/seasons/{seasonId}
+    auth: default
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code: ffl=football, flb=baseball, fba=basketball, fhl=hockey, wfba=WNBA." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year, e.g. 2025 (from espnfantasy_games.currentSeasonId)." }
+    response_hint: "{abbrev:'FFL 2025', id:2025, gameId, name, active, display, startDate, endDate, currentScoringPeriod:{id}}"
+    examples:
+      - description: "2025 fantasy football season status"
+        params: {game: ffl, seasonId: 2025}
+
+  - name: espnfantasy_pro_teams
+    group: espnfantasy.reference
+    capabilities: [ref.teams, sport.fixtures_by_date]
+    summary: "Pro (real-world) teams for a fantasy season: ids, abbreviations, BYE weeks, and each team's games keyed by scoring period."
+    base: default
+    path: /{game}/seasons/{seasonId}
+    auth: default
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year, e.g. 2025." }
+      - { name: view, in: query, type: string_list, default: [proTeamSchedules_wl], description: "Leave as-is. `proTeamSchedules_wl` is what carries the pro schedule." }
+    response_hint: "{settings:{proTeams:[{id, abbrev, location, name, byeWeek, universeId, proGamesByScoringPeriod:{'1':[{...game}]}}]}}  — 33 entries for NFL (id 0 = free-agent/none)"
+    examples:
+      - description: "NFL teams + bye weeks + week-by-week pro schedule"
+        params: {game: ffl, seasonId: 2025}
+
+  - name: espnfantasy_players
+    group: espnfantasy.reference
+    capabilities: [ref.players]
+    summary: "The player universe for a season (id, name, position, pro team, % owned). Defaults to 50 players — pass fantasy_filter to widen or filter."
+    base: default
+    path: /{game}/seasons/{seasonId}/players
+    auth: default
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year, e.g. 2025." }
+      - { name: view, in: query, type: string_list, default: [players_wl], description: "Leave as-is; `players_wl` is the only view this path serves." }
+      # NOTE the filter shape here is ROOT-level ({\"filterActive\":...}) — unlike the
+      # league-scoped kona_ views, which nest everything under a \"players\" key.
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'ROOT-level filter object (NOT nested under "players" on this path), e.g. {"filterActive":{"value":true}}. A "limit" MUST be paired with a sort or the API 400s with FILTER_LIMIT_MISSING_SORT.' }
+    response_hint: "[{id, fullName, firstName, lastName, defaultPositionId, eligibleSlots:[int], proTeamId, droppable, universeId, ownership:{percentOwned}}]  (top-level array)"
+    examples:
+      - description: "Default slice (50 players)"
+        params: {game: ffl, seasonId: 2025}
+      - description: "Only currently-active players"
+        params: {game: ffl, seasonId: 2025, fantasy_filter: {filterActive: {value: true}}}
+
+  - name: espnfantasy_league_defaults
+    group: espnfantasy.reference
+    capabilities: [fantasy.league_settings]
+    summary: "ESPN's stock league templates (scoring/roster presets) by scoring-type id — the defaults a new league starts from."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leaguedefaults/{scoringTypeId}
+    auth: default
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year, e.g. 2025." }
+      - { name: scoringTypeId, in: path, type: integer, default: 3, description: "Preset id. Verified for ffl: 1=Standard, 3=PPR, 5=All-Play PPR, 6=Knockout. Other ids return 200 with no settings.name." }
+    response_hint: "{gameId, id, seasonId, scoringPeriodId, settings:{name:'FFL PPR Scoring', ...}, status:{...}}"
+    examples:
+      - description: "The PPR football preset"
+        params: {game: ffl, seasonId: 2025, scoringTypeId: 3}
+
+  - name: espnfantasy_player_news
+    group: espnfantasy.reference
+    capabilities: [content.news]
+    summary: "Recent fantasy news items for one player (injury/usage blurbs that drive start-sit calls)."
+    base: news
+    path: /{game}/news/players
+    auth: default
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: playerId, in: query, type: integer, required: true, description: "ESPN player id (from espnfantasy_players or a roster entry)." }
+    response_hint: "{news:{feed:[{id, headline, description, published, lastModified, playerId, links, images}], resultsCount, resultsLimit, timestamp}}"
+    examples:
+      - description: "News for one player"
+        params: {game: ffl, playerId: 3139477}
+
+  # ─── espnfantasy.league (14) — a specific league ──────────────────────
+  - name: espnfantasy_league
+    group: espnfantasy.league
+    capabilities: [fantasy.league_settings]
+    summary: "Raw league read with ANY combination of views — the escape hatch when no dedicated tool below fits, or to fetch several views in one round trip."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018; use espnfantasy_league_history for older)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "Your league id — the `leagueId=` in the fantasy site URL." }
+      - { name: view, in: query, type: string_list, default: [mTeam, mSettings], description: "One or more views, sent as repeated params. Verified: mTeam, mRoster, mMatchup, mMatchupScore, mSettings, mStandings, mBoxscore, mScoreboard, mSchedule, mDraftDetail, mTransactions2, mPendingTransactions, mPositionalRatings, mLiveScoring, mNav, mStatus, kona_player_info, kona_playercard, allon." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Scoring period (NFL week / daily-sport day). Required by mBoxscore, mRoster-at-week, mTransactions2." }
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'Filter object; league-scoped views nest under an entity key, e.g. {"players":{"limit":50,"sortPercOwned":{"sortPriority":1,"sortAsc":false}}}.' }
+    response_hint: "{id, seasonId, scoringPeriodId, settings, status, teams:[…], members:[…]} plus whatever the requested views add (schedule, draftDetail, players, …)"
+    examples:
+      - description: "Teams + rosters + settings in one call"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, view: [mTeam, mRoster, mSettings]}
+
+  - name: espnfantasy_league_settings
+    group: espnfantasy.league
+    capabilities: [fantasy.league_settings]
+    summary: "League rules: name, size, scoring items, roster slots, schedule/playoff format, waiver + keeper + trade settings."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mSettings], description: "Leave as-is." }
+    response_hint: "{settings:{name, size, isPublic, draftSettings, rosterSettings:{lineupSlotCounts}, scoringSettings:{scoringItems:[{statId, points}]}, scheduleSettings, tradeSettings, acquisitionSettings}, status}"
+    examples:
+      - description: "Scoring + roster rules for a league"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_teams
+    group: espnfantasy.league
+    capabilities: [ref.teams, stats.ladder]
+    summary: "Fantasy teams with records, points for/against, playoff seed and projected rank."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mTeam], description: "Leave as-is." }
+    response_hint: "{teams:[{id, abbrev, name, owners, primaryOwner, divisionId, playoffSeed, points, pointsAdjusted, currentProjectedRank, rankCalculatedFinal, record:{overall:{wins,losses,ties,pointsFor,pointsAgainst}}, transactionCounter, waiverRank}], members:[{id, displayName, firstName, lastName}]}"
+    examples:
+      - description: "All fantasy teams + records"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_rosters
+    group: espnfantasy.league
+    capabilities: [fantasy.rosters]
+    summary: "Every fantasy team's roster — who each manager holds, their lineup slot, acquisition type and player stats. LARGE (hundreds of KB)."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mRoster], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Roster as it stood in this scoring period (week). Omit for the current one." }
+    response_hint: "{teams:[{id, roster:{entries:[{playerId, lineupSlotId, acquisitionType, playerPoolEntry:{player:{fullName, defaultPositionId, eligibleSlots, injuryStatus, stats:[…]}}}]}}]}"
+    examples:
+      - description: "All rosters, week 3"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3}
+
+  - name: espnfantasy_standings
+    group: espnfantasy.league
+    capabilities: [stats.ladder]
+    summary: "League standings — records, points for/against, division and playoff seeding."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mStandings, mTeam], description: "mStandings alone omits team names/records — mTeam is what carries them." }
+    response_hint: "{teams:[{id, name, playoffSeed, rankCalculatedFinal, record:{overall:{wins,losses,ties,percentage,pointsFor,pointsAgainst}, division:{...}, home:{...}, away:{...}}}], schedule:[…]}"
+    examples:
+      - description: "Final standings"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_matchups
+    group: espnfantasy.league
+    capabilities: [fantasy.matchups]
+    summary: "Full season schedule of head-to-head fantasy matchups with each side's total and per-period points."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mMatchup], description: "Leave as-is." }
+    response_hint: "{schedule:[{id, matchupPeriodId, winner:'HOME'|'AWAY'|'UNDECIDED', home:{teamId, totalPoints, gamesPlayed, pointsByScoringPeriod:{'1':98.4}}, away:{…}}]}"
+    examples:
+      - description: "Every matchup in the season"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_draft
+    group: espnfantasy.league
+    capabilities: [sport.draft]
+    summary: "Draft results — every pick in order with round, team, player, keeper flag and auction bid."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mDraftDetail], description: "Leave as-is." }
+    response_hint: "{draftDetail:{drafted, inProgress, completeDate, picks:[{id, overallPickNumber, roundId, roundPickNumber, playerId, teamId, owningTeamIds, keeper, reservedForKeeper, bidAmount, autoDraftTypeId, lineupSlotId, memberId}]}}"
+    examples:
+      - description: "Full draft board"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_transactions
+    group: espnfantasy.league
+    capabilities: [sport.transactions]
+    summary: "Completed transactions (adds, drops, trades, waiver claims) for a scoring period."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mTransactions2], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, required: true, description: "Scoring period to read. REQUIRED — without it the response carries no `transactions` key at all." }
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'Optional type filter, e.g. {"transactions":{"filterType":{"value":["TRADE_ACCEPTED","WAIVER","FREEAGENT"]}}}.' }
+    response_hint: "{transactions:[{id, type, status, teamId, memberId, scoringPeriodId, proposedDate, bidAmount, items:[{type:'ADD'|'DROP', playerId, fromTeamId, toTeamId}]}]}"
+    examples:
+      - description: "Week-3 transactions"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3}
+
+  - name: espnfantasy_pending_transactions
+    group: espnfantasy.league
+    capabilities: [sport.transactions]
+    summary: "Pending/unprocessed transactions — waiver claims and trade offers awaiting processing (needs the private cookie in most leagues)."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mPendingTransactions], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Scoring period." }
+    response_hint: "{pendingTransactions:[…]} when any are pending; the key is ABSENT (not an empty list) when there are none."
+    examples:
+      - description: "Outstanding waiver claims / trade offers"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3}
+
+  - name: espnfantasy_status
+    group: espnfantasy.league
+    capabilities: []
+    summary: "League lifecycle status — current matchup period, latest scoring period, whether the season is active, waiver process dates."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mStatus], description: "Leave as-is." }
+    response_hint: "{status:{currentMatchupPeriod, latestScoringPeriod, finalScoringPeriod, isActive, previousSeasons:[int], teamsJoined, waiverProcessStatus:{…}}}"
+    examples:
+      - description: "Where the league is up to"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_nav
+    group: espnfantasy.league
+    capabilities: []
+    summary: "Lightweight nav payload — league name, size and the current user's team, for cheap orientation before a heavy call."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mNav], description: "Leave as-is." }
+    response_hint: "{id, settings:{name, size}, status:{…}, teams:[{id, abbrev}], members:[…]}"
+    examples:
+      - description: "Cheap league header"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_everything
+    group: espnfantasy.league
+    capabilities: [sport.season_summary]
+    summary: "UNDOCUMENTED mega-view (`allon`): settings + teams + rosters + schedule + draft + the whole player pool in ONE response. VERY LARGE (multi-MB) — prefer a targeted tool unless you genuinely need everything."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [allon], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Scoring period to anchor roster/boxscore sections to." }
+    response_hint: "{settings, status, teams, members, schedule, draftDetail, players, playersHighlighted, creationInfo, lastUpdateInfo, lastAccessInfo}  (~4 MB on a 10-team league)"
+    examples:
+      - description: "Everything about a league in one shot"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_communication
+    group: espnfantasy.league
+    capabilities: [content.news]
+    summary: "League message board / activity feed (chat topics, trade chatter, activity posts). 404s when the league has no communication group."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}/communication/
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [kona_league_communication], description: "`kona_league_communication` (activity) or `kona_league_messageboard` (chat)." }
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'Topic filter, e.g. {"topics":{"filterType":{"value":["ACTIVITY_TRANSACTIONS"]},"limit":25,"sortMessageDate":{"sortPriority":1,"sortAsc":false}}}.' }
+    response_hint: "{topics:[{id, type, date, author, messages:[{id, messageTypeId, to, for, content}]}]}  — HTTP 404 'This Communication Group does not exist.' when the league never used the board"
+    examples:
+      - description: "Recent league activity"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_league_history
+    group: espnfantasy.league
+    capabilities: [ref.seasons]
+    summary: "Pre-2018 seasons and cross-season history via the leagueHistory path. Only works for leagues that HAVE history — check espnfantasy_status.status.previousSeasons first; an empty list there means this returns 404. Returns a single-element ARRAY, not an object."
+    base: default
+    path: /{game}/leagueHistory/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: seasonId, in: query, type: integer, description: "Season year to read. Omit to get every season the league has history for." }
+      - { name: view, in: query, type: string_list, default: [mTeam], description: "Same view vocabulary as the seasons path." }
+    response_hint: "[{id, seasonId, settings, teams, status, …}]  — ARRAY wrapper; index [0] for a single seasonId. 404 when the league has no leagueHistory record (verified: public league 1234 reports status.previousSeasons == [] and 404s here) — fall back to the seasons path."
+    examples:
+      - description: "A 2017 season for a long-running league"
+        params: {game: ffl, leagueId: 1234, seasonId: 2017}
+
+  # ─── espnfantasy.scoring (5) — weekly scoring surfaces ────────────────
+  - name: espnfantasy_boxscore
+    group: espnfantasy.scoring
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Week box scores — each matchup with both lineups, per-player actual and projected points. The start/sit post-mortem view."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mBoxscore, mMatchupScore], description: "mBoxscore carries the lineups; mMatchupScore adds the head-to-head totals." }
+      - { name: scoringPeriodId, in: query, type: integer, required: true, description: "The week / scoring period to score. REQUIRED — omitting it yields season totals with no lineup detail." }
+    response_hint: "{schedule:[{matchupPeriodId, home:{teamId, totalPoints, tiebreak, pointsByScoringPeriod, rosterForCurrentScoringPeriod:{entries:[{playerId, lineupSlotId, playerPoolEntry:{player:{fullName, stats:[{appliedTotal, appliedAverage, statSourceId, statSplitTypeId}]}}}]}}, away:{…}}]}"
+    examples:
+      - description: "Week-3 box scores"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3}
+
+  - name: espnfantasy_matchup_score
+    group: espnfantasy.scoring
+    capabilities: [fantasy.matchups]
+    summary: "Compact matchup scores for the season — totals only, no lineups. Much smaller than the box score."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mMatchupScore], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Narrow to one scoring period." }
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'Limit to given matchup periods, e.g. {"schedule":{"filterMatchupPeriodIds":{"value":[3]}}}.' }
+    response_hint: "{schedule:[{id, matchupPeriodId, winner, home:{teamId, totalPoints, gamesPlayed}, away:{…}}]}"
+    examples:
+      - description: "All matchup results"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_scoreboard
+    group: espnfantasy.scoring
+    capabilities: [sport.match_score]
+    summary: "Scoreboard for a scoring period — matchup totals plus the pro-game state behind each fantasy team."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mScoreboard, mMatchupScore], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Scoring period; omit for the current one." }
+    response_hint: "{schedule:[{matchupPeriodId, home:{teamId, totalPoints, rosterForCurrentScoringPeriod, cumulativeScore:{wins,losses,ties}}, away:{…}}]}"
+    examples:
+      - description: "This week's scoreboard"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3}
+
+  - name: espnfantasy_live_scoring
+    group: espnfantasy.scoring
+    capabilities: [sport.match_score]
+    summary: "Live in-progress scoring for the current period — points so far and how many roster spots have yet to play."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mLiveScoring, mMatchupScore], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Scoring period; omit for the current one." }
+    response_hint: "{schedule:[{matchupPeriodId, home:{teamId, totalPoints, totalPointsLive, gamesPlayed}, away:{…}}]}  — the *Live fields only populate while pro games are in progress"
+    examples:
+      - description: "Live scores right now"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234}
+
+  - name: espnfantasy_positional_ratings
+    group: espnfantasy.scoring
+    capabilities: [stats.advanced_metrics]
+    summary: "Positional ratings — average fantasy points allowed by each pro defence to each position (the strength-of-matchup table)."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [mPositionalRatings], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, required: true, description: "Scoring period to rate." }
+    response_hint: "{positionAgainstOpponent:{positionalRatings:{'1':{average, total, ratingsByOpponent:{'proTeamId':{average, rank}}}}}}  (keys are position ids). IN-SEASON ONLY: verified 2026-07-02 that completed/old seasons return 200 with the whole positionAgainstOpponent block ABSENT — that is upstream behaviour, not an error."
+    examples:
+      - description: "Which defences are soft against each position"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3}
+
+  # ─── espnfantasy.players (2) — the player pool inside a league ────────
+  - name: espnfantasy_player_info
+    group: espnfantasy.players
+    capabilities: [fantasy.free_agents, stats.fantasy_projections, sport.injuries]
+    summary: "The league's player pool with ownership %, ratings, projections and injury status — pass a status filter for FREE AGENTS / WAIVERS (the waiver-wire tool)."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [kona_player_info], description: "Leave as-is." }
+      - { name: scoringPeriodId, in: query, type: integer, description: "Scoring period the stats/projections are anchored to." }
+      # Filters here NEST under "players" — unlike the game-level espnfantasy_players.
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'NESTED under "players". Free agents: {"players":{"filterStatus":{"value":["FREEAGENT","WAIVERS"]},"limit":50,"sortPercOwned":{"sortPriority":1,"sortAsc":false}}}. A limit REQUIRES a sort. filterSlotIds narrows by position.' }
+    response_hint: "{players:[{id, onTeamId, status:'FREEAGENT'|'ONTEAM'|'WAIVERS', keeperValue, draftAuctionValue, ratings, player:{fullName, defaultPositionId, eligibleSlots, injured, injuryStatus, proTeamId, ownership:{percentOwned, percentChange, percentStarted}, stats:[{appliedTotal, statSourceId, statSplitTypeId}]}}]}"
+    examples:
+      - description: "Top available free agents by ownership"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, scoringPeriodId: 3, fantasy_filter: {players: {filterStatus: {value: [FREEAGENT, WAIVERS]}, limit: 25, sortPercOwned: {sortPriority: 1, sortAsc: false}}}}
+
+  - name: espnfantasy_player_card
+    group: espnfantasy.players
+    capabilities: [stats.player_season, stats.player_game_log, stats.fantasy_projections]
+    summary: "Deep card for specific players — full season + per-period stat splits and projections, as the site's player popup shows."
+    base: default
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year (>= 2018)." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: view, in: query, type: string_list, default: [kona_playercard], description: "Leave as-is." }
+      - { name: fantasy_filter, in: header, type: json, api_name: x-fantasy-filter, description: 'REQUIRED to target players. {"players":{"filterIds":{"value":[3139477]},"filterStatsForTopScoringPeriodIds":{"value":16,"additionalValue":["002025","102025"]}}} — additionalValue ids are "00"+season (actual) and "10"+season (projected).' }
+    response_hint: "{players:[{id, player:{fullName, stats:[{id, seasonId, scoringPeriodId, statSourceId:0|1, statSplitTypeId, appliedTotal, appliedAverage, stats:{…}}]}}]}  — statSourceId 0=actual, 1=projected"
+    examples:
+      - description: "Season + projection splits for one player"
+        params: {game: ffl, seasonId: 2018, leagueId: 1234, fantasy_filter: {players: {filterIds: {value: [15825]}, filterStatsForTopScoringPeriodIds: {value: 16, additionalValue: ["002018", "102018"]}}}}

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from .auth.none import NullAuthProvider
 from .config import Config
 from .errors import PersistedQueryNotFoundError, ToolError
 from .http_client import HTTPClient
@@ -158,10 +159,13 @@ async def _run_provider(spec: Spec, enabled: set[str], cfg: Config, echo: Echo, 
         for key in sorted(auth_keys):
             echo(f"[{provider.id}/auth:{key}] minting credential")
             try:
-                # Optional schemes (e.g. Kalshi RSA) construct inactive without
-                # credentials — anonymous mode is valid, so skip rather than fail.
+                # Optional schemes are valid unconfigured — anonymous mode is the
+                # public tier, so skip rather than fail. Two shapes resolve that way:
+                # a signer that constructs inactive (Kalshi RSA), and an `optional`
+                # spec that collapses to the null provider (ESPN Fantasy's cookie,
+                # optional OAuth).
                 ap = http._auth_provider(key)
-                if getattr(ap, "active", True) is False:
+                if isinstance(ap, NullAuthProvider) or getattr(ap, "active", True) is False:
                     echo(f"  {_DIM}→ SKIP: optional auth not configured — running anonymous{_RESET}")
                     res.skipped += 1
                     continue

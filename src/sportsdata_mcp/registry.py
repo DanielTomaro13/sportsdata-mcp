@@ -108,7 +108,9 @@ def _build_headers(ep: Endpoint, kwargs: dict) -> dict:
         value = kwargs.get(p.name)
         if value is None:
             continue
-        out[p.wire_name] = str(value)
+        # A `json` header carries a JSON document, not a Python repr — str() would emit
+        # single-quoted pseudo-JSON the upstream rejects (ESPN's `x-fantasy-filter`).
+        out[p.wire_name] = json.dumps(value, separators=(",", ":")) if p.type == "json" else str(value)
     return out
 
 
