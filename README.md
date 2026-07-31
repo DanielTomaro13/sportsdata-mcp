@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~500 tools across 28 providers in Claude Desktop,
+Free & open source (MIT). ~520 tools across 29 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -32,11 +32,11 @@ invisible unless something is reading every book at once.*
 sports MCP servers will get you fixtures and standings. This one is built around
 *disagreement between books* — eleven bookmakers, the Betfair exchange, and two
 prediction markets (Kalshi, Polymarket) side by side on the same market, plus
-fourteen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
+fifteen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than twenty-eight integrations.
+across books" is one question rather than twenty-nine integrations.
 
 ### Built on this server
 
@@ -727,9 +727,9 @@ Every push/PR runs three jobs (`.github/workflows/ci.yml`):
 
 ## License
 
-**Proprietary and confidential.** Copyright (c) 2026 Daniel Tomaro. All rights
-reserved. No use, copying, modification, or distribution is permitted without the
-owner's prior written consent — see [`LICENSE`](./LICENSE).
+**MIT.** Copyright (c) 2026 Daniel Tomaro. Free to use, copy, modify and
+distribute, with the copyright notice and permission notice retained — see
+[`LICENSE`](./LICENSE).
 
 <!-- MCP registry ownership marker -->
 
