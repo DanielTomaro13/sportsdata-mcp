@@ -122,7 +122,9 @@ def _verify_token(token: str, trusted: dict[str, str]) -> dict:
     sig = _b64url_decode(sig_b64)
     claims = json.loads(payload)
     if not isinstance(claims, dict):
-        raise ValueError("entitlement payload is not an object")
+        # ValueError, not TypeError: this is a malformed *value* decoded from an
+        # untrusted token, not a caller passing the wrong argument type.
+        raise ValueError("entitlement payload is not an object")  # noqa: TRY004
 
     kid = str(claims.get("kid", "")) or None
     order = ([trusted[kid]] if kid and kid in trusted else []) + [

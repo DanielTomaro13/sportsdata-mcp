@@ -36,7 +36,11 @@ dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
   "respx>=0.21",
-  "ruff>=0.4",
+  # Capped like the runtime deps: ruff is a CI GATE, and an uncapped linter turns
+  # every upstream release that adds a rule into a red build on an untouched repo
+  # (0.16 did exactly that — 32 findings across files nobody had edited). Raise the
+  # cap deliberately, then fix the new findings in that same commit.
+  "ruff>=0.4,<0.17",
   "cryptography>=42,<50",
 ]
 # Standalone installer build (commerce Phase 3): PyInstaller bundle + the licence-gate

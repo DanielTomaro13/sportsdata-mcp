@@ -14,7 +14,7 @@ unavailability / a drifted persisted hash and assert on stable structure. Run wi
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastmcp.exceptions import ToolError as MCPToolError
@@ -45,7 +45,7 @@ def _catalogue(payload_resource) -> dict:
 
 
 def _day_window():
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     fmt = "%Y-%m-%dT%H:%M:%S.000Z"
     return today.strftime(fmt), (today + timedelta(days=1)).strftime(fmt)
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import httpx
 import pytest
 
@@ -94,7 +93,7 @@ async def test_short_expiry_triggers_proactive_refresh(monkeypatch: pytest.Monke
     provider = OAuthRefreshProvider(SPEC, fake.client())
     await provider.get()
     provider._expires_at = 0.0  # token aged out
-    name, value = await provider.get()
+    _name, value = await provider.get()
     assert value == "Bearer at-2"
     assert fake.minted == 2
 
@@ -145,7 +144,8 @@ def test_missing_env_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_tab_spec_carries_optional_oauth_scheme() -> None:
     """tab.yaml: `oauth` available, `default` still none (public data needs no auth)."""
-    from sportsdata_mcp.spec import AuthNone, AuthOAuthRefresh as AOR
+    from sportsdata_mcp.spec import AuthNone
+    from sportsdata_mcp.spec import AuthOAuthRefresh as AOR
     from sportsdata_mcp.spec_loader import load_all_specs
 
     tab = next(s for s in load_all_specs() if s.provider.id == "tab")

@@ -87,7 +87,7 @@ def test_pick_seeds_defaults_under_example():
         {"name": "sport", "in": "path", "type": "string"},
         {"name": "jurisdiction", "in": "query", "type": "string", "default": "NSW"},
     ])
-    ep, args = _pick_endpoint_probe([ep_def])
+    _chosen, args = _pick_endpoint_probe([ep_def])
     assert args == {"sport": "AFL Football", "jurisdiction": "NSW"}
 
 

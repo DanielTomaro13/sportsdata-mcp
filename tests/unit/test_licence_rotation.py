@@ -10,6 +10,7 @@ import base64
 import json
 
 import pytest
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -62,7 +63,9 @@ def test_untrusted_key_is_rejected():
     rogue, _ = _keypair()
     _, trusted_pub = _keypair()
     token = _sign(rogue, {"kid": "k1", "status": "active", "all_access": True})
-    with pytest.raises(Exception):
+    # Assert the SPECIFIC failure: a bare `Exception` would also pass on an import
+    # error or a typo, quietly hiding the loss of this licence-forgery guard.
+    with pytest.raises(InvalidSignature):
         _verify_token(token, {"k1": trusted_pub})
 
 

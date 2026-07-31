@@ -60,7 +60,7 @@ class DohResolver:
                         self._cache[host] = (time.monotonic() + self._ttl, ip)
                     log.debug("doh %s -> %s (via %s)", host, ip, server)
                     return ip
-            except Exception as exc:  # this resolver is unreachable — try the next
+            except Exception as exc:  # noqa: BLE001 — this resolver is unreachable, try the next
                 log.debug("doh %s via %s failed: %s", host, server, type(exc).__name__)
         log.warning("doh could not resolve %s via any of %s", host, ", ".join(self._servers))
         return None

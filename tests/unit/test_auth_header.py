@@ -106,7 +106,7 @@ async def test_literal_value_used_when_env_unset(monkeypatch):
     monkeypatch.delenv("TEST_APIM_KEY", raising=False)
     spec = AuthStaticHeader(type="static_header", header="Ocp-Apim-Subscription-Key",
                             env="TEST_APIM_KEY", value="public-default")
-    name, value = await StaticHeaderAuthProvider(spec).get()
+    _name, value = await StaticHeaderAuthProvider(spec).get()
     assert value == "public-default"
 
 

@@ -85,7 +85,9 @@ async def test_unknown_graphql_operation_is_recoverable(sportsbet_server):
 
 @pytest.mark.live
 async def test_all_racing_live(sportsbet_server):
-    today = dt.date.today().isoformat()
+    # Local date on purpose: the AU gateway's `eventDate` is a local racing day,
+    # so a UTC date would ask for the wrong card either side of midnight.
+    today = dt.date.today().isoformat()  # noqa: DTZ011
     try:
         res = await sportsbet_server.call_tool("sportsbet_racing_allracing", {"eventDate": today})
     except (MCPToolError, RuntimeError) as e:
@@ -96,8 +98,9 @@ async def test_all_racing_live(sportsbet_server):
 
 @pytest.mark.live
 async def test_sports_classes_live(sportsbet_server):
-    # The gateway requires naive datetimes (YYYY-MM-DDTHH:MM:SS); a bare date is a 400.
-    now = dt.datetime.now().replace(microsecond=0)
+    # The gateway requires naive LOCAL datetimes (YYYY-MM-DDTHH:MM:SS); a bare date
+    # is a 400, and a tz-aware value serialises with an offset it also rejects.
+    now = dt.datetime.now().replace(microsecond=0)  # noqa: DTZ005
     week = now + dt.timedelta(days=7)
     try:
         res = await sportsbet_server.call_tool(

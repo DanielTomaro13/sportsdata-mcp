@@ -20,7 +20,6 @@ import re
 from graphql.language import ast as gql_ast
 from graphql.language.printer import print_ast
 
-
 # ── JS object-literal → Python data ──────────────────────────────────────────
 
 

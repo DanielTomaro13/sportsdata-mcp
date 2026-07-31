@@ -42,6 +42,6 @@ def test_version_matches_pyproject():
     import sportsdata_mcp
 
     pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    m = re.search(r'^version = "([^"]+)"', pyproject.read_text(), re.M)
+    m = re.search(r'^version = "([^"]+)"', pyproject.read_text(), re.MULTILINE)
     assert m, "no version in pyproject.toml"
     assert sportsdata_mcp.__version__ == m.group(1)

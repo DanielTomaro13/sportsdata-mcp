@@ -255,7 +255,7 @@ def fetch_and_apply(url: str, *, trusted: dict[str, str] | None = None) -> dict[
             raise SpecFeedError("refusing to fetch the spec feed over plain http — use https")
         log.warning("spec feed over plain http (%s) — use https (dev only)", url.split("?")[0])
 
-    with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310 — explicit user action
+    with urllib.request.urlopen(url, timeout=30) as resp:
         # Cap the read BEFORE verifying/parsing so a hostile feed can't exhaust memory.
         raw = resp.read(MAX_BUNDLE_BYTES + 1)
     if len(raw) > MAX_BUNDLE_BYTES:

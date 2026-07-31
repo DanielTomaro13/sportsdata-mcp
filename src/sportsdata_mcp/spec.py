@@ -7,7 +7,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 # ─── Auth ──────────────────────────────────────────────────────────────
 
 
@@ -216,7 +215,7 @@ class ClassifyRule(BaseModel):
     default: str | None = None
 
     @model_validator(mode="after")
-    def _exactly_one_form(self) -> "ClassifyRule":
+    def _exactly_one_form(self) -> ClassifyRule:
         matchers = [m for m in (self.prefix, self.contains, self.regex) if m is not None]
         n_match = len(matchers) + (1 if self.eq is not None else 0)
         if self.default is not None:
@@ -257,7 +256,7 @@ class Classify(BaseModel):
         return self.field.split(".")[-1]
 
     @model_validator(mode="after")
-    def _field_shape(self) -> "Classify":
+    def _field_shape(self) -> Classify:
         if "[]" in self.set_key:
             raise ValueError(f"classify field {self.field!r} must end in a plain key, not a `[]` segment")
         if not self.container_segments:
@@ -291,7 +290,7 @@ class Endpoint(BaseModel):
     classify: list[Classify] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _path_params_required(self) -> "Endpoint":
+    def _path_params_required(self) -> Endpoint:
         # Match {name} anywhere in the path — including placeholders carrying a suffix
         # like `{eventId}.json` (Kambi), which a whole-segment check would miss.
         path_param_names = set(re.findall(r"\{(\w+)\}", self.path))
@@ -420,7 +419,7 @@ class Spec(BaseModel):
     reference_resources: list[ReferenceResource] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _unique_names(self) -> "Spec":
+    def _unique_names(self) -> Spec:
         names: set[str] = set()
         for e in self.endpoints:
             if e.name in names:

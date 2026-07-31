@@ -19,7 +19,7 @@ them with::
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastmcp.exceptions import ToolError as MCPToolError
@@ -55,7 +55,7 @@ def _catalogue(payload_resource) -> dict:
 
 
 def _today_window() -> tuple[str, str]:
-    d = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    d = datetime.now(UTC).strftime("%Y-%m-%d")
     return f"{d}T00:00:00.000Z", f"{d}T23:59:59.000Z"
 
 

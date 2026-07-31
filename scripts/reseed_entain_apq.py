@@ -44,7 +44,7 @@ import httpx
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
-from sportsdata_mcp.refresh.entain_documents import extract_document, print_document  # noqa: E402
+from sportsdata_mcp.refresh.entain_documents import extract_document, print_document
 
 SPEC = REPO / "src" / "sportsdata_mcp" / "specs" / "entain.yaml"
 GATEWAY = "https://api.ladbrokes.com.au/gql/router"

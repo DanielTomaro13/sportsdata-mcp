@@ -15,14 +15,14 @@ import httpx
 from .auth.afl import AFLTokenProvider
 from .auth.base import AuthProvider
 from .auth.header import StaticHeaderAuthProvider
-from .auth.none import NullAuthProvider
 from .auth.kalshi import KalshiRSASigner
+from .auth.none import NullAuthProvider
 from .auth.oauth import OAuthRefreshProvider
 from .auth.query import StaticQueryAuthProvider
 from .config import Config
 from .errors import ToolError
 from .licence import proxy_base_for
-from .spec import AuthKalshiRSA, AuthOAuthRefresh, AuthAFLWMCTok, AuthNone, AuthStaticHeader, AuthStaticQuery, Provider
+from .spec import AuthAFLWMCTok, AuthKalshiRSA, AuthNone, AuthOAuthRefresh, AuthStaticHeader, AuthStaticQuery, Provider
 
 log = logging.getLogger("sportsdata_mcp.http")
 

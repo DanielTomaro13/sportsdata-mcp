@@ -22,8 +22,8 @@ from .dispatchers.graphql_persisted import make_graphql_dispatcher
 from .dispatchers.graphql_query import make_graphql_query_dispatcher
 from .dispatchers.templated_rest import make_templated_rest_dispatcher
 from .errors import ToolError
-from .licence import group_is_live
 from .http_client import HTTPClient
+from .licence import group_is_live
 from .resources.builders import (
     register_graphql_catalog,
     register_reference_resource,

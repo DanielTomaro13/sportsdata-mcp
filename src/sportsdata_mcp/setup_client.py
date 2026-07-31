@@ -75,7 +75,9 @@ def register(client: str, license_key: str, command: str) -> Path:
 
     servers = data.setdefault("mcpServers", {})
     if not isinstance(servers, dict):
-        raise ValueError(f"{path} has a non-object 'mcpServers' key")
+        # ValueError, not TypeError: the user's config FILE has a bad value — the
+        # message is meant to be read by the person fixing that file.
+        raise ValueError(f"{path} has a non-object 'mcpServers' key")  # noqa: TRY004
     servers[SERVER_NAME] = server_block(license_key, command)
 
     path.write_text(json.dumps(data, indent=2) + "\n")

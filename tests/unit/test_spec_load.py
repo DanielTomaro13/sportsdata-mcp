@@ -98,8 +98,8 @@ endpoints:
 
 
 def load_spec_from_string(text: str) -> Spec:
-    import textwrap
     import tempfile
+    import textwrap
     from pathlib import Path
 
     with tempfile.TemporaryDirectory() as td:

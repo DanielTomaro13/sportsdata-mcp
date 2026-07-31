@@ -12,7 +12,8 @@ import click
 
 from . import __version__
 from .config import load_config
-from .spec_loader import all_groups, lint as lint_specs, load_all_specs
+from .spec_loader import all_groups, load_all_specs
+from .spec_loader import lint as lint_specs
 
 
 def _version_string() -> str:
