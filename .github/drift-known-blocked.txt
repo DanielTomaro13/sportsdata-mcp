@@ -15,3 +15,8 @@ entain
 sportsbet
 tab
 unibet
+# Added 2026-08-05 (run 30943130613). Pinnacle's `guest.api.arcadia` host started
+# 403ing GitHub's runners on /sports/{id}/leagues while /enums still answers, so
+# only the pinnacle.sports group trips. Verified healthy from a residential IP the
+# same day (200, via `sportsdata-mcp doctor`) — a cloud-IP block, not drift.
+pinnacle

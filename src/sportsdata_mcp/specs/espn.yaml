@@ -45,7 +45,15 @@ provider:
     web: https://site.web.api.espn.com
     cdn: https://cdn.espn.com
   default_headers:
-    User-Agent: "Mozilla/5.0 (compatible; sportsdata-mcp/0.1)"
+    # ESPN's WAF began 403ing browser-claiming User-Agents in Aug 2026: any
+    # `Mozilla/…` string is rejected outright (verified deterministic, 3/3, from a
+    # residential IP — so this was NOT a cloud-IP block; it broke real installs).
+    # Bare tokens like `sportsdata-mcp/0.23.0` are rejected too; a plain identifier
+    # WITH a contact URL — the conventional polite-bot form — is accepted, as are
+    # library defaults (curl/…, python-httpx/…). Identifying honestly as a bot is
+    # both what works here and the better citizenship: don't restore a Mozilla UA.
+    # Deliberately version-less so it doesn't go stale on every release.
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
     Accept: "application/json, text/plain, */*"
   auth:
     default:
