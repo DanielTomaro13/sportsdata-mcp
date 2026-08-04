@@ -15,8 +15,9 @@ entain
 sportsbet
 tab
 unibet
-# Added 2026-08-05 (run 30943130613). Pinnacle's `guest.api.arcadia` host started
-# 403ing GitHub's runners on /sports/{id}/leagues while /enums still answers, so
-# only the pinnacle.sports group trips. Verified healthy from a residential IP the
-# same day (200, via `sportsdata-mcp doctor`) — a cloud-IP block, not drift.
-pinnacle
+#
+# NOT listed, on purpose: pinnacle. It 403'd run 30943130613 (2026-08-04) and was
+# green again from CI the next run, so it is INTERMITTENT, not blocked. Listing it
+# would permanently blind this check to real Pinnacle drift — the exact failure
+# mode the note above warns about. Transient blips are handled by the retry in
+# drift.yml instead; only add a provider here once it fails CONSISTENTLY.

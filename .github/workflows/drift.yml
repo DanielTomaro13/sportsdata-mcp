@@ -38,22 +38,56 @@ jobs:
         run: |
           sportsdata-mcp doctor 2>&1 | tee doctor.log || true
       - name: Fail only on NEW drift (outside the known-blocked list)
+        env:
+          SPORTSDATA_MCP_GROUPS: "*"
         run: |
-          # Empty probe set = misconfiguration, never success.
-          if ! grep -q "^\[" <(sed 's/\x1b\[[0-9;]*m//g' doctor.log); then
-            echo "::error::doctor probed nothing — group selection is broken"; exit 1
-          fi
           # A failing provider = a "[provider/group]" header whose probe line said FAIL.
-          sed 's/\x1b\[[0-9;]*m//g' doctor.log | awk '
-            /^\[/ { split($1, a, "[\\[/]"); prov = a[2] }
-            /→ FAIL/ { print prov }
-          ' | sort -u > failed.txt
+          verdict() {
+            log="$1"
+            # Empty probe set = misconfiguration, never success.
+            if ! sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -q "^\["; then
+              echo "::error::doctor probed nothing — group selection is broken"; exit 1
+            fi
+            sed 's/\x1b\[[0-9;]*m//g' "$log" | awk '
+              /^\[/ { split($1, a, "[\\[/]"); prov = a[2] }
+              /→ FAIL/ { print prov }
+            ' | sort -u
+          }
           sort -u .github/drift-known-blocked.txt | grep -v "^#" | grep -v "^$" > known.txt || true
+          verdict doctor.log > failed.txt
           comm -23 failed.txt known.txt > new-drift.txt
           echo "── failing providers:"; cat failed.txt || true
           echo "── known-blocked from CI:"; cat known.txt || true
+
+          # Confirm before crying wolf. These are live third-party APIs: a single 403
+          # or timeout is often transient (Pinnacle did exactly that on 2026-08-04,
+          # green again next run). Re-probe ONLY the suspects and fail only if the
+          # drift repeats — cheap, because this path runs solely when something failed,
+          # and it keeps flaky upstreams out of drift-known-blocked.txt, which would
+          # blind the check permanently.
           if [ -s new-drift.txt ]; then
-            echo "::error::NEW provider drift detected:"; cat new-drift.txt
-            exit 1
+            echo "── suspected new drift, re-probing to confirm:"; cat new-drift.txt
+            sleep 20
+            # Enumerate the suspects' REAL group names. Only the bare "*" is a
+            # wildcard — "espn.*" is read as a literal group, matches nothing, and
+            # doctor then exits 0 having probed NOTHING, which would silently turn
+            # every suspected drift into a "transient" pass.
+            retry_groups="$(sportsdata-mcp list-groups | awk '{print $1}' \
+              | grep -E "^($(paste -sd'|' - < new-drift.txt))\." | paste -sd, -)"
+            echo "   re-probing groups: ${retry_groups:-<none>}"
+            if [ -z "$retry_groups" ]; then
+              echo "::error::could not resolve groups for the suspects — failing rather than assuming transient"
+              exit 1
+            fi
+            SPORTSDATA_MCP_GROUPS="$retry_groups" sportsdata-mcp doctor 2>&1 | tee doctor-retry.log || true
+            # Guard: the re-probe must actually have probed something, or "recovered"
+            # is meaningless. verdict() already exits on an empty probe set.
+            verdict doctor-retry.log > failed-retry.txt
+            comm -12 new-drift.txt failed-retry.txt > confirmed.txt
+            if [ -s confirmed.txt ]; then
+              echo "::error::NEW provider drift confirmed on re-probe:"; cat confirmed.txt
+              exit 1
+            fi
+            echo "transient — recovered on re-probe, not real drift:"; cat new-drift.txt
           fi
           echo "no new drift — all failures are the known cloud-IP blocks"
