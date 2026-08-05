@@ -2,8 +2,17 @@ spec_version: 1
 
 # NBA — two public surfaces behind one provider:
 #
-#   cdn.nba.com   — open JSON CDN (no headers/throttle needed): today's scoreboard,
-#                   the full season schedule, live box scores + play-by-play, odds.
+#   cdn.nba.com   — JSON CDN: today's scoreboard, the full season schedule, live
+#                   box scores + play-by-play, odds. NO LONGER open — as of
+#                   2026-08-05 Akamai fronts it too and 403s ("Access Denied") on
+#                   every path unless the request carries a COMPLETE, coherent
+#                   browser header profile. Bisected: dropping any one of the
+#                   client hints (sec-ch-ua*), the Sec-Fetch-* trio, Referer +
+#                   Origin, Accept + Accept-Language, or Accept-Encoding takes it
+#                   straight back to 403. HTTP/2 is not required. Cookies do not
+#                   help — a plain jar from www.nba.com yields two cookies and is
+#                   still refused, because Akamai's _abck/bm_sz are minted by
+#                   JavaScript. The bundle below is what actually works.
 #   stats.nba.com — the /stats/ analytics API. Fronted by Akamai, which black-holes
 #                   requests that don't carry a full browser header bundle. The bundle
 #                   lives in provider.default_headers below, so every request carries it.
@@ -35,11 +44,19 @@ provider:
   base_urls:
     default: https://stats.nba.com
     cdn: https://cdn.nba.com
-  # Full browser header bundle — without this Akamai black-holes stats.nba.com.
+  # Full browser header bundle. Required by BOTH hosts now: stats.nba.com has
+  # always black-holed incomplete requests, and cdn.nba.com joined it in Aug 2026.
+  # Every entry here is load-bearing — verified by removing each in turn.
   default_headers:
     User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     Accept: "application/json, text/plain, */*"
     Accept-Language: "en-US,en;q=0.9"
+    # Akamai treats a client that does not advertise compression as a bot
+    Accept-Encoding: "gzip, deflate"
+    # client hints: absent => 403 on the CDN
+    sec-ch-ua: '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"'
+    sec-ch-ua-mobile: "?0"
+    sec-ch-ua-platform: '"macOS"'
     Referer: "https://www.nba.com/"
     Origin: "https://www.nba.com"
     Connection: "keep-alive"
