@@ -1,0 +1,257 @@
+spec_version: 1
+
+# Sleeper (api.sleeper.app) — the other big fantasy-football platform.
+#
+# Pairs with `espnfantasy`: same job, different ecosystem. The important practical
+# difference is AUTH — Sleeper's read API is entirely public. No key, no cookie, no
+# account. Anyone with a league id can read that league, which is why every tool here
+# is testable against a real league and ESPN Fantasy's private tier is not.
+#
+# NO WRITES. Sleeper's public API is read-only by design (roster moves happen in their
+# app), which suits this server exactly.
+#
+# THE ID CHAIN is the thing to understand:
+#
+#   username → user_id → leagues for a (sport, season) → league_id
+#        league_id → rosters (roster_id) + users (user_id) + matchups + drafts
+#
+# `roster_id` is league-local (1..N) and is what matchups/transactions key off;
+# `user_id` is global and is what identifies a person. Joining a matchup to a human
+# means rosters[roster_id].owner_id → users[user_id].display_name. Nothing carries
+# both, and that join is the single most common source of confusion here.
+#
+# PLAYERS IS ENORMOUS. /players/nfl is ~15 MB — the entire NFL player universe in one
+# document. Sleeper's own docs ask you to call it at most once a day and cache it. It
+# is deliberately NOT modelled as a tool: it would blow up a model's context and
+# abuse a free API. Use the trending endpoint, or read player ids off a roster.
+#
+# Probed live 2026-08-10 against league 289646328504385536 (Sleeper's own docs
+# example, a completed 2018 season — frozen, so its shapes don't drift).
+
+provider:
+  id: sleeper
+  display_name: "Sleeper (fantasy football, api.sleeper.app)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Sleeper.md"
+  base_urls:
+    default: https://api.sleeper.app/v1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Sleeper documents a ~1000 calls/minute ceiling; this stays well inside it.
+    rate_limit_rps: 8
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── sleeper.reference ────────────────────────────────────────────────
+  - name: sleeper_state
+    group: sleeper.reference
+    capabilities: [ref.seasons]
+    summary: "Current NFL state — season, week, and whether scoring has started. Call this to resolve 'this week' instead of guessing."
+    base: default
+    path: /state/{sport}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, default: nfl, enum: [nfl, nba, lcs, bundesliga], description: "Sport. Fantasy football (nfl) is the live one." }
+    response_hint: "{season, season_type:'pre'|'regular'|'post', week, leg, display_week, season_start_date, previous_season, league_season, season_has_scores}"
+    examples:
+      - description: "Where the NFL season is up to"
+        params: {sport: nfl}
+
+  - name: sleeper_user
+    group: sleeper.reference
+    capabilities: []
+    summary: "Look up a Sleeper user by username (or user id) — the first step to finding someone's leagues."
+    base: default
+    path: /user/{username_or_id}
+    auth: default
+    params:
+      - { name: username_or_id, in: path, type: string, required: true, description: "Sleeper username, or a numeric user_id." }
+    response_hint: "{user_id, username, display_name, avatar, is_bot}  — `user_id` is what sleeper_user_leagues needs"
+    examples:
+      - description: "Resolve a username to a user_id"
+        params: {username_or_id: sleeperuser}
+
+  - name: sleeper_trending_players
+    group: sleeper.reference
+    capabilities: [fantasy.free_agents]
+    summary: "Players being added or dropped most across all of Sleeper — the waiver-wire signal, without downloading the 15 MB player file."
+    base: default
+    path: /players/{sport}/trending/{add_or_drop}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, default: nfl, description: "Sport." }
+      - { name: add_or_drop, in: path, type: string, default: add, enum: [add, drop], description: "'add' for most-added, 'drop' for most-dropped." }
+      - { name: lookback_hours, in: query, type: integer, default: 24, description: "Window in hours." }
+      - { name: limit, in: query, type: integer, default: 25, description: "How many players." }
+    response_hint: "[{player_id, count}]  (top-level array) — `count` is how many leagues made the move. Resolve player_id via a roster or Sleeper's player file."
+    examples:
+      - description: "Most-added players in the last 24h"
+        params: {sport: nfl, add_or_drop: add, limit: 25}
+
+  # ─── sleeper.league ───────────────────────────────────────────────────
+  - name: sleeper_user_leagues
+    group: sleeper.league
+    capabilities: []
+    summary: "Every league a user is in for one sport and season — how you get a league_id from a username."
+    base: default
+    path: /user/{user_id}/leagues/{sport}/{season}
+    auth: default
+    params:
+      - { name: user_id, in: path, type: string, required: true, description: "Numeric user_id from sleeper_user (NOT the username)." }
+      - { name: sport, in: path, type: string, default: nfl, description: "Sport." }
+      - { name: season, in: path, type: string, required: true, description: "Season year, e.g. '2025'." }
+    response_hint: "[{league_id, name, season, status, sport, total_rosters, scoring_settings, roster_positions, settings, draft_id, previous_league_id}]  (top-level array)"
+    examples:
+      - description: "A user's 2025 NFL leagues"
+        params: {user_id: "483459259485384704", sport: nfl, season: "2025"}
+
+  - name: sleeper_league
+    group: sleeper.league
+    capabilities: [fantasy.league_settings]
+    summary: "League configuration: scoring rules, roster slots, playoff format, waiver settings and status."
+    base: default
+    path: /league/{league_id}
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id (from the Sleeper app URL, or sleeper_user_leagues)." }
+    response_hint: "{league_id, name, season, season_type, status, sport, total_rosters, roster_positions:[…], scoring_settings:{…}, settings:{playoff_week_start, waiver_type, …}, draft_id, previous_league_id, bracket_id}"
+    examples:
+      - description: "Sleeper's public example league"
+        params: {league_id: "289646328504385536"}
+
+  - name: sleeper_league_rosters
+    group: sleeper.league
+    capabilities: [fantasy.rosters]
+    summary: "Every roster in a league: the player ids each manager holds, their starters, and season record."
+    base: default
+    path: /league/{league_id}/rosters
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+    response_hint: "[{roster_id, owner_id, league_id, players:[player_id], starters:[player_id], reserve:[…], taxi:[…], settings:{wins, losses, ties, fpts, fpts_against, waiver_position}}]  — join owner_id to sleeper_league_users.user_id for a human name"
+    examples:
+      - description: "All rosters in the example league"
+        params: {league_id: "289646328504385536"}
+
+  - name: sleeper_league_users
+    group: sleeper.league
+    capabilities: []
+    summary: "The people in a league — display names and team names, keyed by user_id."
+    base: default
+    path: /league/{league_id}/users
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+    response_hint: "[{user_id, display_name, avatar, is_owner, metadata:{team_name}}]  — the ONLY place a human name lives; rosters carry owner_id, not names"
+    examples:
+      - description: "Managers in the example league"
+        params: {league_id: "289646328504385536"}
+
+  - name: sleeper_matchups
+    group: sleeper.league
+    capabilities: [fantasy.matchups]
+    summary: "One week's matchups with each roster's points, starters and per-player scoring."
+    base: default
+    path: /league/{league_id}/matchups/{week}
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number (1-18)." }
+    response_hint: "[{roster_id, matchup_id, points, custom_points, starters:[player_id], starters_points:[float], players:[player_id], players_points:{player_id: float}}]  — rosters sharing a matchup_id played each other; there is no home/away"
+    examples:
+      - description: "Week 1 matchups"
+        params: {league_id: "289646328504385536", week: 1}
+
+  - name: sleeper_transactions
+    group: sleeper.league
+    capabilities: [sport.transactions]
+    summary: "Adds, drops, waiver claims and trades for one week."
+    base: default
+    path: /league/{league_id}/transactions/{week}
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number. NOTE: returns the whole season's transactions in some leagues, not just this week." }
+    response_hint: "[{transaction_id, type:'free_agent'|'waiver'|'trade', status, roster_ids:[int], adds:{player_id: roster_id}, drops:{player_id: roster_id}, draft_picks:[…], settings:{waiver_bid}, created}]"
+    examples:
+      - description: "Week 1 transactions"
+        params: {league_id: "289646328504385536", week: 1}
+
+  - name: sleeper_playoff_bracket
+    group: sleeper.league
+    capabilities: [fantasy.matchups]
+    summary: "The playoff bracket — who plays whom in each round, and who advanced."
+    base: default
+    path: /league/{league_id}/{bracket}
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+      - { name: bracket, in: path, type: string, default: winners_bracket, enum: [winners_bracket, losers_bracket], description: "Championship bracket or consolation." }
+    response_hint: "[{r, m, t1, t2, w, l, t1_from, t2_from}]  — TERSE keys: r=round, m=match id, t1/t2=roster ids, w=winner, l=loser, *_from=which earlier match fed this slot"
+    examples:
+      - description: "Championship bracket"
+        params: {league_id: "289646328504385536", bracket: winners_bracket}
+
+  - name: sleeper_traded_picks
+    group: sleeper.league
+    capabilities: [sport.transactions]
+    summary: "Draft picks that have changed hands — who owns which future pick (dynasty leagues)."
+    base: default
+    path: /league/{league_id}/traded_picks
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+    response_hint: "[{season, round, roster_id, previous_owner_id, owner_id}]  — roster_id is the pick's ORIGINAL owner; owner_id holds it now"
+    examples:
+      - description: "Traded picks in the example league"
+        params: {league_id: "289646328504385536"}
+
+  # ─── sleeper.draft ────────────────────────────────────────────────────
+  - name: sleeper_league_drafts
+    group: sleeper.draft
+    capabilities: [sport.draft]
+    summary: "The drafts belonging to a league (a dynasty league has one per season)."
+    base: default
+    path: /league/{league_id}/drafts
+    auth: default
+    params:
+      - { name: league_id, in: path, type: string, required: true, description: "League id." }
+    response_hint: "[{draft_id, league_id, season, status, type:'snake'|'auction'|'linear', settings:{rounds, teams}, draft_order:{user_id: slot}, start_time}]"
+    examples:
+      - description: "Drafts for the example league"
+        params: {league_id: "289646328504385536"}
+
+  - name: sleeper_draft
+    group: sleeper.draft
+    capabilities: [sport.draft]
+    summary: "One draft's configuration: type, rounds, slot order and status."
+    base: default
+    path: /draft/{draft_id}
+    auth: default
+    params:
+      - { name: draft_id, in: path, type: string, required: true, description: "Draft id (from sleeper_league_drafts)." }
+    response_hint: "{draft_id, league_id, season, status, type, settings:{rounds, teams, pick_timer}, draft_order, slot_to_roster_id, start_time, last_picked}"
+    examples:
+      - description: "A draft's settings"
+        params: {draft_id: "289646328504385537"}
+
+  - name: sleeper_draft_picks
+    group: sleeper.draft
+    capabilities: [sport.draft]
+    summary: "Every pick in a draft, in order, with the player taken and who took them."
+    base: default
+    path: /draft/{draft_id}/picks
+    auth: default
+    params:
+      - { name: draft_id, in: path, type: string, required: true, description: "Draft id." }
+    response_hint: "[{pick_no, round, draft_slot, roster_id, picked_by, player_id, is_keeper, metadata:{first_name, last_name, position, team}}]  — metadata carries the player's NAME, so you don't need the 15 MB player file"
+    examples:
+      - description: "All picks in a draft"
+        params: {draft_id: "289646328504385537"}

@@ -122,6 +122,14 @@ CONTRACTS: list[Contract] = [
         "games",
         ("id", "gameDate", "homeTeam", "awayTeam"),
     ),
+    # ── Sleeper (api.sleeper.app — public read API) ──
+    # Sleeper's own docs example league: a completed 2018 season, so it can't drift.
+    Contract("sleeper_league", {"league_id": "289646328504385536"},
+             ("league_id", "name", "season", "scoring_settings", "roster_positions")),
+    Contract("sleeper_league_rosters", {"league_id": "289646328504385536"},
+             list_at="", item_keys=("roster_id", "owner_id", "players")),
+    Contract("sleeper_league_users", {"league_id": "289646328504385536"},
+             list_at="", item_keys=("user_id", "display_name")),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~540 tools across 31 providers in Claude Desktop,
+Free & open source (MIT). ~550 tools across 32 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -36,7 +36,7 @@ seventeen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than thirty-one integrations.
+across books" is one question rather than thirty-two integrations.
 
 ### Built on this server
 
@@ -422,6 +422,20 @@ The league's own API — the one nhl.com reads (the old `statsapi.web.nhl.com` i
 The `espn.*` groups already answer "what's the NHL score"; this is the depth layer.
 Two conventions worth knowing: season ids are **concatenated years** (`20242025`), and
 `/now` paths 307-redirect. See [documentation/NHL.md](documentation/NHL.md).
+
+### Sleeper — `api.sleeper.app` (fantasy football, fully public)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `sleeper.reference` | 3 | Season/week state, username → user id, platform-wide trending adds/drops |
+| `sleeper.league` | 8 | Settings, rosters, managers, weekly matchups, transactions, playoff bracket, traded picks |
+| `sleeper.draft` | 3 | League drafts, draft settings, and every pick **with player names** |
+
+The other major fantasy platform, and the easier of the two to reach: Sleeper's read
+API needs **no key and no cookie** — a league id is enough. Joins `espnfantasy` on the
+`fantasy.*` capabilities, so "show me my league" works across both. The 15 MB player
+catalogue is deliberately not exposed; draft picks carry player names instead. See
+[documentation/Sleeper.md](documentation/Sleeper.md).
 
 ### ESPN Fantasy — your own fantasy league
 
