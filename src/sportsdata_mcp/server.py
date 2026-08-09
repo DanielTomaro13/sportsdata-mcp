@@ -22,6 +22,7 @@ from fastmcp import FastMCP
 from . import __version__
 from .config import Config, load_config
 from .licence import resolve_licensed_groups, revalidation_loop, set_live_groups
+from .prompts import register_prompts
 from .registry import _READ_ONLY, Registered, register_all
 from .resources.builders import register_capabilities_resource
 from .spec import Dispatcher, Endpoint, Spec
@@ -241,11 +242,17 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     provider_index = {cap: [(e.provider, e.tool) for e in entries] for cap, entries in cap_index.items()}
     register_capabilities_resource(mcp, catalogue, provider_index)
 
+    # Only the prompts whose tools are actually enabled — offering "compare odds
+    # across every book" to an official-stats-only install is a promise the server
+    # can't keep, and the model would hunt for tools that aren't registered.
+    prompt_names = register_prompts(mcp, enabled)
+
     log.info(
-        "registered %d tool(s) across enabled groups %s; %d resource(s)",
+        "registered %d tool(s) across enabled groups %s; %d resource(s); %d prompt(s)",
         len(registered.tools),
         sorted(enabled),
         len(registered.resources),
+        len(prompt_names),
     )
     return mcp, registered
 
