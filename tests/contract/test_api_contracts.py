@@ -130,6 +130,16 @@ CONTRACTS: list[Contract] = [
              list_at="", item_keys=("roster_id", "owner_id", "players")),
     Contract("sleeper_league_users", {"league_id": "289646328504385536"},
              list_at="", item_keys=("user_id", "display_name")),
+    # ── Jolpica F1 (api.jolpi.ca — public, Ergast successor) ──
+    # 2024 is complete, so these shapes are frozen. The envelope IS the contract here.
+    Contract("jolpicaf1_races", {"season": "2024", "format": "json"}, ("MRData",)),
+    Contract("jolpicaf1_driver_standings", {"season": "2024", "format": "json"}, ("MRData",)),
+    # ── Chess (lichess.org + api.chess.com — public) ──
+    Contract("lichess_leaderboard", {"count": 5, "perf": "blitz"}, ("users",),
+             "users", ("id", "username")),
+    Contract("chesscom_player", {"username": "hikaru"},
+             ("username", "player_id", "joined", "status")),
+    Contract("chesscom_titled_players", {"title": "GM"}, ("players",)),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

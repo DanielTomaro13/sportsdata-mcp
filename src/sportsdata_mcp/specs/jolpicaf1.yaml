@@ -1,0 +1,257 @@
+spec_version: 1
+
+# Jolpica F1 (api.jolpi.ca) — the community-maintained successor to Ergast.
+#
+# Ergast, the canonical open F1 dataset since 2009, was deprecated at the end of 2024.
+# Jolpica took over with a drop-in compatible API, so the URL grammar and response
+# envelope below are Ergast's, and every Ergast tutorial still applies.
+#
+# WHY THIS EXISTS ALONGSIDE `openf1`. They cover disjoint eras and granularities:
+#   * openf1  — LIVE timing and telemetry, car by car, 2023 onward. Nothing historical.
+#   * jolpica — every race since 1950: results, grids, qualifying, sprints, standings,
+#     lap times, pit stops, circuits and constructors. No live telemetry.
+# "Who won the 1976 Japanese GP" and "what lap is Verstappen on right now" are
+# different providers, and neither can answer the other's question.
+#
+# THE ENVELOPE. Every response is wrapped twice, and the inner table name CHANGES with
+# the endpoint — this is Ergast's shape and the single thing that trips new callers:
+#
+#   {"MRData": {"total": "24", "limit": "30", "offset": "0",
+#               "RaceTable":      {"Races": [...]}}}      # races / results / laps
+#   {"MRData": {"StandingsTable": {"StandingsLists": [...]}}}   # standings
+#   {"MRData": {"DriverTable":    {"Drivers": [...]}}}          # drivers
+#
+# So the path to the data is MRData.<Something>Table.<Something>s — never a flat list.
+# Numbers arrive as STRINGS ("24", "1:29.347"), including positions and points.
+#
+# PAGINATION is Ergast's: `limit` (default 30, max 100) and `offset`, with `total` in
+# MRData telling you how many exist. A season of lap times is thousands of rows, so an
+# unpaginated laps call quietly truncates at 30 unless you look at `total`.
+#
+# Probed live 2026-08-10: races, results, qualifying, sprint, both standings, drivers,
+# constructors, circuits, laps, pitstops and seasons all 200.
+
+provider:
+  id: jolpicaf1
+  display_name: "Jolpica F1 (Ergast successor — F1 history 1950→)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/JolpicaF1.md"
+  base_urls:
+    default: https://api.jolpi.ca/ergast/f1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Volunteer-run and free; Jolpica publishes a burst/sustained limit and asks
+    # callers to cache. Stay well under it.
+    rate_limit_rps: 3
+    burst: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  # ─── jolpicaf1.reference ──────────────────────────────────────────────
+  - name: jolpicaf1_seasons
+    group: jolpicaf1.reference
+    capabilities: [ref.seasons]
+    summary: "Every F1 season on record (1950 onward)."
+    base: default
+    path: /seasons/
+    auth: default
+    params:
+      - { name: format, in: query, type: string, default: json, description: "Leave as json — the API defaults to XML." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100). Check MRData.total for how many exist." }
+      - { name: offset, in: query, type: integer, description: "Page offset." }
+    response_hint: "{MRData:{total, limit, offset, SeasonTable:{Seasons:[{season, url}]}}}"
+    examples:
+      - description: "First page of seasons"
+        params: {format: json, limit: 30}
+
+  - name: jolpicaf1_drivers
+    group: jolpicaf1.reference
+    capabilities: [ref.players]
+    summary: "Drivers — all-time, or the field for one season."
+    base: default
+    path: /{season}/drivers/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year (e.g. 2024), or 'current'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+      - { name: offset, in: query, type: integer, description: "Page offset." }
+    response_hint: "{MRData:{DriverTable:{season, Drivers:[{driverId, permanentNumber, code, givenName, familyName, dateOfBirth, nationality, url}]}}}  — `driverId` (e.g. 'max_verstappen') is the key every other tool filters on"
+    examples:
+      - description: "2024 field"
+        params: {season: "2024", format: json}
+
+  - name: jolpicaf1_constructors
+    group: jolpicaf1.reference
+    capabilities: [ref.teams]
+    summary: "Constructors (teams) — all-time, or those entered in one season."
+    base: default
+    path: /{season}/constructors/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{ConstructorTable:{season, Constructors:[{constructorId, name, nationality, url}]}}}"
+    examples:
+      - description: "2024 constructors"
+        params: {season: "2024", format: json}
+
+  - name: jolpicaf1_circuits
+    group: jolpicaf1.reference
+    capabilities: [ref.venues]
+    summary: "Circuits, with location and coordinates."
+    base: default
+    path: /{season}/circuits/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{CircuitTable:{Circuits:[{circuitId, circuitName, Location:{lat, long, locality, country}, url}]}}}"
+    examples:
+      - description: "2024 circuits"
+        params: {season: "2024", format: json}
+
+  # ─── jolpicaf1.schedule ───────────────────────────────────────────────
+  - name: jolpicaf1_races
+    group: jolpicaf1.schedule
+    capabilities: [sport.fixtures_by_date]
+    summary: "A season's race calendar with dates, circuits and (from 2021) each session's date/time."
+    base: default
+    path: /{season}/races/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{RaceTable:{season, Races:[{season, round, raceName, date, time, url, Circuit:{circuitId, circuitName, Location}, FirstPractice, Qualifying, Sprint}]}}}  — `round` is what the result tools take"
+    examples:
+      - description: "2024 calendar"
+        params: {season: "2024", format: json}
+
+  # ─── jolpicaf1.results ────────────────────────────────────────────────
+  - name: jolpicaf1_results
+    group: jolpicaf1.results
+    capabilities: [sport.match_detail, stats.player_match]
+    summary: "Race results: finishing order, grid, laps, time/status, points and fastest lap."
+    base: default
+    path: /{season}/{round}/results/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: round, in: path, type: string, required: true, description: "Round number, or 'last'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{RaceTable:{Races:[{season, round, raceName, Results:[{position, positionText, points, grid, laps, status, Driver:{driverId, code}, Constructor:{constructorId}, Time:{millis, time}, FastestLap:{rank, lap, Time, AverageSpeed}}]}]}}}  — all values are STRINGS"
+    examples:
+      - description: "2024 round 1"
+        params: {season: "2024", round: "1", format: json}
+
+  - name: jolpicaf1_qualifying
+    group: jolpicaf1.results
+    capabilities: [sport.match_detail]
+    summary: "Qualifying results with Q1/Q2/Q3 times per driver."
+    base: default
+    path: /{season}/{round}/qualifying/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: round, in: path, type: string, required: true, description: "Round number, or 'last'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{RaceTable:{Races:[{QualifyingResults:[{position, Driver, Constructor, Q1, Q2, Q3}]}]}}}  — Q2/Q3 absent for drivers eliminated earlier"
+    examples:
+      - description: "2024 round 1 qualifying"
+        params: {season: "2024", round: "1", format: json}
+
+  - name: jolpicaf1_sprint
+    group: jolpicaf1.results
+    capabilities: [sport.match_detail]
+    summary: "Sprint race results (weekends that have one — 2021 onward)."
+    base: default
+    path: /{season}/{round}/sprint/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: round, in: path, type: string, required: true, description: "Round number." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{MRData:{RaceTable:{Races:[{SprintResults:[{position, points, grid, laps, status, Driver, Constructor, Time}]}]}}}  — Races is EMPTY for a weekend with no sprint, which is not an error"
+    examples:
+      - description: "A 2024 sprint weekend"
+        params: {season: "2024", round: "5", format: json}
+
+  - name: jolpicaf1_laps
+    group: jolpicaf1.results
+    capabilities: [stats.advanced_metrics]
+    summary: "Lap-by-lap times for every driver in a race. LARGE — page it or narrow to one lap."
+    base: default
+    path: /{season}/{round}/laps/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year." }
+      - { name: round, in: path, type: string, required: true, description: "Round number." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size (max 100). A full race is thousands of rows — check MRData.total." }
+      - { name: offset, in: query, type: integer, description: "Page offset." }
+    response_hint: "{MRData:{total, RaceTable:{Races:[{Laps:[{number, Timings:[{driverId, position, time}]}]}]}}}  — one entry per lap, each holding every driver's timing"
+    examples:
+      - description: "First laps of 2024 round 1"
+        params: {season: "2024", round: "1", format: json, limit: 100}
+
+  - name: jolpicaf1_pitstops
+    group: jolpicaf1.results
+    capabilities: [stats.advanced_metrics]
+    summary: "Pit stops for a race: lap, time of day and stationary duration."
+    base: default
+    path: /{season}/{round}/pitstops/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year." }
+      - { name: round, in: path, type: string, required: true, description: "Round number." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size (max 100)." }
+    response_hint: "{MRData:{RaceTable:{Races:[{PitStops:[{driverId, lap, stop, time, duration}]}]}}}  — `duration` is stationary time ('23.2'), `time` is clock time of day"
+    examples:
+      - description: "2024 round 1 pit stops"
+        params: {season: "2024", round: "1", format: json}
+
+  # ─── jolpicaf1.standings ──────────────────────────────────────────────
+  - name: jolpicaf1_driver_standings
+    group: jolpicaf1.standings
+    capabilities: [stats.ladder]
+    summary: "Drivers' championship standings — after a season, or after a specific round."
+    base: default
+    path: /{season}/driverstandings/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{StandingsTable:{season, round, StandingsLists:[{season, round, DriverStandings:[{position, points, wins, Driver:{driverId, code, familyName}, Constructors:[{constructorId, name}]}]}]}}}  — note the extra StandingsLists layer"
+    examples:
+      - description: "2024 drivers' championship"
+        params: {season: "2024", format: json}
+
+  - name: jolpicaf1_constructor_standings
+    group: jolpicaf1.standings
+    capabilities: [stats.ladder]
+    summary: "Constructors' championship standings."
+    base: default
+    path: /{season}/constructorstandings/
+    auth: default
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season year, or 'current'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+      - { name: limit, in: query, type: integer, default: 30, description: "Page size (max 100)." }
+    response_hint: "{MRData:{StandingsTable:{StandingsLists:[{season, round, ConstructorStandings:[{position, points, wins, Constructor:{constructorId, name, nationality}}]}]}}}"
+    examples:
+      - description: "2024 constructors' championship"
+        params: {season: "2024", format: json}

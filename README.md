@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~550 tools across 32 providers in Claude Desktop,
+Free & open source (MIT). ~590 tools across 35 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -32,11 +32,11 @@ invisible unless something is reading every book at once.*
 sports MCP servers will get you fixtures and standings. This one is built around
 *disagreement between books* — eleven bookmakers, the Betfair exchange, and two
 prediction markets (Kalshi, Polymarket) side by side on the same market, plus
-seventeen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
+twenty official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than thirty-two integrations.
+across books" is one question rather than thirty-five integrations.
 
 ### Built on this server
 
@@ -165,7 +165,7 @@ variable first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name
 
 | Variable | Effect |
 | --- | --- |
-| `SPORTSDATA_MCP_GROUPS` | Group selector; overrides `enabled_groups`. Accepts presets (`free`, `au-books`, `racing`, `arb`, `fantasy`, `official-stats`, `aus`, `odds`, `motorsport`, `all`), a provider id (`espn`) or glob (`espn.*`), literal groups, and exclusions (`*,-twitter`). Run `list-groups` to see every preset with its tool count. |
+| `SPORTSDATA_MCP_GROUPS` | Group selector; overrides `enabled_groups`. Accepts presets (`free`, `au-books`, `racing`, `arb`, `fantasy`, `chess`, `official-stats`, `aus`, `odds`, `motorsport`, `all`), a provider id (`espn`) or glob (`espn.*`), literal groups, and exclusions (`*,-twitter`). Run `list-groups` to see every preset with its tool count. |
 | `SPORTSDATA_MCP_CONFIG` | Path to a config file (see resolution order above). |
 | `SPORTSDATA_MCP_MAX_BYTES` | Global response-size cap in bytes for every provider that doesn't set its own `max_response_bytes`. `0` (the default) means no cap. |
 | `SPORTSDATA_MCP_CACHE_TTL` | Seconds to cache identical GET responses (default `60`, `0` disables). Absorbs the duplicate calls a model makes while reasoning, without staling live prices. Per provider: `providers.<id>.cache_ttl_seconds`. |
@@ -394,6 +394,34 @@ All ESPN tools are parametric over `sport` + `league` slugs (e.g. `football`/`nf
 `basketball`/`nba`, `soccer`/`eng.1`), so the five groups cover **every** league ESPN
 carries. Browse each dispatcher's operations in its `espn://{site,core,web,cdn}/operations`
 resource.
+
+### Jolpica F1 — `api.jolpi.ca` (F1 history 1950 →, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `jolpicaf1.reference` | 4 | Seasons, drivers, constructors, circuits |
+| `jolpicaf1.schedule` | 1 | Race calendars with per-session times |
+| `jolpicaf1.results` | 5 | Race, qualifying and sprint results, lap timings, pit stops |
+| `jolpicaf1.standings` | 2 | Drivers' and constructors' championships |
+
+The community successor to **Ergast**, deprecated at the end of 2024. Complements
+`openf1` rather than overlapping it: OpenF1 is live telemetry from 2023 onward,
+Jolpica is every race since 1950. "Who won the 1976 Japanese GP" and "what lap is
+Verstappen on" are different providers. Responses use Ergast's double `MRData`
+envelope and return all values as strings — see
+[documentation/JolpicaF1.md](documentation/JolpicaF1.md).
+
+### Chess — `lichess.org` + `api.chess.com` (no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `lichess.chess` | 6 | Per-time-control ratings, leaderboards, user status, daily puzzle, arenas |
+| `chesscom.chess` | 7 | Profiles, ratings by format, leaderboards, titled players, monthly game archives |
+
+Both major chess platforms. Note that **ratings are not comparable across them** —
+different pools and formulas — and only Chess.com serves game history as JSON, because
+Lichess streams its exports as NDJSON. See [Lichess.md](documentation/Lichess.md) and
+[ChessCom.md](documentation/ChessCom.md).
 
 ### Squiggle — `squiggle.com.au` (AFL prediction models)
 

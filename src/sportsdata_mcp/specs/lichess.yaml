@@ -1,0 +1,121 @@
+spec_version: 1
+
+# Lichess (lichess.org/api) — the open-source chess server's public API.
+#
+# Free, documented, generous (~20 req/s per IP) and no key for public reads. Together
+# with `chesscom` this gives the server a chess domain it previously had none of.
+#
+# NDJSON WARNING — the reason only these endpoints are modelled. Lichess streams many
+# of its bulk surfaces (game exports, broadcast lists, team members, tournament
+# results) as **newline-delimited JSON**: one JSON object per line, not a single
+# document. This engine decodes one JSON document per response, so those endpoints
+# would fail to parse. Verified live: `/api/broadcast` returns NDJSON and errors with
+# "Extra data: line 2". Only single-document JSON endpoints are exposed here; see
+# documentation/Lichess.md for what that rules out and why.
+#
+# Ratings live under `perfs`, keyed by time control (bullet / blitz / rapid / classical
+# / correspondence) plus variants (atomic, crazyhouse, …). There is no single "rating".
+#
+# Probed live 2026-08-10: user, top-by-perf, all-perf leaderboards, daily puzzle,
+# user status and the tournament list all 200 as single JSON documents.
+
+provider:
+  id: lichess
+  display_name: "Lichess (chess, lichess.org)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Lichess.md"
+  base_urls:
+    default: https://lichess.org/api
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Lichess documents ~20 req/s per IP and asks that you back off on 429 rather than
+    # hammer; it is a donation-funded non-profit.
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: lichess_user
+    group: lichess.chess
+    capabilities: [stats.player_profile, ref.players]
+    summary: "A Lichess player: ratings per time control and variant, games played, play time and profile."
+    base: default
+    path: /user/{username}
+    auth: default
+    params:
+      - { name: username, in: path, type: string, required: true, description: "Lichess username (case-insensitive)." }
+    response_hint: "{id, username, title, perfs:{bullet:{rating, games, rd, prog}, blitz:{…}, rapid:{…}, classical:{…}, correspondence:{…}, puzzle:{…}}, createdAt, seenAt, playTime:{total, tv}, count:{all, rated, win, loss, draw}, profile:{…}, patron, streamer}  — no single 'rating': read perfs.<timeControl>.rating"
+    examples:
+      - description: "One player's profile and ratings"
+        params: {username: thibault}
+
+  - name: lichess_users_status
+    group: lichess.chess
+    capabilities: []
+    summary: "Online/playing status for up to 50 users in one call — who is available right now."
+    base: default
+    path: /users/status
+    auth: default
+    params:
+      - { name: ids, in: query, type: string_csv, required: true, description: "Up to 50 usernames, comma-joined." }
+    response_hint: "[{id, name, title, online, playing, streaming, patron}]  (top-level array)"
+    examples:
+      - description: "Status of two players"
+        params: {ids: [thibault, neio]}
+
+  - name: lichess_leaderboard
+    group: lichess.chess
+    capabilities: [sport.rankings]
+    summary: "Top-rated players for one time control or variant."
+    base: default
+    path: /player/top/{count}/{perf}
+    auth: default
+    params:
+      - { name: count, in: path, type: integer, default: 10, description: "How many players (max 200)." }
+      - { name: perf, in: path, type: string, default: blitz, enum: [ultraBullet, bullet, blitz, rapid, classical, chess960, crazyhouse, antichess, atomic, horde, kingOfTheHill, racingKings, threeCheck], description: "Time control or variant." }
+    response_hint: "{users:[{id, username, title, perfs:{<perf>:{rating, progress}}, online}]}"
+    examples:
+      - description: "Top 10 blitz players"
+        params: {count: 10, perf: blitz}
+
+  - name: lichess_leaderboards_all
+    group: lichess.chess
+    capabilities: [sport.rankings]
+    summary: "Top 10 for EVERY time control and variant in a single call."
+    base: default
+    path: /player
+    auth: default
+    response_hint: "{bullet:[{id, username, title, perfs}], blitz:[…], rapid:[…], classical:[…], chess960:[…], atomic:[…], …}  — one array per perf"
+    examples:
+      - description: "Every leaderboard at once"
+        params: {}
+
+  - name: lichess_daily_puzzle
+    group: lichess.chess
+    capabilities: [content.news]
+    summary: "The daily puzzle: the position, the solution line, and the game it came from."
+    base: default
+    path: /puzzle/daily
+    auth: default
+    response_hint: "{game:{id, perf:{key, name}, rated, players:[{name, color, rating}], pgn, clock}, puzzle:{id, rating, plays, solution:[uci moves], themes:[str], initialPly}}"
+    examples:
+      - description: "Today's puzzle"
+        params: {}
+
+  - name: lichess_tournaments
+    group: lichess.chess
+    capabilities: [sport.fixtures_by_date]
+    summary: "Arena tournaments — currently running, finished and upcoming."
+    base: default
+    path: /tournament
+    auth: default
+    response_hint: "{created:[{id, fullName, startsAt, variant, clock, nbPlayers}], started:[…], finished:[…]}  — three lists by state, NOT one"
+    examples:
+      - description: "Arena tournaments by state"
+        params: {}

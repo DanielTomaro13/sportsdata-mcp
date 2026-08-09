@@ -239,14 +239,19 @@ PRESETS: dict[str, list[str]] = {
     ],
     # Exchange + prediction markets: the de-vigged "sharp" side of an arb comparison.
     "arb": ["betfair", "pinnacle", "kalshi", "polymarket"],
-    "fantasy": ["espnfantasy", "supercoach"],
+    "fantasy": ["espnfantasy", "supercoach", "sleeper"],
+    "chess": ["lichess", "chesscom"],
     # Official league / governing-body feeds only — no bookmakers.
     "official-stats": [
         "afl.public.*", "nrl", "nba", "nbl", "mlb", "premierleague", "laliga",
-        "seriea", "wta", "cricketaustralia", "openf1", "espn",
+        "seriea", "wta", "cricketaustralia", "openf1", "espn", "nhl", "jolpicaf1",
+        "squiggle",
     ],
-    "motorsport": ["openf1"],
-    "aus": ["afl.public.*", "nrl", "nbl", "supercoach", "cricketaustralia", "racingandsports"],
+    # Live telemetry (openf1, 2023→) plus the historical record (jolpicaf1, 1950→):
+    # neither answers the other's questions, so the preset carries both.
+    "motorsport": ["openf1", "jolpicaf1"],
+    "aus": ["afl.public.*", "nrl", "nbl", "supercoach", "cricketaustralia",
+            "racingandsports", "squiggle"],
 }
 
 

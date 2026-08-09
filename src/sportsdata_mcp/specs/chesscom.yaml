@@ -1,0 +1,145 @@
+spec_version: 1
+
+# Chess.com (api.chess.com/pub) — the "Published Data" API.
+#
+# Read-only, no key, no signup, and explicitly published for third-party use. Pairs
+# with `lichess`: between them you cover both major chess platforms, and a player who
+# exists on both can be compared directly.
+#
+# RATE LIMITING IS BEHAVIOURAL, not a documented number. Chess.com's guidance is
+# "serial requests are fine, parallel requests get throttled" — it returns 429 when it
+# sees concurrency from one caller rather than when a rate is exceeded. The token
+# bucket below is deliberately narrow (burst 1) so this provider issues requests
+# effectively serially. Widening `burst` is what breaks it.
+#
+# EVERY OBJECT CARRIES `@id`. Chess.com's API is hypermedia: an object's `@id` is the
+# canonical URL to fetch it again, and lists of things are often lists of URLs rather
+# than embedded objects (e.g. game archives). That's why `chesscom_archives` returns
+# links, and monthly games are fetched by year/month rather than by an id.
+#
+# TIMESTAMPS ARE UNIX SECONDS (`joined`, `last_online`, `date`), not ISO strings.
+#
+# Probed live 2026-08-10: player, stats, leaderboards, titled players, archives and
+# club all 200.
+
+provider:
+  id: chesscom
+  display_name: "Chess.com (chess, api.chess.com published data)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/ChessCom.md"
+  base_urls:
+    default: https://api.chess.com/pub
+  default_headers:
+    # Chess.com blocks requests without a recognisable User-Agent and asks for contact
+    # details in it — same convention as ESPN and Squiggle.
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Serial, not parallel — see the note above. burst 1 is the point, not a typo.
+    rate_limit_rps: 2
+    burst: 1
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.5
+
+endpoints:
+  - name: chesscom_player
+    group: chesscom.chess
+    capabilities: [stats.player_profile, ref.players]
+    summary: "A Chess.com player's profile: name, title, country, league, followers and status."
+    base: default
+    path: /player/{username}
+    auth: default
+    params:
+      - { name: username, in: path, type: string, required: true, description: "Chess.com username (lowercase)." }
+    response_hint: "{player_id, '@id', url, username, name, title, followers, country, location, joined, last_online, status, league, avatar}  — `joined`/`last_online` are UNIX SECONDS; `country` is a URL, not a code"
+    examples:
+      - description: "One player's profile"
+        params: {username: hikaru}
+
+  - name: chesscom_player_stats
+    group: chesscom.chess
+    capabilities: [stats.player_season, stats.player_career]
+    summary: "A player's ratings and records per game type — blitz, bullet, rapid, daily, plus tactics and puzzle rush."
+    base: default
+    path: /player/{username}/stats
+    auth: default
+    params:
+      - { name: username, in: path, type: string, required: true, description: "Chess.com username." }
+    response_hint: "{chess_blitz:{last:{rating, date, rd}, best:{rating, date, game}, record:{win, loss, draw}}, chess_bullet:{…}, chess_rapid:{…}, chess_daily:{…}, tactics:{highest, lowest}, puzzle_rush:{best}, fide}  — a key is ABSENT if the player has never played that format"
+    examples:
+      - description: "Ratings across formats"
+        params: {username: hikaru}
+
+  - name: chesscom_leaderboards
+    group: chesscom.chess
+    capabilities: [sport.rankings]
+    summary: "Chess.com's leaderboards for every category — live blitz/bullet/rapid, daily, variants and tactics. LARGE (~290 KB)."
+    base: default
+    path: /leaderboards
+    auth: default
+    response_hint: "{live_blitz:[{player_id, username, score, rank, title, country}], live_bullet:[…], live_rapid:[…], daily:[…], daily960:[…], tactics:[…], battle:[…]}  — one array per category"
+    examples:
+      - description: "All leaderboards"
+        params: {}
+
+  - name: chesscom_titled_players
+    group: chesscom.chess
+    capabilities: [ref.players]
+    summary: "Every player holding a given FIDE title — usernames only."
+    base: default
+    path: /titled/{title}
+    auth: default
+    params:
+      - { name: title, in: path, type: string, default: GM, enum: [GM, WGM, IM, WIM, FM, WFM, NM, WNM, CM, WCM], description: "FIDE title abbreviation." }
+    response_hint: "{players:[username]}  — a flat list of USERNAME STRINGS, not objects; feed one to chesscom_player for detail"
+    examples:
+      - description: "All grandmasters"
+        params: {title: GM}
+
+  - name: chesscom_archives
+    group: chesscom.chess
+    capabilities: []
+    summary: "The list of monthly game archives available for a player — call this before asking for a month's games."
+    base: default
+    path: /player/{username}/games/archives
+    auth: default
+    params:
+      - { name: username, in: path, type: string, required: true, description: "Chess.com username." }
+    response_hint: "{archives:[url]}  — URLs ending /games/YYYY/MM; take the year and month from the last entry to fetch the most recent games"
+    examples:
+      - description: "Which months a player has games for"
+        params: {username: hikaru}
+
+  - name: chesscom_monthly_games
+    group: chesscom.chess
+    capabilities: [stats.player_game_log]
+    summary: "Every game a player finished in one month, with PGN, result, ratings and opening ECO."
+    base: default
+    path: /player/{username}/games/{year}/{month}
+    auth: default
+    params:
+      - { name: username, in: path, type: string, required: true, description: "Chess.com username." }
+      - { name: year, in: path, type: string, required: true, description: "Four-digit year, e.g. 2025." }
+      - { name: month, in: path, type: string, required: true, description: "Two-digit month, ZERO-PADDED ('01', not '1')." }
+    response_hint: "{games:[{url, pgn, time_control, time_class, rules, end_time, rated, eco, white:{username, rating, result}, black:{…}}]}  — `end_time` is UNIX SECONDS; a prolific player's month can be several MB"
+    examples:
+      - description: "One player-month"
+        params: {username: hikaru, year: "2025", month: "01"}
+
+  - name: chesscom_club
+    group: chesscom.chess
+    capabilities: []
+    summary: "A Chess.com club: description, membership count, admins and average rating."
+    base: default
+    path: /club/{club_id}
+    auth: default
+    params:
+      - { name: club_id, in: path, type: string, required: true, description: "Club URL id, e.g. 'chess-com-developer-community'." }
+    response_hint: "{'@id', name, club_id, country, average_daily_rating, members_count, created, last_activity, admin:[url], description, url}"
+    examples:
+      - description: "The developer community club"
+        params: {club_id: chess-com-developer-community}
