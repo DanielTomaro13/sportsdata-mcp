@@ -48,13 +48,48 @@ def cli(ctx: click.Context, config_path: Path | None, verbose: bool) -> None:
 
 
 @cli.command()
+@click.option(
+    "--http", "use_http", is_flag=True, envvar="SPORTSDATA_MCP_HTTP",
+    help="Serve over HTTP instead of stdio (for remote clients / hosting).",
+)
+@click.option(
+    "--transport", type=click.Choice(["stdio", "http", "sse", "streamable-http"]),
+    default=None, help="Transport to use. Overrides --http.",
+)
+@click.option(
+    "--host", default="127.0.0.1", envvar="SPORTSDATA_MCP_HOST", show_default=True,
+    help="HTTP bind address. Anything but loopback exposes an UNAUTHENTICATED endpoint.",
+)
+@click.option(
+    "--port", default=3000, type=int, envvar="SPORTSDATA_MCP_PORT", show_default=True,
+    help="HTTP port.",
+)
 @click.pass_context
-def serve(ctx: click.Context) -> None:
-    """Start the MCP stdio server (default command)."""
-    from .server import serve_stdio
+def serve(ctx: click.Context, use_http: bool, transport: str | None, host: str, port: int) -> None:
+    """Start the MCP server. Defaults to stdio (what Claude Desktop / Cursor expect)."""
+    from .server import serve_http, serve_stdio
 
     cfg = load_config(explicit_path=ctx.obj.get("config_path"))
-    serve_stdio(cfg)
+    chosen = transport or ("http" if use_http else "stdio")
+    if chosen == "stdio":
+        serve_stdio(cfg)
+        return
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        # Loud, on stderr, before a single request is served — this endpoint has no
+        # auth, and the operator is about to publish their provider credentials to
+        # whatever network they just bound to.
+        click.echo(
+            click.style(
+                f"WARNING: binding {host}:{port} — the MCP endpoint is UNAUTHENTICATED. "
+                "Anyone who can reach it can use every enabled tool and any provider "
+                "credentials in this process's environment. Put it behind an "
+                "authenticating reverse proxy with TLS.",
+                fg="red",
+                bold=True,
+            ),
+            err=True,
+        )
+    serve_http(cfg, host=host, port=port, transport=chosen)
 
 
 @cli.command("list-groups")

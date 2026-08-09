@@ -260,3 +260,36 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
 def serve_stdio(cfg: Config | None = None, specs_dir: Path | None = None) -> None:
     mcp, _registered = build_server(cfg, specs_dir)
     mcp.run()  # stdio transport
+
+
+def serve_http(
+    cfg: Config | None = None,
+    specs_dir: Path | None = None,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 3000,
+    transport: str = "http",
+) -> None:
+    """Serve over HTTP (Streamable HTTP, or legacy SSE) instead of stdio.
+
+    For remote clients, web apps and container hosting — stdio only works for a
+    client that spawns the process itself.
+
+    SECURITY: binds loopback by default and the caller must opt into anything wider.
+    There is NO authentication on this endpoint: every enabled tool, and any
+    credential in this process's environment (ESPN_FANTASY_COOKIE, DATAGOLF_KEY,
+    X_BEARER_TOKEN…), is usable by anyone who can reach the port. Binding 0.0.0.0
+    on a shared network hands those to that network; put it behind a reverse proxy
+    that terminates TLS and authenticates first.
+    """
+    mcp, _registered = build_server(cfg, specs_dir)
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        log.warning(
+            "HTTP transport bound to %s:%s — this endpoint is UNAUTHENTICATED and exposes "
+            "every enabled tool plus any provider credentials in this process. Put it behind "
+            "an authenticating reverse proxy.",
+            host,
+            port,
+        )
+    log.info("serving MCP over %s at http://%s:%s/mcp", transport, host, port)
+    mcp.run(transport=transport, host=host, port=port)
