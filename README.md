@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~520 tools across 29 providers in Claude Desktop,
+Free & open source (MIT). ~540 tools across 31 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -32,11 +32,11 @@ invisible unless something is reading every book at once.*
 sports MCP servers will get you fixtures and standings. This one is built around
 *disagreement between books* — eleven bookmakers, the Betfair exchange, and two
 prediction markets (Kalshi, Polymarket) side by side on the same market, plus
-fifteen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
+seventeen official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than twenty-nine integrations.
+across books" is one question rather than thirty-one integrations.
 
 ### Built on this server
 
@@ -165,9 +165,11 @@ variable first, then by a `secrets: { SOME_VAR: "..." }` entry of the same name
 
 | Variable | Effect |
 | --- | --- |
-| `SPORTSDATA_MCP_GROUPS` | Comma-separated group list; overrides `enabled_groups`. |
+| `SPORTSDATA_MCP_GROUPS` | Group selector; overrides `enabled_groups`. Accepts presets (`free`, `au-books`, `racing`, `arb`, `fantasy`, `official-stats`, `aus`, `odds`, `motorsport`, `all`), a provider id (`espn`) or glob (`espn.*`), literal groups, and exclusions (`*,-twitter`). Run `list-groups` to see every preset with its tool count. |
 | `SPORTSDATA_MCP_CONFIG` | Path to a config file (see resolution order above). |
 | `SPORTSDATA_MCP_MAX_BYTES` | Global response-size cap in bytes for every provider that doesn't set its own `max_response_bytes`. `0` (the default) means no cap. |
+| `SPORTSDATA_MCP_CACHE_TTL` | Seconds to cache identical GET responses (default `60`, `0` disables). Absorbs the duplicate calls a model makes while reasoning, without staling live prices. Per provider: `providers.<id>.cache_ttl_seconds`. |
+| `SPORTSDATA_MCP_HTTP` / `SPORTSDATA_MCP_HOST` / `SPORTSDATA_MCP_PORT` | Serve over HTTP instead of stdio (same as `serve --http --host --port`). Binds `127.0.0.1` by default — **the endpoint is unauthenticated**, so anything wider exposes every enabled tool and any provider credential in the process to that network. |
 | `SPORTSDATA_LICENSE` | **Dormant** — the product is free; nothing requires a licence. The signed-entitlement machinery remains for anyone self-hosting gated premium feeds (see below). |
 | `SPORTSDATA_ENTITLEMENT_URL` / `SPORTSDATA_ENTITLEMENT_PUBKEY` | Only relevant with the dormant entitlement gate above. Normally unset. |
 
@@ -392,6 +394,34 @@ All ESPN tools are parametric over `sport` + `league` slugs (e.g. `football`/`nf
 `basketball`/`nba`, `soccer`/`eng.1`), so the five groups cover **every** league ESPN
 carries. Browse each dispatcher's operations in its `espn://{site,core,web,cdn}/operations`
 resource.
+
+### Squiggle — `squiggle.com.au` (AFL prediction models)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `squiggle.afl` | 6 | 41 independent AFL forecasting models: what each tipped, its confidence and margin, plus actual and projected ladders |
+
+Not another results feed — the **market of opinions** about AFL games, which is the
+natural counterpart to a bookmaker's price. Pull a round's tips, pull the same games
+from the books, de-vig the prices, and you're comparing a 41-model consensus against
+the market. `squiggle_ladder` also carries `swarms`, the simulated finishing-position
+distribution behind each projection. One volunteer's server, so the provider ships an
+honest contact User-Agent and a deliberately gentle rate limit — see
+[documentation/Squiggle.md](documentation/Squiggle.md).
+
+### NHL — `api-web.nhle.com` (official web API, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `nhl.reference` | 3 | Seasons, club rosters by position group, player bio/draft/career |
+| `nhl.schedule` | 2 | League schedule by week, and a club's full season game log |
+| `nhl.game` | 3 | Live scoreboard, box scores with per-player ice time, scoring summaries |
+| `nhl.stats` | 3 | Standings with division/conference/wildcard sequencing, skater and goalie leaders |
+
+The league's own API — the one nhl.com reads (the old `statsapi.web.nhl.com` is dead).
+The `espn.*` groups already answer "what's the NHL score"; this is the depth layer.
+Two conventions worth knowing: season ids are **concatenated years** (`20242025`), and
+`/now` paths 307-redirect. See [documentation/NHL.md](documentation/NHL.md).
 
 ### ESPN Fantasy — your own fantasy league
 

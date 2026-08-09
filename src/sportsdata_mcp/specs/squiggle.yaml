@@ -1,0 +1,147 @@
+spec_version: 1
+
+# Squiggle (squiggle.com.au) — AFL prediction MODELS, not raw results.
+#
+# Max Barry's Squiggle aggregates a field of independent AFL forecasting models
+# (Squiggle, Massey, PlusSixOne, Swinburne, The Arc, Matter of Stats, …) and
+# publishes what each one tipped, how confident it was, and how it scored. That is
+# the part no other provider in this server carries: `afl` gives you the official
+# fixture and results; Squiggle gives you the MARKET OF OPINIONS about them, which is
+# what you compare a bookmaker's price against.
+#
+# ONE ENDPOINT, one query param. Every call is `GET /?q=<resource>` with extra
+# filters appended as `;key=value` (semicolons, not ampersands — this is not a normal
+# query string). The engine sends them as ordinary query params, which the API accepts:
+# `?q=games&year=2026` works identically to `?q=games;year=2026` (verified live).
+#
+# ETIQUETTE — this one is not optional. Squiggle asks for a User-Agent that identifies
+# you with a contact address, and the operator has blocked anonymous scrapers before.
+# The default header below is honest by design; do NOT replace it with a browser
+# string. Rate limit is deliberately gentle for the same reason.
+#
+# Probed live 2026-08-10: teams, games, sources, tips, standings, ladder all 200.
+
+provider:
+  id: squiggle
+  display_name: "Squiggle (AFL prediction models, squiggle.com.au)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Squiggle.md"
+  base_urls:
+    default: https://api.squiggle.com.au
+  default_headers:
+    # Identifies the caller with a contact URL, as the API's usage notes ask.
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Deliberately gentle: a single volunteer-run host, and being a good citizen here
+    # is the difference between having this provider and being blocked.
+    rate_limit_rps: 2
+    burst: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: squiggle_teams
+    group: squiggle.afl
+    capabilities: [ref.teams]
+    summary: "AFL clubs with Squiggle's team ids — the id every other Squiggle tool keys off."
+    base: default
+    path: /
+    auth: default
+    params:
+      - { name: q, in: query, type: string, default: teams, description: "Leave as-is." }
+      - { name: year, in: query, type: integer, description: "Restrict to teams active in this season." }
+    response_hint: "{teams:[{id, name, abbrev, logo, debut, retirement}]}  — retirement 9999 means still active"
+    examples:
+      - description: "All AFL clubs"
+        params: {q: teams}
+
+  - name: squiggle_games
+    group: squiggle.afl
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "AFL fixture + results: each game with scores by goals/behinds, venue, and completion state."
+    base: default
+    path: /
+    auth: default
+    params:
+      - { name: q, in: query, type: string, default: games, description: "Leave as-is." }
+      - { name: year, in: query, type: integer, description: "Season, e.g. 2026. Omit for the current season." }
+      - { name: round, in: query, type: integer, description: "Round number. Omit for the whole season (~100 KB)." }
+      - { name: game, in: query, type: integer, description: "A single game id." }
+      - { name: team, in: query, type: integer, description: "Only games involving this team id." }
+      - { name: complete, in: query, type: integer, description: "100 = completed games only, 0 = not started." }
+    response_hint: "{games:[{id, round, year, date, unixtime, venue, hteam, hteamid, hscore, hgoals, hbehinds, ateam, ateamid, ascore, agoals, abehinds, complete, is_final, winnerteamid, updated}]}"
+    examples:
+      - description: "Round 1 of 2026"
+        params: {q: games, year: 2026, round: 1}
+
+  - name: squiggle_sources
+    group: squiggle.afl
+    capabilities: []
+    summary: "The forecasting models Squiggle tracks — call this first to learn the sourceid values the tip tools filter on."
+    base: default
+    path: /
+    auth: default
+    params:
+      - { name: q, in: query, type: string, default: sources, description: "Leave as-is." }
+      - { name: year, in: query, type: integer, description: "Only models active in this season." }
+    response_hint: "{sources:[{id, name, url, icon}]}  — `id` is the `source` filter on squiggle_tips / squiggle_ladder"
+    examples:
+      - description: "Every tracked model"
+        params: {q: sources}
+
+  - name: squiggle_tips
+    group: squiggle.afl
+    capabilities: [stats.model_predictions]
+    summary: "What each model tipped for a game: winner, predicted margin, confidence %, and — for played games — whether it was right."
+    base: default
+    path: /
+    auth: default
+    params:
+      - { name: q, in: query, type: string, default: tips, description: "Leave as-is." }
+      - { name: year, in: query, type: integer, description: "Season." }
+      - { name: round, in: query, type: integer, description: "Round. Strongly recommended — a whole season is ~100 KB." }
+      - { name: game, in: query, type: integer, description: "Tips for one game id (every model's view of it)." }
+      - { name: source, in: query, type: integer, description: "Only this model's tips (id from squiggle_sources)." }
+      - { name: complete, in: query, type: integer, description: "100 = only games already played (so `correct` is meaningful)." }
+    response_hint: "{tips:[{gameid, round, year, date, source, sourceid, hteam, hteamid, ateam, ateamid, tip, tipteamid, margin, confidence, hconfidence, hmargin, correct, bits, err, updated}]}  — confidence is a %, bits is the model's information score, correct is null until played"
+    examples:
+      - description: "Every model's tips for round 1, 2026"
+        params: {q: tips, year: 2026, round: 1}
+
+  - name: squiggle_standings
+    group: squiggle.afl
+    capabilities: [stats.ladder]
+    summary: "The ACTUAL AFL ladder — real wins/losses/percentage, not a projection."
+    base: default
+    path: /
+    auth: default
+    params:
+      - { name: q, in: query, type: string, default: standings, description: "Leave as-is." }
+      - { name: year, in: query, type: integer, description: "Season." }
+      - { name: round, in: query, type: integer, description: "Ladder as it stood after this round." }
+    response_hint: "{standings:[{rank, id, name, played, wins, losses, draws, pts, for, against, percentage, goals_for, goals_against, behinds_for, behinds_against}]}"
+    examples:
+      - description: "Current 2026 ladder"
+        params: {q: standings, year: 2026}
+
+  - name: squiggle_ladder
+    group: squiggle.afl
+    capabilities: [stats.model_predictions, stats.ladder]
+    summary: "PROJECTED end-of-season ladder per model, with each team's simulated finishing-position distribution (`swarms`)."
+    base: default
+    path: /
+    auth: default
+    params:
+      - { name: q, in: query, type: string, default: ladder, description: "Leave as-is." }
+      - { name: year, in: query, type: integer, description: "Season." }
+      - { name: round, in: query, type: integer, description: "Projection as at this round. Recommended — a season is ~100 KB." }
+      - { name: source, in: query, type: integer, description: "Only this model's projection (id from squiggle_sources)." }
+    response_hint: "{ladder:[{source, sourceid, year, round, team, teamid, rank, mean_rank, wins, percentage, swarms:[str], updated}]}  — `swarms` is the simulated distribution over finishing positions; `rank` here is PROJECTED, unlike squiggle_standings"
+    examples:
+      - description: "Projected ladder after round 1, 2026"
+        params: {q: ladder, year: 2026, round: 1}

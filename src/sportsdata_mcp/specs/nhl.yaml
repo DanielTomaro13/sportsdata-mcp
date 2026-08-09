@@ -1,0 +1,206 @@
+spec_version: 1
+
+# NHL — the league's own web API (api-web.nhle.com), the one nhl.com's site reads.
+#
+# Undocumented but stable and generous: no key, no bot challenge, no geo-block. It
+# replaced the old statsapi.web.nhl.com (dead since 2023), so anything you find
+# referencing `statsapi.web.nhl.com/api/v1/...` is stale.
+#
+# WHY THIS EXISTS ALONGSIDE `espn`. The ESPN provider already returns NHL scores and
+# standings through its slug-parametric dispatchers (verified: `hockey/nhl` works).
+# This is the depth layer: real box scores with per-player ice time, full club
+# rosters with bio/draft detail, career splits, and league leaders — none of which
+# the generic ESPN surface gives you.
+#
+# TWO SHAPES TO KNOW:
+#   * `/now` paths 307-redirect to the concrete dated path. The engine follows
+#     redirects, so this is invisible — but a raw curl without -L looks broken.
+#   * Season ids are CONCATENATED years, not a single year: 2024-25 is `20242025`.
+#     Getting this wrong returns 404, not an empty list.
+#
+# Team is addressed by 3-letter abbreviation (TOR, COL, VGK), never by numeric id.
+#
+# Probed live 2026-08-10: standings, schedule, score, boxscore, landing, roster,
+# club schedule, leaders and the season list all 200.
+
+provider:
+  id: nhl
+  display_name: "NHL (api-web.nhle.com, official web API)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/NHL.md"
+  base_urls:
+    default: https://api-web.nhle.com/v1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  # ─── nhl.reference ────────────────────────────────────────────────────
+  - name: nhl_seasons
+    group: nhl.reference
+    capabilities: [ref.seasons]
+    summary: "Every season the standings API covers, with its start/end dates and which rules applied — call this to get valid season ids."
+    base: default
+    path: /standings-season
+    auth: default
+    response_hint: "{currentDate, seasons:[{id:20242025, standingsStart, standingsEnd, conferencesInUse, divisionsInUse, tiesInUse, wildcardInUse, pointForOTlossInUse}]}  — `id` is the concatenated-year season format every other tool wants"
+    examples:
+      - description: "All seasons"
+        params: {}
+
+  - name: nhl_roster
+    group: nhl.reference
+    capabilities: [ref.players]
+    summary: "A club's full roster for one season, split into forwards / defensemen / goalies with bio, height/weight, shoots-catches and birthplace."
+    base: default
+    path: /roster/{team}/{season}
+    auth: default
+    params:
+      - { name: team, in: path, type: string, required: true, description: "3-letter club abbreviation, e.g. TOR, COL, VGK." }
+      - { name: season, in: path, type: string, required: true, description: "Concatenated-year season, e.g. 20242025 for 2024-25." }
+    response_hint: "{forwards:[…], defensemen:[…], goalies:[{id, firstName, lastName, sweaterNumber, positionCode, shootsCatches, heightInInches, weightInPounds, birthDate, birthCity, birthCountry, headshot}]}  — three parallel arrays, NOT one `players` list"
+    examples:
+      - description: "Toronto's 2024-25 roster"
+        params: {team: TOR, season: "20242025"}
+
+  - name: nhl_player
+    group: nhl.reference
+    capabilities: [stats.player_profile, stats.player_career, stats.player_season]
+    summary: "One player's landing page: bio, draft details, current season splits, career totals and awards."
+    base: default
+    path: /player/{playerId}/landing
+    auth: default
+    params:
+      - { name: playerId, in: path, type: integer, required: true, description: "NHL player id (from nhl_roster or a box score)." }
+    response_hint: "{playerId, firstName, lastName, position, sweaterNumber, currentTeamAbbrev, birthDate, birthCity, birthCountry, draftDetails:{year, round, overallPick, teamAbbrev}, featuredStats, careerTotals:{regularSeason, playoffs}, seasonTotals:[…], awards:[{trophy, seasons}]}"
+    examples:
+      - description: "Connor McDavid"
+        params: {playerId: 8478402}
+
+  # ─── nhl.schedule ─────────────────────────────────────────────────────
+  - name: nhl_schedule
+    group: nhl.schedule
+    capabilities: [sport.fixtures_by_date]
+    summary: "League schedule for the current week (or a given date's week), grouped by day."
+    base: default
+    path: /schedule/{date}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, default: now, description: "YYYY-MM-DD, or 'now' for the current week. A 307 to the dated path is followed automatically." }
+    response_hint: "{gameWeek:[{date, dayAbbrev, numberOfGames, games:[{id, startTimeUTC, gameState, gameType, homeTeam:{abbrev, score}, awayTeam:{…}, venue}]}], regularSeasonStartDate, regularSeasonEndDate, playoffEndDate, nextStartDate, previousStartDate}"
+    examples:
+      - description: "This week's games"
+        params: {date: now}
+
+  - name: nhl_club_schedule
+    group: nhl.schedule
+    capabilities: [sport.fixtures_by_date, stats.team_game_log]
+    summary: "One club's entire season schedule with results — the team game log."
+    base: default
+    path: /club-schedule-season/{team}/{season}
+    auth: default
+    params:
+      - { name: team, in: path, type: string, required: true, description: "3-letter club abbreviation." }
+      - { name: season, in: path, type: string, required: true, description: "Concatenated-year season, e.g. 20242025." }
+    response_hint: "{games:[{id, gameDate, gameType, gameState, homeTeam:{abbrev, score}, awayTeam:{abbrev, score}, gameOutcome:{lastPeriodType}, venue, neutralSite}], currentSeason, previousSeason, nextSeason, clubTimezone}  (~200 KB for a full season)"
+    examples:
+      - description: "Toronto's full 2024-25 season"
+        params: {team: TOR, season: "20242025"}
+
+  # ─── nhl.game ─────────────────────────────────────────────────────────
+  - name: nhl_scores
+    group: nhl.game
+    capabilities: [sport.match_score, sport.in_play]
+    summary: "Live scoreboard: every game on a date with current score, clock and period."
+    base: default
+    path: /score/{date}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, default: now, description: "YYYY-MM-DD, or 'now' for today." }
+    response_hint: "{currentDate, prevDate, nextDate, games:[{id, gameState, gameScheduleState, startTimeUTC, homeTeam:{abbrev, score, sog}, awayTeam:{…}, clock:{timeRemaining, running, inIntermission}, periodDescriptor:{number, periodType}, goals:[…]}], gameWeek:[…]}"
+    examples:
+      - description: "Today's scores"
+        params: {date: now}
+
+  - name: nhl_boxscore
+    group: nhl.game
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Full box score for one game: both lineups with goals, assists, plus-minus, shots, hits, blocks and time on ice."
+    base: default
+    path: /gamecenter/{gameId}/boxscore
+    auth: default
+    params:
+      - { name: gameId, in: path, type: integer, required: true, description: "NHL game id (from nhl_schedule / nhl_scores)." }
+    response_hint: "{id, gameDate, gameState, gameOutcome, homeTeam:{abbrev, score, sog}, awayTeam:{…}, playerByGameStats:{homeTeam:{forwards:[{playerId, name, goals, assists, points, plusMinus, sog, hits, blockedShots, toi}], defense:[…], goalies:[…]}, awayTeam:{…}}, clock, periodDescriptor}"
+    examples:
+      - description: "One completed game"
+        params: {gameId: 2024020500}
+
+  - name: nhl_game_landing
+    group: nhl.game
+    capabilities: [sport.match_detail, stats.play_by_play]
+    summary: "Game landing page: scoring summary by period, three stars, penalties and team game stats."
+    base: default
+    path: /gamecenter/{gameId}/landing
+    auth: default
+    params:
+      - { name: gameId, in: path, type: integer, required: true, description: "NHL game id." }
+    response_hint: "{id, gameDate, gameState, homeTeam, awayTeam, summary:{scoring:[{periodDescriptor, goals:[{timeInPeriod, firstName, lastName, assists, strength}]}], penalties:[…], threeStars:[…], teamGameStats:[…]}, clock}"
+    examples:
+      - description: "One completed game"
+        params: {gameId: 2024020500}
+
+  # ─── nhl.stats ────────────────────────────────────────────────────────
+  - name: nhl_standings
+    group: nhl.stats
+    capabilities: [stats.ladder]
+    summary: "League standings with division/conference/wildcard sequencing and clinch indicators."
+    base: default
+    path: /standings/{date}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, default: now, description: "YYYY-MM-DD for standings as at that date, or 'now'." }
+    response_hint: "{standings:[{teamName:{default}, teamAbbrev:{default}, conferenceName, divisionName, gamesPlayed, wins, losses, otLosses, points, pointPctg, goalFor, goalAgainst, goalDifferential, divisionSequence, conferenceSequence, wildcardSequence, l10Wins, streakCode, streakCount, clinchIndicator}], wildCardIndicator, standingsDateTimeUtc}"
+    examples:
+      - description: "Current standings"
+        params: {date: now}
+
+  - name: nhl_skater_leaders
+    group: nhl.stats
+    capabilities: [stats.leaders_season]
+    summary: "League leaders among skaters — goals, assists, points, plus-minus, power-play and short-handed goals, penalty minutes, ice time."
+    base: default
+    path: /skater-stats-leaders/{season_or_current}
+    auth: default
+    params:
+      - { name: season_or_current, in: path, type: string, default: current, description: "'current', or a concatenated-year season, e.g. 20242025." }
+      - { name: categories, in: query, type: string, description: "Restrict to one category, e.g. 'points', 'goals', 'assists'." }
+      - { name: limit, in: query, type: integer, default: 10, description: "Leaders per category. -1 returns all." }
+    response_hint: "{goals:[{id, firstName:{default}, lastName:{default}, teamAbbrev, position, value, headshot}], assists:[…], points:[…], plusMinus:[…], goalsPp:[…], goalsSh:[…], penaltyMins:[…], toi:[…]}  — one array per category"
+    examples:
+      - description: "Current season leaders"
+        params: {season_or_current: current, limit: 10}
+
+  - name: nhl_goalie_leaders
+    group: nhl.stats
+    capabilities: [stats.leaders_season]
+    summary: "League leaders among goalies — wins, save percentage, goals-against average and shutouts."
+    base: default
+    path: /goalie-stats-leaders/{season_or_current}
+    auth: default
+    params:
+      - { name: season_or_current, in: path, type: string, default: current, description: "'current', or a concatenated-year season." }
+      - { name: categories, in: query, type: string, description: "Restrict to one category, e.g. 'wins', 'savePctg', 'goalsAgainstAverage', 'shutouts'." }
+      - { name: limit, in: query, type: integer, default: 10, description: "Leaders per category. -1 returns all." }
+    response_hint: "{wins:[{id, firstName:{default}, lastName:{default}, teamAbbrev, value, headshot}], savePctg:[…], goalsAgainstAverage:[…], shutouts:[…]}"
+    examples:
+      - description: "Current goalie leaders"
+        params: {season_or_current: current, limit: 10}

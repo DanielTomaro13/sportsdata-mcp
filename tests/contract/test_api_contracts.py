@@ -103,6 +103,25 @@ CONTRACTS: list[Contract] = [
         {"game": "ffl", "seasonId": 2018, "leagueId": 1234},
         ("draftDetail",),
     ),
+    # ── Squiggle (api.squiggle.com.au — public, AFL models) ──
+    # Seeds with no date in them: the club list and the model list are both stable.
+    Contract("squiggle_teams", {"q": "teams"}, ("teams",), "teams", ("id", "name", "abbrev")),
+    Contract("squiggle_sources", {"q": "sources"}, ("sources",), "sources", ("id", "name")),
+    # ── NHL (api-web.nhle.com — public) ──
+    # A completed 2024-25 game and a frozen season id, so neither shape drifts.
+    Contract("nhl_seasons", {}, ("seasons",), "seasons", ("id", "standingsStart")),
+    Contract(
+        "nhl_boxscore",
+        {"gameId": 2024020500},
+        ("id", "homeTeam", "awayTeam", "playerByGameStats"),
+    ),
+    Contract(
+        "nhl_club_schedule",
+        {"team": "TOR", "season": "20242025"},
+        ("games",),
+        "games",
+        ("id", "gameDate", "homeTeam", "awayTeam"),
+    ),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

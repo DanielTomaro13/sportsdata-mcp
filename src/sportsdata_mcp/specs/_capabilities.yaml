@@ -102,6 +102,10 @@ capabilities:
   - id: stats.win_probability
     description: "In-game win-probability time series for a contest."
 
+  - id: stats.model_predictions
+    description: "Third-party forecasting-model output: tipped winner, predicted margin, confidence, simulated finishing positions."
+    single_provider: true
+
   # ─── Fantasy leagues (a user's own managed league, not the pro competition) ──
   # ESPN Fantasy is the only provider today; drop `single_provider` if a second
   # fantasy platform (Yahoo, Sleeper, DraftKings) is ever added.
