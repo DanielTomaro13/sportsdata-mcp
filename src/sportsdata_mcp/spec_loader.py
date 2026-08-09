@@ -7,6 +7,7 @@ identically from a source checkout, an installed wheel, or ``uvx``.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 from collections import defaultdict
@@ -210,15 +211,100 @@ def lint(specs_dir: Path | None = None) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def expand_wildcard_groups(enabled_groups: list[str], specs: list[Spec]) -> list[str]:
-    """Resolve the ``"*"`` wildcard to every group across the given specs.
+# Curated group sets, so a newcomer doesn't have to already know 88 group names to
+# get a useful server. Values are provider ids and/or literal groups — both are run
+# through the same resolver below, so `provider.*` semantics apply here too.
+#
+# Keep these honest: a preset promises a coherent job ("compare prices across AU
+# books"), not a marketing bundle. `free` is the one people will actually start with.
+PRESETS: dict[str, list[str]] = {
+    # Everything that works with NO user setup. Only datagolf and twitter genuinely
+    # need a key the user must go and get: laliga ships a public subscription key as a
+    # literal fallback, and afl.premium mints its token from a public endpoint — both
+    # verified live returning 200 with an empty environment, so excluding them would
+    # hide 20 working tools for no reason.
+    "free": ["*", "-datagolf", "-twitter"],
+    "all": ["*"],
+    # The pitch: cross-book price disagreement on AU markets.
+    "au-books": ["sportsbet", "tab", "betr", "pointsbet", "unibet", "entain", "dabble", "betfair"],
+    # Books + exchange + prediction markets — everything you'd need to price a market.
+    "odds": [
+        "sportsbet", "tab", "betr", "pointsbet", "unibet", "entain", "dabble",
+        "betfair", "pinnacle", "fanduel", "kalshi", "polymarket",
+    ],
+    # Thoroughbred / greyhound / harness across every book that prices it, plus form.
+    "racing": [
+        "sportsbet.racing", "tab.racing", "betr.racing", "pointsbet.racing",
+        "unibet.racing", "fanduel.racing", "entain.*", "racingandsports", "betfair",
+    ],
+    # Exchange + prediction markets: the de-vigged "sharp" side of an arb comparison.
+    "arb": ["betfair", "pinnacle", "kalshi", "polymarket"],
+    "fantasy": ["espnfantasy", "supercoach"],
+    # Official league / governing-body feeds only — no bookmakers.
+    "official-stats": [
+        "afl.public.*", "nrl", "nba", "nbl", "mlb", "premierleague", "laliga",
+        "seriea", "wta", "cricketaustralia", "openf1", "espn",
+    ],
+    "motorsport": ["openf1"],
+    "aus": ["afl.public.*", "nrl", "nbl", "supercoach", "cricketaustralia", "racingandsports"],
+}
 
-    Shared by every consumer of ``Config.enabled_groups`` (server, doctor) so the
-    wildcard means the same thing everywhere.
-    """
-    if "*" not in enabled_groups:
-        return enabled_groups
+
+def _all_groups(specs: list[Spec]) -> list[str]:
     return sorted({t.group for s in specs for t in s.all_tools()})
+
+
+def _match_token(token: str, groups: list[str]) -> list[str]:
+    """Groups selected by one (already sign-stripped) token.
+
+    Accepts, in order: ``*`` (everything), a preset name, ``provider.*`` or any other
+    ``fnmatch`` glob, a bare provider id (all its groups), or a literal group name.
+    """
+    if token == "*":
+        return list(groups)
+    if token in PRESETS:
+        return resolve_groups(PRESETS[token], groups)
+    if any(ch in token for ch in "*?["):
+        # `espn.*` reads as "every espn group" to anyone who has used a shell — and
+        # silently matching NOTHING (the old behaviour) is the worst possible answer,
+        # because doctor/serve then run happily over an empty tool set.
+        return [g for g in groups if fnmatch.fnmatch(g, token)]
+    if "." not in token:
+        return [g for g in groups if g.split(".", 1)[0] == token]
+    return [token]
+
+
+def resolve_groups(tokens: list[str], groups: list[str]) -> list[str]:
+    """Resolve group selectors to concrete group names.
+
+    Additions are applied first, then exclusions (``-token``), so the natural
+    ``"*,-twitter"`` means "everything except twitter" regardless of order. An
+    exclusion accepts every form an addition does, presets included.
+    """
+    include: set[str] = set()
+    exclude: set[str] = set()
+    for raw in tokens:
+        token = raw.strip()
+        if not token:
+            continue
+        if token.startswith("-"):
+            exclude.update(_match_token(token[1:], groups))
+        else:
+            include.update(_match_token(token, groups))
+    return sorted(include - exclude)
+
+
+def expand_wildcard_groups(enabled_groups: list[str], specs: list[Spec]) -> list[str]:
+    """Resolve ``Config.enabled_groups`` selectors against the loaded specs.
+
+    Shared by every consumer (server, doctor) so a selector means the same thing
+    everywhere. Historically this only expanded a bare ``"*"``; it now also handles
+    presets, provider ids, globs and exclusions, while a plain list of literal group
+    names still resolves to itself.
+    """
+    if not enabled_groups:
+        return []
+    return resolve_groups(enabled_groups, _all_groups(specs))
 
 
 def build_provider_index(specs: list[Spec], enabled_groups: set[str]) -> dict[str, list[tuple[str, str]]]:

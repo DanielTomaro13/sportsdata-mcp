@@ -68,12 +68,11 @@ jobs:
           if [ -s new-drift.txt ]; then
             echo "── suspected new drift, re-probing to confirm:"; cat new-drift.txt
             sleep 20
-            # Enumerate the suspects' REAL group names. Only the bare "*" is a
-            # wildcard — "espn.*" is read as a literal group, matches nothing, and
-            # doctor then exits 0 having probed NOTHING, which would silently turn
-            # every suspected drift into a "transient" pass.
-            retry_groups="$(sportsdata-mcp list-groups | awk '{print $1}' \
-              | grep -E "^($(paste -sd'|' - < new-drift.txt))\." | paste -sd, -)"
+            # `provider.*` selects all of a provider's groups (engine-side since
+            # v0.24.0). Before that it matched nothing and doctor exited 0 having
+            # probed NOTHING, silently turning every real drift into a "transient"
+            # pass — the guards below stay because that failure was invisible.
+            retry_groups="$(paste -sd, - < new-drift.txt | sed 's/\([^,]*\)/\1.*/g')"
             echo "   re-probing groups: ${retry_groups:-<none>}"
             if [ -z "$retry_groups" ]; then
               echo "::error::could not resolve groups for the suspects — failing rather than assuming transient"

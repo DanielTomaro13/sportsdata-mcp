@@ -70,6 +70,22 @@ def list_groups() -> None:
         g = groups[name]
         click.echo(f"{name:<{width}}  [{g['tools']:>2} tools]  {g['description']}")
 
+    # Presets are the practical entry point — nobody should have to read 88 group
+    # names to get started, so print them where the group list is already being read.
+    from .spec_loader import PRESETS, expand_wildcard_groups
+
+    click.echo("")
+    click.echo("Presets (SPORTSDATA_MCP_GROUPS=<preset>):")
+    pw = max(len(p) for p in PRESETS)
+    for preset in PRESETS:
+        resolved = expand_wildcard_groups([preset], specs)
+        tools = sum(groups[g]["tools"] for g in resolved if g in groups)
+        provs = len({g.split(".")[0] for g in resolved})
+        click.echo(f"  {preset:<{pw}}  {len(resolved):>2} groups · {provs:>2} providers · {tools:>3} tools")
+    click.echo("")
+    click.echo("Selectors: '*' all · 'espn' or 'espn.*' one provider · '-twitter' to exclude")
+    click.echo("  e.g. SPORTSDATA_MCP_GROUPS='free,-espnfantasy'  or  '*,-twitter,-datagolf'")
+
 
 @cli.command()
 @click.argument("specs", nargs=-1, type=click.Path(path_type=Path))
