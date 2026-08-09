@@ -22,7 +22,7 @@ from fastmcp import FastMCP
 from . import __version__
 from .config import Config, load_config
 from .licence import resolve_licensed_groups, revalidation_loop, set_live_groups
-from .registry import Registered, register_all
+from .registry import _READ_ONLY, Registered, register_all
 from .resources.builders import register_capabilities_resource
 from .spec import Dispatcher, Endpoint, Spec
 from .spec_loader import expand_wildcard_groups, load_all_specs, load_capabilities
@@ -183,7 +183,7 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     cap_index = _build_capability_index(specs, enabled)
 
     # ── Meta-tools (always registered) ──
-    @mcp.tool
+    @mcp.tool(annotations=_READ_ONLY)
     def list_available_groups() -> dict:
         """List every tool group across all providers, which are currently enabled,
         and each provider's auth requirements (env-var names + required/optional).
@@ -198,7 +198,7 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
             "hint": "Edit sportsdata-mcp.yaml `enabled_groups` (or SPORTSDATA_MCP_GROUPS) and restart.",
         }
 
-    @mcp.tool
+    @mcp.tool(annotations=_READ_ONLY)
     def list_tools_by_capability(capability: str | None = None) -> dict:
         """Discover tools by capability — the unit of cross-provider comparison.
 
@@ -229,7 +229,7 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     registered = register_all(mcp, specs, cfg)
     holder["registered"] = registered
 
-    @mcp.tool
+    @mcp.tool(annotations=_READ_ONLY)
     def list_resources() -> dict:
         """List all registered MCP resources (capability map, dispatcher catalogues, reference data)."""
         return {

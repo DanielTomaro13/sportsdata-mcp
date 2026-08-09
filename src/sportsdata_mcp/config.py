@@ -13,6 +13,10 @@ import yaml
 # to protect the model's context window; see max_response_bytes_for().
 MAX_RESPONSE_BYTES_DEFAULT = 0
 RATE_LIMIT_RPS_DEFAULT = 10.0
+# Short-lived GET response cache. 60s is long enough to absorb the duplicate calls a
+# model makes while reasoning over one question, and short enough that live prices
+# stay live — the whole point of this server is that odds move.
+CACHE_TTL_DEFAULT = 60.0
 
 
 @dataclass
@@ -25,6 +29,9 @@ class Config:
     # Global response-size cap (bytes) applied to every provider that doesn't set its own.
     # 0 (or negative) disables the cap entirely. None = fall back to MAX_RESPONSE_BYTES_DEFAULT.
     max_bytes_override: int | None = None
+    # GET response cache TTL (seconds). 0 (or negative) disables caching.
+    # None = fall back to CACHE_TTL_DEFAULT.
+    cache_ttl_override: float | None = None
 
     def request_timeout(self, provider_id: str, spec_default: float | None = None, default: float = 30.0) -> float:
         """Read-timeout (seconds). User config wins, then the spec default, then ``default``."""
@@ -47,6 +54,20 @@ class Config:
         if self.max_bytes_override is not None:
             return int(self.max_bytes_override)
         return MAX_RESPONSE_BYTES_DEFAULT
+
+    def cache_ttl_for(self, provider_id: str) -> float:
+        """Per-provider GET response cache TTL in seconds; 0 or negative disables it.
+
+        Precedence mirrors ``max_response_bytes_for``: ``providers.<id>.cache_ttl_seconds``
+        > the global override (``SPORTSDATA_MCP_CACHE_TTL`` env / ``cache_ttl_override``)
+        > the default.
+        """
+        prov = self.providers.get(provider_id, {})
+        if prov.get("cache_ttl_seconds") is not None:
+            return float(prov["cache_ttl_seconds"])
+        if self.cache_ttl_override is not None:
+            return float(self.cache_ttl_override)
+        return CACHE_TTL_DEFAULT
 
     def rate_limit_rps_for(self, provider_id: str, spec_default: float | None = None) -> float:
         """Per-provider token-bucket sustained rate (requests/sec).
@@ -103,6 +124,14 @@ def load_config(explicit_path: Path | None = None, specs_dir: Path | None = None
     if env_max:
         try:
             cfg.max_bytes_override = int(env_max)
+        except ValueError:
+            pass  # ignore a malformed value; fall back to per-provider / default
+
+    # SPORTSDATA_MCP_CACHE_TTL sets the global GET cache TTL in seconds; 0 disables it.
+    env_ttl = os.environ.get("SPORTSDATA_MCP_CACHE_TTL")
+    if env_ttl:
+        try:
+            cfg.cache_ttl_override = float(env_ttl)
         except ValueError:
             pass  # ignore a malformed value; fall back to per-provider / default
 

@@ -22,7 +22,10 @@ def _client(*, strip: bool, prov_cfg: dict | None = None) -> HTTPClient:
         auth={"default": AuthNone()},
         defaults=ProviderDefaults(strip_cookies=strip),
     )
-    cfg = Config(providers={"demo": prov_cfg} if prov_cfg else {})
+    # Cache OFF: these tests assert on what reaches the TRANSPORT across two identical
+    # GETs, and the response cache would (correctly) collapse the second one so the
+    # cookie-replay behaviour never gets exercised.
+    cfg = Config(providers={"demo": prov_cfg} if prov_cfg else {}, cache_ttl_override=0)
     return HTTPClient(provider, cfg)
 
 

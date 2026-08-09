@@ -26,6 +26,10 @@ from .spec import AuthAFLWMCTok, AuthKalshiRSA, AuthNone, AuthOAuthRefresh, Auth
 
 log = logging.getLogger("sportsdata_mcp.http")
 
+# Bound on cached GETs per provider. Responses here run to megabytes (ESPN Fantasy
+# `allon` is ~4.5 MB), so this caps memory rather than hit rate.
+_CACHE_MAX_ENTRIES = 256
+
 
 def _snippet(r: httpx.Response, n: int = 200) -> str:
     return r.text[:n].replace("\n", " ").strip()
@@ -94,6 +98,10 @@ class HTTPClient:
             http2=True,  # negotiated via ALPN; falls back to HTTP/1.1. Some CDNs (Akamai) prefer h2.
         )
         self._auth_providers: dict[str, AuthProvider] = {}
+        # Short-lived GET cache: key -> (expires_at_monotonic, decoded_body). Insertion
+        # ordered, so popping the first item evicts the oldest when the bound is hit.
+        self._cache: dict[str, tuple[float, dict | list]] = {}
+        self._cache_ttl = cfg.cache_ttl_for(provider.id)
         burst = prov_cfg.get("burst")
         if burst is None:
             burst = defaults.burst if defaults.burst is not None else 10
@@ -245,10 +253,51 @@ class HTTPClient:
         """Force-acquire the auth header for ``auth_key`` (used by ``doctor``)."""
         return await self._auth_provider(auth_key).get()
 
+    def _cache_key(self, kwargs: dict) -> str | None:
+        """Cache key for a GET, or None when the call must not be cached.
+
+        Only GETs with no body are cacheable — anything else may have side effects
+        upstream. The key includes the auth key because the public and private tiers
+        of the same URL can return different documents (ESPN Fantasy: a private league
+        is 401 anonymous, data with the cookie), and serving one for the other would
+        be a cross-tier leak rather than merely a stale read.
+        """
+        if str(kwargs.get("method", "GET")).upper() != "GET" or kwargs.get("json_body") is not None:
+            return None
+        return json.dumps(
+            [
+                kwargs.get("base"),
+                kwargs.get("url"),
+                kwargs.get("params"),
+                kwargs.get("headers"),
+                kwargs.get("auth_key"),
+            ],
+            sort_keys=True,
+            default=str,
+        )
+
     async def request_json(self, **kwargs) -> dict | list:
         """Request + defensive decode. Tool handlers call this — never a bare ``r.json()``."""
+        key = self._cache_key(kwargs) if self._cache_ttl > 0 else None
+        if key is not None:
+            hit = self._cache.get(key)
+            if hit is not None and hit[0] > time.monotonic():
+                log.debug("cache hit (provider=%s) %s", self._provider.id, kwargs.get("url"))
+                return hit[1]
         r = await self.request(**kwargs)
-        return self._decode(r)
+        body = self._decode(r)
+        if key is not None:
+            # Evict expired entries before inserting, and bound the map so a long-running
+            # server driven over many distinct params can't grow without limit.
+            now = time.monotonic()
+            if len(self._cache) >= _CACHE_MAX_ENTRIES:
+                for k, (exp, _v) in list(self._cache.items()):
+                    if exp <= now:
+                        del self._cache[k]
+                if len(self._cache) >= _CACHE_MAX_ENTRIES:
+                    self._cache.pop(next(iter(self._cache)), None)  # oldest insert
+            self._cache[key] = (now + self._cache_ttl, body)
+        return body
 
     def _decode(self, r: httpx.Response) -> dict | list:
         # 1. Status guard — surface bot-blocks / rate-limits / server errors as clean

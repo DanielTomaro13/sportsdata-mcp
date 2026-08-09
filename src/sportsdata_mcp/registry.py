@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
+from mcp.types import ToolAnnotations
 
 from .classify import apply_classify
 from .config import Config
@@ -32,6 +33,13 @@ from .resources.builders import (
 from .spec import Dispatcher, Endpoint, Param, Spec
 
 log = logging.getLogger("sportsdata_mcp.registry")
+
+# Every tool in this server is a GET against a third-party API: it never mutates
+# anything, the same args return the same answer (modulo the upstream's own live
+# data), and the data lives outside this system. Declaring that lets clients skip
+# the per-call confirmation prompt — with 500+ tools, being asked to approve each
+# read is the difference between usable and unusable.
+_READ_ONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
 
 
 # ─── Python type mapping ───────────────────────────────────────────────
@@ -284,7 +292,11 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             if endpoint.group not in enabled:
                 continue
             handler = _guard(make_endpoint_handler(endpoint, http), endpoint.name, endpoint.group)
-            mcp.tool(name=endpoint.name, description=_describe(endpoint))(handler)
+            mcp.tool(
+                name=endpoint.name,
+                description=_describe(endpoint),
+                annotations=_READ_ONLY,
+            )(handler)
             registered.tools.append(endpoint.name)
 
         for dispatcher in spec.dispatchers:
@@ -293,7 +305,11 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             handler = _guard(
                 make_dispatcher_handler(dispatcher, spec, http), dispatcher.name, dispatcher.group
             )
-            mcp.tool(name=dispatcher.name, description=_describe(dispatcher))(handler)
+            mcp.tool(
+                name=dispatcher.name,
+                description=_describe(dispatcher),
+                annotations=_READ_ONLY,
+            )(handler)
             registered.tools.append(dispatcher.name)
             if dispatcher.kind in ("graphql_persisted", "graphql_query"):
                 register_graphql_catalog(mcp, dispatcher, spec)
