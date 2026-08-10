@@ -4,6 +4,15 @@ Reference for **`football-data.co.uk`** — decades of football results publishe
 downloads, each row carrying **closing odds from ~10 bookmakers**. Free, keyless.
 Probed live 2026-08-10.
 
+## Tool
+
+| Tool | What it gives you |
+|---|---|
+| `footballdatauk_season` | One league season as JSON: every match with result, shots, corners, cards and closing prices from ~10 bookmakers |
+
+The provider registers exactly one tool — the dataset is one CSV per league-season, and
+`season` + `division` select which.
+
 ## Why this is here, and it isn't "another results feed"
 
 Every other football provider in this catalogue tells you *what happened*. This one

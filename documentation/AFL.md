@@ -1721,3 +1721,83 @@ The 401 response from each `api.afl.com.au` endpoint leaks the back-end `host` h
 - 16 competitions, 26 broadcast regions, 49 broadcasters.
 
 *Verified 2026-05-27 against `https://aflapi.afl.com.au` from an anonymous client. Every `api.afl.com.au` path was probed unauthenticated to confirm existence (401 = exists, 403 = blocked/non-existent, 404 = not routed). Full response shapes for token-gated endpoints require a valid `x-media-mis-token`.*
+
+## Tool reference
+
+Every tool this provider registers, grouped as the server groups them. The
+sections above explain the *services*; this maps a tool name onto one.
+
+
+### `afl.premium.cfs`
+
+| Tool | What it does |
+|---|---|
+| `afl_cfs_call` | Call any of the AFL CFS premium operations (api.afl.com.au/cfs/afl/...).
+Requires the anonymous x-media-mis-token (minted automatically). Path… |
+
+### `afl.premium.keyserver`
+
+| Tool | What it does |
+|---|---|
+| `afl_keyserver_url_signing` | Sign an AFL HLS video URL for playback (returns a token-signed CDN URL). |
+
+### `afl.premium.statspro`
+
+| Tool | What it does |
+|---|---|
+| `afl_statspro_call` | Call any of the AFL StatsPro operations (api.afl.com.au/statspro/...).
+Requires the anonymous x-media-mis-token (minted automatically). Path… |
+
+### `afl.public.broadcasting`
+
+| Tool | What it does |
+|---|---|
+| `afl_broadcast_channels` | List broadcast channels (272) with media types (VIDEO/AUDIO/TEXT). |
+| `afl_broadcast_event_get` | Get a single broadcast event by id. |
+| `afl_broadcast_events` | Broadcast schedule — one entry per match per channel. |
+| `afl_broadcast_match_events` | Broadcast events scoped to one (compseason, round). |
+| `afl_broadcast_region_get` | Get a single broadcast region by id. |
+| `afl_broadcast_regions` | List broadcast regions (26) with timezones. |
+| `afl_broadcasters_list` | List broadcasters (49: Foxtel, Channel 7, BBC, ESPN, …). |
+| `afl_live_audio` | Live AFL audio streams (empty when no game is live). |
+| `afl_live_video` | Live AFL video streams (empty when no game is live). |
+
+### `afl.public.content`
+
+| Tool | What it does |
+|---|---|
+| `afl_content_photo_get` | Get a single photo content item by id. |
+| `afl_content_photo_list` | List photo content. |
+| `afl_content_promo_get` | Get a single promo content item by id. |
+| `afl_content_promo_list` | List promo / marketing cards (each embeds a links[] of CTAs). |
+| `afl_content_text_get` | Get a single text article by id. |
+| `afl_content_text_list` | List text articles (news) with reference/tag filters. |
+| `afl_content_video_get` | Get a single video content item by id. |
+| `afl_content_video_list` | List video content (highlights, replays, press conferences). |
+
+### `afl.public.core`
+
+| Tool | What it does |
+|---|---|
+| `afl_club_get` | Get a single club by id. |
+| `afl_clubs_list` | List AFL/AFLW clubs (32). |
+| `afl_competition_compseasons` | List comp seasons within one competition. |
+| `afl_competition_get` | Get a single competition by integer id. |
+| `afl_competitions_list` | List all AFL competitions (AFL, AFLW, VFL, SANFL, …). |
+| `afl_compseason_get` | Get a single comp season (embeds its full rounds array + currentRoundNumber). |
+| `afl_compseasons_list` | List comp seasons across all competitions (2012–present). |
+| `afl_ladders_get` | Competition ladder up to a comp season's current round. |
+| `afl_match_get` | Get a single match by integer id (teams, venue, time, score when started). |
+| `afl_matches_idmap` | Map every match providerId (CD_M*) to its integer id (~48 KB). |
+| `afl_matches_list` | List matches with filters (competition, season, round, team, status, date). |
+| `afl_player_get` | Get a single player by id (bio, draft, height/weight). |
+| `afl_players_idmap` | Map every player providerId (CD_I*) to its integer id (~98 KB, 17k+). |
+| `afl_players_list` | List players (17k+ all-time catalogue). |
+| `afl_rounds_list` | List rounds for a comp season (incl. byes, start/end times). |
+| `afl_season_get` | Get a single calendar-year season by id. |
+| `afl_seasons_list` | List calendar-year season records. |
+| `afl_team_get` | Get a single team by id (incl. social/home-venue metadata). |
+| `afl_teams_idmap` | Map CD_T* team providerIds to integer aflapi ids (and vice versa). |
+| `afl_teams_list` | List teams (150 incl. AFL men, AFLW, state leagues, historical). |
+| `afl_venue_get` | Get a single venue by id. |
+| `afl_venues_list` | List venues (191) incl. location, state, timezone, landOwner. |

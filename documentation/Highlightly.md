@@ -44,10 +44,52 @@ Same pattern as `apisports`.
 | `highlightly_baseball_highlights` | Baseball clips |
 | `highlightly_hockey_highlights` | Ice-hockey clips |
 
-## Two details
+## How to actually get a clip
 
-**`url` and `embedUrl` are not interchangeable** — one is a page link, the other an
-iframe source.
+Highlights are keyed to a match, so the flow is always two calls:
 
-**The score is nested under `state`**, not on the match object:
-`match.state.score.current`.
+1. `highlightly_soccer_matches` (or the equivalent for the sport) with a `date` or
+   `leagueId` → the match and its `id`.
+2. `highlightly_soccer_highlights` with `matchId` → the clips for it.
+
+Filtering highlights by `date` alone works too, but returns everything that day across
+every competition, so `leagueId` is usually the filter you want.
+
+`highlightly_soccer_leagues` gives you the `leagueId` values, and takes a `leagueName`
+search — useful because competition naming here does not always match other providers'.
+
+## Shapes worth knowing
+
+**`url` and `embedUrl` are not interchangeable.** One is a page link for a human, the
+other an iframe source for embedding. Handing a model the wrong one produces a link that
+looks right and does not play where it is put.
+
+**The score is nested under `state`**, not on the match:
+
+```json
+{"id": 123, "homeTeam": {"name": "Arsenal"}, "awayTeam": {"name": "Chelsea"},
+ "state": {"description": "Finished", "score": {"current": "2 - 1", "penalties": null}}}
+```
+
+Note `score.current` is a **display string**, not two numbers.
+
+**Pagination is `limit` + `offset`**, with `limit` capped at 40, and the totals live in a
+`pagination` object on the response.
+
+## Coverage is not uniform
+
+Highlight availability depends on rights, which vary by competition and change. An empty
+result for a real match usually means no clip is licensed for it, not that the call is
+wrong — check `highlightly_soccer_leagues` to confirm the competition is covered at all
+before assuming a bug.
+
+## Limits
+
+The free tier is small and the vendor's tiers differ; this server caps at 2 rps. Video
+URLs point at third-party hosts (YouTube and similar), so their availability is outside
+both this API's control and ours.
+
+## See also
+
+- [AFL.md](AFL.md) and [NRL.md](NRL.md) — official video for those two codes, keyless
+- [ESPN.md](ESPN.md) — some video metadata, keyless

@@ -142,3 +142,8 @@ directly comparable via `list_tools_by_capability`:
 
 See [`examples/comparator-prompt.md`](../examples/comparator-prompt.md) for a
 worked cross-book odds comparison.
+
+## Two racing tools worth knowing about
+
+- **`tab_racing_runner_form`** — per-runner detailed form for one runner in a race: recent starts, times, track and distance records. Deeper than the form carried inline on a racecard.
+- **`tab_racing_futures_race`** — a single futures market (e.g. a Cup outright) with its runners and prices, as opposed to `tab_racing_futures_meetings` which lists the meetings carrying futures.

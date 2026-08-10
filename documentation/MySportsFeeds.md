@@ -68,3 +68,36 @@ Code that expects a flat game object will find neither the teams nor the score.
 ```
 
 Usually easier than looking one up first.
+
+## Filtering, which is where the value is
+
+The endpoints take the same filter vocabulary, and applying it server-side is what makes
+this API pleasant compared to paging a whole season:
+
+| Filter | Accepts | Example |
+|---|---|---|
+| `date` | a day, or a range | `20240115`, `from-20240101-to-20240131` |
+| `team` | team abbreviations | `LAL`, `BOS,NYK` |
+| `player` | ids **or name slugs** | `stephen-curry` |
+| `status` | game state | `unplayed`, `in-progress`, `final` |
+
+Name slugs are the nicest touch here — `player=stephen-curry` works without a lookup
+call, which no other US-sports provider in this catalogue offers.
+
+## The stats groups differ per sport
+
+`mysportsfeeds_player_gamelogs` returns a `stats` object whose groups depend on the
+league: `passing` / `rushing` / `receiving` for the NFL, `offense` / `rebounds` /
+`defense` for the NBA, `batting` / `pitching` for MLB. Do not write one parser for all
+four.
+
+## Injuries have no season segment
+
+`mysportsfeeds_injuries` is always "now" — the path takes a league and nothing else.
+That is deliberate on their side, and it means you cannot ask who was injured in week 3
+of last season from this endpoint.
+
+## See also
+
+- [SportsDataIO.md](SportsDataIO.md) — the same leagues, plus DFS salaries, trial-only
+- [MLB.md](MLB.md), [NHL.md](NHL.md), [NBA.md](NBA.md) — official, keyless, deeper

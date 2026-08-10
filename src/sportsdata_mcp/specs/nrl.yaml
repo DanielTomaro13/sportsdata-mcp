@@ -13,7 +13,7 @@ spec_version: 1
 provider:
   id: nrl
   display_name: "NRL (Champion Data Match Centre)"
-  doc_url: null
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/NRL.md"
   base_urls:
     default: https://mc.championdata.com
   default_headers:

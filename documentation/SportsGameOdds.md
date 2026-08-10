@@ -64,6 +64,35 @@ event.odds            → keyed by oddID   (an OBJECT, not a list)
 So reaching a number means two key lookups, not an array scan. Code written against the
 other aggregators will not transfer.
 
+## Building a prop query without guessing
+
+Constructing an `oddID` by hand fails silently — a wrong `statID` returns nothing rather
+than an error. The reliable order is:
+
+1. `sportsgameodds_leagues` → the `leagueID` (`NFL`, `NBA`, `MLB`, `NHL`, `EPL`, `NCAAF`).
+2. `sportsgameodds_stats` with that league → the **valid `statID` values**. This is the
+   step people skip, and the reason their filters come back empty.
+3. `sportsgameodds_players` → the `playerID` that forms the `statEntityID`.
+4. `sportsgameodds_events` with `leagueID` and `oddsAvailable: true` → events with their
+   odds attached, keyed by `oddID`.
+
+## Pagination
+
+`limit` plus a `cursor` taken from `nextCursor` on the previous response. Default `limit`
+is small (10), so an events call over a full slate needs paging.
+
+## What "stable ids" buys you
+
+Because the `oddID` does not change between books or over time, two things become easy
+that are otherwise painful:
+
+- **Line shopping** — the same market across every book in one `byBookmaker` map, no
+  name matching.
+- **Line movement** — the same market across snapshots, so open-to-close is a
+  subtraction rather than a fuzzy join.
+
+That is the actual argument for this provider over the other two aggregators.
+
 ## See also
 
 - [TheOddsAPI.md](TheOddsAPI.md) — historical snapshots

@@ -61,3 +61,33 @@ feed always returns today's card.)
   engine's CSV serialisation can't reproduce) and is low-value track imagery.
 - `UserProfile/GetNotifications`, `FormGuide/GetUserPick` — account/session surfaces.
 - `signalr/start…` — the live-odds **SignalR websocket** (not a REST endpoint).
+
+## Where it sits among the racing providers
+
+This catalogue has a lot of racing, and the providers are not interchangeable:
+
+| Provider | Best for |
+|---|---|
+| `sportsbet`, `tab`, `betr`, `pointsbet`, `entain` | Live prices, racecards, fluctuations |
+| `betfair` | Exchange prices — the closest thing to a true market |
+| **`racingandsports`** | **Form and ratings as a data feed**, not a betting surface |
+
+Racing and Sports is a form service rather than a bookmaker, so it answers "what does the
+past say about this runner" rather than "what is the market saying now". Pair it with a
+book for prices.
+
+## Practical notes
+
+Meeting and race identifiers here do **not** match the bookmakers' ids — every AU racing
+provider mints its own. Joining across them means matching on date, track name and race
+number, and track names vary in spelling ("Flemington" is easy; provincial tracks are
+not). The `racing.*` capability tags exist so a model can find the equivalent tool on
+another provider, but the join is still yours to do.
+
+Coverage is Australian and New Zealand thoroughbred racing first, with harness and greys
+thinner.
+
+## See also
+
+- [Sportsbet.md](Sportsbet.md), [TAB.md](TAB.md) — racecards and prices
+- [Betfair.md](Betfair.md) — exchange prices

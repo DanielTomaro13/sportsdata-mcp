@@ -2342,3 +2342,80 @@ These were extracted from the production JS bundles but were either non-`GET`, g
 ---
 
 *Verified 2026-05-25 against `https://www.sportsbet.com.au/apigw/...` from a logged-out anonymous client. Field shapes are reproduced from observed responses; absence of a field in this document means it was not observed in the sample payloads. Endpoint behaviour and field shapes are subject to change.*
+
+## Tool reference
+
+Every tool this provider registers. The sections above describe the underlying
+services; this is the lookup from a tool name to what it does.
+
+
+### `sportsbet.cross`
+
+| Tool | What it does |
+|---|---|
+| `sportsbet_cms_messages` | Sitewide CMS messages (banners, notices). |
+| `sportsbet_cms_page` | CMS page block by competition id or page path (one of the two is required). |
+| `sportsbet_cms_settings` | Global CMS settings / feature flags for the app. |
+| `sportsbet_event_status` | Live status flags for a sport event (suspended, in-play, settled). |
+| `sportsbet_league_ladder` | League ladder / standings for a sport competition. |
+| `sportsbet_match_preview` | Editorial match preview (text + video) for one sport event. |
+| `sportsbet_page_content` | Homepage tab content (sports or racing landing modules). |
+| `sportsbet_popular_promotions` | Trending / popular promotions for a promo provider + client. |
+| `sportsbet_race_preview` | Editorial race preview (text + video) for one race. |
+| `sportsbet_safer_gambling_message` | Current safer-gambling message block for the site. |
+| `sportsbet_track_report` | Track report (going, rail, weather) for a racing meeting on a date. |
+| `sportsbet_trending_sgm` | Trending Same Game Multi (SGM) combinations for one sport event. |
+
+### `sportsbet.graphql`
+
+| Tool | What it does |
+|---|---|
+| `sportsbet_graphql_call` | Call any of Sportsbet's persisted GraphQL operations against
+www.sportsbet.com.au/apigw/sportsbook/graph by name + variables. Hashes
+are managed… |
+
+### `sportsbet.racing`
+
+| Tool | What it does |
+|---|---|
+| `sportsbet_multiple_racecards` | Racecards for several races in one call (batch by event ids). |
+| `sportsbet_racecard` | Racecard for one race: runners, prices, scratchings. |
+| `sportsbet_racecard_with_context` | Racecard plus surrounding context (meeting, results, related markets) for one race. |
+| `sportsbet_racing_allracing` | All race meetings (every code) for one date, grouped by meeting. |
+| `sportsbet_racing_best_bets` | Editorially-selected best bets across racing. |
+| `sportsbet_racing_best_bets_with_events` | Best bets with their full parent event objects inlined. |
+| `sportsbet_racing_challenges` | All racing challenges / promotions feed. |
+| `sportsbet_racing_competition` | Racing competition (meeting) detail by competition id. |
+| `sportsbet_racing_event_meeting` | Meeting context for one racing event (parent meeting + sibling races). |
+| `sportsbet_racing_futures` | Racing futures markets (Cup outrights and other long-running racing markets). |
+| `sportsbet_racing_megabets` | Racing Megabets (large multi suggestions across races). |
+| `sportsbet_racing_multis_events` | Events available for racing multis, ordered by start (next-to-jump style feed). |
+| `sportsbet_racing_popular_srms` | Popular Same Race Multi (SRM) combinations for races / meetings. |
+| `sportsbet_racing_resulted_events` | Resulted races (placings + dividends) for a racing competition + class + date. |
+| `sportsbet_racing_top_jockeys` | Top jockeys hub (leading jockeys and their rides today). |
+
+### `sportsbet.results`
+
+| Tool | What it does |
+|---|---|
+| `sportsbet_results_classes` | Sport classes that have results available for a date. |
+| `sportsbet_results_competitions` | Competitions with results for a sport class on a date. |
+
+### `sportsbet.sports`
+
+| Tool | What it does |
+|---|---|
+| `sportsbet_bet_live` | BetLive feed — events currently in-play and bettable live. |
+| `sportsbet_class_coupon` | Coupon (grouped markets) for a whole sport class. |
+| `sportsbet_competition_matches` | Match-type events for a sport competition. |
+| `sportsbet_competition_outrights` | Outright (futures) events for a sport competition. |
+| `sportsbet_event_commentary` | Live score + text commentary for one or more sport events. |
+| `sportsbet_event_markets` | All markets + selections + live prices for one sport event. |
+| `sportsbet_event_results` | Results for a finished sport event (final score + settled markets). |
+| `sportsbet_nav_hierarchy` | Sports navigation hierarchy (class → competition tree for menus). |
+| `sportsbet_sport_card_legacy` | Legacy single sport event card (event + primary markets). |
+| `sportsbet_sport_competition` | Sport competition page: matches, outrights and optional top markets. |
+| `sportsbet_sport_resulted_events` | Resulted (finished) events for a sport competition + class + date. |
+| `sportsbet_sports_card` | Full sport event card (all markets + selections) or the resulted event if finished. |
+| `sportsbet_sports_classes` | Sport classes (sports) with their competitions for a date window. |
+| `sportsbet_upcoming_events` | Upcoming sport events across all codes (homepage upcoming feed). |

@@ -30,12 +30,18 @@ habit is the usual failure.
 
 ## Tools
 
-| Tool | League |
-|---|---|
-| `balldontlie_nba_teams`, `_nba_players`, `_nba_games`, `_nba_stats`, `_nba_season_averages`, `_nba_standings` | NBA |
-| `balldontlie_nfl_games` | NFL |
-| `balldontlie_mlb_games` | MLB |
-| `balldontlie_epl_teams`, `_epl_games` | Premier League |
+| Tool | League | What it gives you |
+|---|---|---|
+| `balldontlie_nba_teams` | NBA | All 30 franchises with conference and division |
+| `balldontlie_nba_players` | NBA | Players, searchable by name |
+| `balldontlie_nba_games` | NBA | Games by date, season or team |
+| `balldontlie_nba_stats` | NBA | Per-player, per-game box-score lines |
+| `balldontlie_nba_season_averages` | NBA | Season averages for specific players |
+| `balldontlie_nba_standings` | NBA | Standings for a season |
+| `balldontlie_nfl_games` | NFL | Games by season, week or team |
+| `balldontlie_mlb_games` | MLB | Games by date, season or team |
+| `balldontlie_epl_teams` | EPL | Clubs for a season |
+| `balldontlie_epl_games` | EPL | Fixtures and results |
 
 ## The shape is not uniform across sports
 
@@ -60,3 +66,42 @@ better:
 BallDontLie earns its place when you want **one shape across four leagues** — a
 cross-sport question is much easier to write against it than against four different
 official APIs.
+
+## Working within 5 requests a minute
+
+The free tier is tight enough to shape how you use it:
+
+- Filter server-side. `balldontlie_nba_games` accepts `dates`, `seasons`, `team_ids` and
+  `postseason` — every filter you apply is a page you do not have to fetch.
+- Raise `per_page` to 100 rather than paging at the default 25.
+- Let the response cache serve repeats; identical calls inside the TTL cost nothing.
+- `balldontlie_nba_season_averages` **requires** `player_ids` — it will not return a
+  whole league, so gather the ids you need first from one `players` call.
+
+## Season numbering
+
+A season is its **start year**: the 2023-24 NBA season is `2023`. This is the same
+convention as the official `nba` provider, and the opposite of `apisports`' basketball
+host, which wants the span string `"2023-2024"`.
+
+## Reading a stat line
+
+```json
+{"min": "34:12", "pts": 28, "reb": 7, "ast": 11, "fg_pct": 0.526,
+ "fg3m": 4, "turnover": 3}
+```
+
+`min` is a **"MM:SS" string** — sorting or averaging it needs a parse first. `turnover`
+is singular. Percentages are decimals (0.526), not 52.6.
+
+## Cursor pagination, concretely
+
+```
+GET /nba/v1/games?per_page=100
+  → {"data": [...], "meta": {"next_cursor": 12345, "per_page": 100}}
+GET /nba/v1/games?per_page=100&cursor=12345
+```
+
+When `meta.next_cursor` is absent, you have reached the end. Asking for `page=2` does
+nothing at all — it is silently ignored, which looks like duplicate data rather than an
+error.

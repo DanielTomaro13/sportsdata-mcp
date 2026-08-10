@@ -1483,3 +1483,43 @@ v2/create-owners-incentive-scheme-entry
 ---
 
 *Verified 2026-05-25 from an anonymous client against `api.ladbrokes.com.au` (Cloudflare-fronted Entain Neds Platform). Operation hashes and variable signatures are extracted from `vendor-graphql-ops-web-D59Og4AP.js`; the gateway-registered hash set may differ from the bundle on any given day (see [hash drift](#hash-drift--critical-caveat)).*
+
+## Tool reference
+
+Every tool this provider registers. Entain is mostly a GraphQL surface, so several
+of these are dispatchers that take an operation name — see the sections above for
+how the catalogue resources work.
+
+
+### `entain.cdn`
+
+| Tool | What it does |
+|---|---|
+| `entain_cms_entries` | Contentful CMS entries (promotions, major-event nav) via the www CDN proxy. |
+
+### `entain.graphql`
+
+| Tool | What it does |
+|---|---|
+| `entain_graphql_call` | Call any of Entain's 127 persisted GraphQL operations against
+api.ladbrokes.com.au/gql/router by name + variables. Hashes are managed
+server-side;… |
+
+### `entain.rest`
+
+| Tool | What it does |
+|---|---|
+| `entain_event_market_rules` | Settlement rules for every named market, indexed by rule id. |
+| `entain_event_market_type_group_maps` | Join table between market types and market-type groups (dedup by pair). |
+| `entain_event_market_type_groups` | Market-tab group definitions for a sport category (lower priority renders first). |
+| `entain_featured_slider` | Featured slider events (homepage hero carousel). |
+| `entain_metadata_by_url` | SEO metadata (page title) for a given URL path. |
+| `entain_quicklinks_list` | Navigation quick-links (racing/sports nav tiles). |
+| `entain_racing_future_markets` | Legacy v1 racing RPC selector (future-markets races feed). |
+| `entain_racing_meeting` | All race meetings + races for one date (normalised UUID-keyed tables). |
+| `entain_racing_next_races` | Next races about to jump, grouped per racing category. |
+| `entain_racing_racecard` | Full priced racecard for one race — entrants, fixed-odds fluctuations, form. |
+| `entain_racing_search` | Racing search facets (barrier/country/jockey/trainer buckets); optional full-text. |
+| `entain_sport_event_card` | Complete event card — every market, selection and price for one sport event. |
+| `entain_sport_event_request` | Bulk events + markets + prices for one or more sport categories. |
+| `entain_video_channels` | Racing live-video channels (HLS .m3u8 URLs; verify token expires within minutes). |

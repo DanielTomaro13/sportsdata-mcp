@@ -46,6 +46,47 @@ has its own hole array. Three levels before you reach a par.
 Note that `handicap` on a hole is its **stroke index** (1 = hardest hole), not a player
 handicap.
 
+## Reading a tee box
+
+A single tee box carries everything you need to reason about difficulty:
+
+```json
+{"tee_name": "Blue", "course_rating": 74.2, "slope_rating": 144,
+ "par_total": 72, "total_yards": 6828, "number_of_holes": 18,
+ "holes": [{"par": 4, "yardage": 380, "handicap": 7}, ...]}
+```
+
+- **`course_rating`** — the score a scratch golfer is expected to shoot. Above par means
+  the course plays hard.
+- **`slope_rating`** — how much harder it gets for a bogey golfer. 113 is average; 144 is
+  brutal.
+- **`handicap`** on a hole is its **stroke index**: 1 is the hardest hole on the course,
+  18 the easiest. It is not a player handicap, and this is the field people misread.
+
+## Search before you fetch
+
+`golfcourseapi_search` returns summaries only — id, club, course, location. Per-hole data
+needs a second call to `golfcourseapi_course` with the id. Search is the cheap call; use
+it to disambiguate first, because club names repeat (there are many "Royal" and
+"Riverside" courses).
+
+## Worked example: does this course suit this player?
+
+1. `golfcourseapi_search` → the course id.
+2. `golfcourseapi_course` → par and yardage for all 18, plus slope.
+3. Count the par 3s over 200 yards, and the par 5s reachable in two.
+4. `datagolf` player skill decompositions → whether the field's long hitters or its
+   approach players are favoured.
+
+That question is unanswerable with `datagolf` alone, which is the reason this provider
+exists here.
+
+## Limits
+
+Coverage is broad (30,000+ courses) but crowd-sourced in places — a small municipal
+course may have par and yardage without ratings. Check for `course_rating` before relying
+on it.
+
 ## See also
 
 - [DataGolf.md](DataGolf.md) — tournaments, fields, models, markets
