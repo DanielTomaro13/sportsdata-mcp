@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.DanielTomaro13/sportsdata-mcp",
-  "description": "Live sports data and cross-book betting odds \u2014 736 tools across 60 providers, 41 of them needing no key or signup at all. Free and open source.",
+  "description": "Live sports data and cross-book betting odds \u2014 738 tools across 60 providers, 41 of them needing no key or signup at all. Free and open source.",
   "repository": {
     "url": "https://github.com/DanielTomaro13/sportsdata-mcp",
     "source": "github"

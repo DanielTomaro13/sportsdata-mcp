@@ -41,6 +41,20 @@ def cli(ctx: click.Context, config_path: Path | None, verbose: bool) -> None:
         # httpx/httpcore log every request/connection at INFO/DEBUG — too noisy for normal runs.
         for noisy in ("httpx", "httpcore"):
             logging.getLogger(noisy).setLevel(logging.WARNING)
+    else:
+        # hpack dumps every HTTP/2 header, including `:path` — pure noise, and the path
+        # carries query-string credentials for the seven providers that authenticate
+        # that way. Nobody debugging a provider needs HPACK table internals.
+        for noisier in ("hpack", "hpack.hpack", "hpack.table", "h2"):
+            logging.getLogger(noisier).setLevel(logging.WARNING)
+
+    # Belt and braces: redact known credential values from EVERY log record regardless of
+    # which library emitted it. `-v` is what people turn on when a provider misbehaves,
+    # and its output is what they paste into a bug report — httpx logs the fully-composed
+    # URL, so without this a query-string API key goes straight into the paste.
+    from . import redact
+
+    redact.install()
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config_path
     if ctx.invoked_subcommand is None:

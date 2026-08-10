@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~736 tools across 60 providers in Claude Desktop,
+Free & open source (MIT). ~738 tools across 60 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -713,7 +713,7 @@ the environment variable and add the group.
 
 | Provider | Env var | Tools | What it adds that nothing else here has |
 |---|---|---:|---|
-| `apisports` | `API_SPORTS_KEY` | 18 | **Ten sports on one key** — and the only rugby-union coverage here |
+| `apisports` | `API_SPORTS_KEY` | 20 | **Ten sports on one key** — and the only rugby-union coverage here |
 | `theoddsapi` | `THE_ODDS_API_KEY` | 6 | Odds from ~40 international books, with historical snapshots for CLV work |
 | `oddsapiio` | `ODDS_API_IO_KEY` | 5 | **274 bookmakers** across 34 sports, down to padel, bandy and gaelic football |
 | `sportsgameodds` | `SPORTSGAMEODDS_API_KEY` | 7 | **Player props** with stable market ids you can join across books and time |

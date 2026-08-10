@@ -160,12 +160,12 @@ def _describe(tool: Endpoint | Dispatcher, *, shapes_verified: bool = True) -> s
     if examples:
         ex = examples[0]
         lines.append(f"\nExample: {ex.description}")
-        # Render {{today}} tokens so the model sees a CURRENT date. A literal date baked
-        # into a spec months ago actively teaches it to ask for a window the provider
-        # will reject.
+        # Descriptions are built ONCE at registration, so a concrete date rendered here
+        # would freeze at server start — stale within days on a long-running HTTP
+        # deployment. `<today>` cannot rot and tells the model what to compute.
         if ex.params:
-            rendered = dates.render_params(ex.params)
-            lines.append(f"  {json.dumps(rendered, default=str)}")
+            shown = dates.render_for_display(ex.params)
+            lines.append(f"  {json.dumps(shown, default=str)}")
     return "\n".join(lines)
 
 

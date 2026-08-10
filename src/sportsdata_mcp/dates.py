@@ -67,5 +67,25 @@ def render_params(params: dict | None) -> dict:
     return render(dict(params or {}))
 
 
+def render_for_display(value):
+    """Like `render`, but for text that is built ONCE and read for a long time.
+
+    Tool descriptions are assembled at registration, so a concrete date baked into one
+    is frozen at server start — fine for a desktop client that restarts often, wrong for
+    an HTTP deployment running for weeks. That is the same rot the tokens exist to kill,
+    with a longer fuse.
+
+    So a description shows `<today>` / `<today+1>` instead of a date. It cannot go stale,
+    and it tells the model what to compute rather than handing it a value to copy.
+    """
+    if isinstance(value, str):
+        return _TOKEN.sub(lambda m: f"<today{m.group(1) or ''}>", value)
+    if isinstance(value, list):
+        return [render_for_display(v) for v in value]
+    if isinstance(value, dict):
+        return {k: render_for_display(v) for k, v in value.items()}
+    return value
+
+
 def has_token(value: object) -> bool:
     return "{{today" in str(value)

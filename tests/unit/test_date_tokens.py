@@ -110,3 +110,41 @@ def test_rendered_example_params_are_usable_dates():
                         continue
                     for item in value if isinstance(value, list) else [value]:
                         assert re.match(r"^\d{4}-\d{2}-\d{2}", str(item)), f"{ep.name}.{key}={item}"
+
+
+# ─── descriptions must not freeze a date ────────────────────────────────
+
+
+def test_display_rendering_never_produces_a_concrete_date():
+    """Tool descriptions are built ONCE at registration. A concrete date rendered into
+    one freezes at server start — stale within days on an HTTP deployment running for
+    weeks, which is the same rot the tokens exist to kill."""
+    assert dates.render_for_display("{{today}}") == "<today>"
+    assert dates.render_for_display("{{today+1}}") == "<today+1>"
+    assert dates.render_for_display("{{today-2}}") == "<today-2>"
+    assert dates.render_for_display("{{today}}T10:00:00") == "<today>T10:00:00"
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", dates.render_for_display("{{today}}"))
+
+
+def test_no_registered_tool_description_contains_a_concrete_today():
+    """The end-to-end version: whatever a description says, it must not be a date that
+    was true only at boot."""
+    from sportsdata_mcp.registry import _describe
+
+    for spec in load_all_specs():
+        for ep in spec.endpoints:
+            if not ep.examples or not any(dates.has_token(v) for v in (ep.examples[0].params or {}).values()):
+                continue
+            desc = _describe(ep)
+            assert "<today" in desc, f"{ep.name}: token vanished from its description"
+            assert TODAY.isoformat() not in desc, f"{ep.name}: froze today's date into its description"
+
+
+def test_doctor_still_probes_with_a_real_date():
+    """The display form must NOT leak into probes — a provider cannot parse '<today>'."""
+    from sportsdata_mcp.doctor import _pick_endpoint_probe
+
+    spec = next(s for s in load_all_specs() if s.provider.id == "sportsbet")
+    eps = [e for e in spec.endpoints if e.name == "sportsbet_racing_allracing"]
+    _ep, args = _pick_endpoint_probe(eps)
+    assert args["eventDate"] == TODAY.isoformat()

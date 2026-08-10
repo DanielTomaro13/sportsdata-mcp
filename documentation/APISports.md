@@ -1,6 +1,6 @@
 # API-Sports (`apisports`) — ten sports on one key
 
-**18 tools · BYO key · shapes unverified**
+**20 tools · BYO key · shapes unverified**
 
 Football, basketball, baseball, ice hockey, American football, rugby, Formula 1,
 handball, volleyball and MMA from [api-sports.io](https://api-sports.io).
@@ -93,12 +93,17 @@ something comes back empty.
 | `apisports_rugby_games` | Rugby — the catalogue's only rugby-union coverage |
 | `apisports_formula1_races` | Formula 1 |
 | `apisports_mma_fights` | MMA (UFC and others) |
+| `apisports_handball_games` | Handball (EHF Champions League, Bundesliga, LNH) |
+| `apisports_volleyball_games` | Volleyball (SuperLega, PlusLiga, CEV) |
 
 Plus `apisports_status` for quota.
 
 ## Inconsistencies between the sport hosts
 
 The hosts share a vendor, not a schema. Three differences matter:
+
+**Volleyball `scores` are SETS WON, not points** — the per-set point totals live in
+`periods`. Reading `scores` as points is the mistake that endpoint invites.
 
 | | Football | Basketball | American football |
 |---|---|---|---|

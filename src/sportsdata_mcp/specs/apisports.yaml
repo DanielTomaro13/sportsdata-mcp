@@ -375,3 +375,37 @@ endpoints:
     examples:
       - description: "A card"
         params: {date: "2024-03-09"}
+
+  - name: apisports_handball_games
+    group: apisports.handball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Handball games (EHF Champions League, Bundesliga, LNH and others) by date or league."
+    base: handball
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+    response_hint: "{response:[{id, date, time, status, league, teams, scores:{home, away}, periods:{first, second}}]}  — SHAPE FROM VENDOR DOCS. Handball scores run to 25-35 per side; a value under 10 usually means the match is still in the first half, not a low-scoring game."
+    examples:
+      - description: "A day's games"
+        params: {date: "{{today}}"}
+
+  - name: apisports_volleyball_games
+    group: apisports.volleyball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Volleyball games (Italian SuperLega, Polish PlusLiga, CEV and others) by date or league."
+    base: volleyball
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: string, description: "Season — a SPAN string for this sport, e.g. '2023-2024'." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+    response_hint: "{response:[{id, date, status, league, teams, scores:{home, away}, periods:{first, second, third, fourth, fifth}}]}  — SHAPE FROM VENDOR DOCS. `scores` is SETS WON (best of 5), not points; the per-set point totals are in `periods`. Reading `scores` as points is the usual mistake."
+    examples:
+      - description: "A day's games"
+        params: {date: "{{today}}"}
