@@ -1,0 +1,154 @@
+spec_version: 1
+
+# The Odds API (the-odds-api.com) — BYO key. Odds from 70+ sports across ~40
+# international bookmakers.
+#
+# ⚠ RESPONSE SHAPES BELOW COME FROM THE VENDOR'S DOCUMENTATION, not from a live probe:
+# we hold no key. `shapes_verified: false` marks that, and every tool's description
+# carries the caveat so the model treats the shape as approximate. What IS verified
+# (2026-08-10, keyless): the host and paths exist and return a clean
+# 401 {"message":"API key is missing","error_code":"MISSING_KEY"} without a key.
+#
+# WHY THIS ONE IS WORTH THE SIGNUP. It is the only genuine COVERAGE gap in the
+# catalogue. This server is deep on AU books (Sportsbet, TAB, BetR, PointsBet, Unibet,
+# Entain, Dabble) plus Betfair and Pinnacle — but it is blind outside that. The Odds
+# API is how you price a Bundesliga match against European books, or an NFL game
+# against US ones. It aggregates rather than integrating, so it is shallower per book
+# than the direct providers here; use the direct ones for AU markets and this for
+# everywhere else.
+#
+# QUOTA IS THE THING TO WATCH. The free tier is 500 requests/month, and the cost of a
+# request is NOT 1 — it is (number of markets) × (number of regions). Asking for
+# h2h,spreads,totals across us,uk,eu,au is 12 credits for ONE call. Every response
+# carries `x-requests-remaining` and `x-requests-used` headers. Keep `markets` and
+# `regions` as narrow as the question allows.
+#
+# GET SPORTS FIRST: /sports is FREE (costs no quota) and returns the `sport_key`
+# values every other endpoint needs.
+
+provider:
+  id: theoddsapi
+  display_name: "The Odds API (international odds aggregator — BYO key)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/TheOddsAPI.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.the-odds-api.com/v4
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_query
+      param: apiKey
+      env: THE_ODDS_API_KEY
+      # optional → without the key the server still starts and every other provider
+      # works; only these tools return the upstream's 401.
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: theoddsapi_sports
+    group: theoddsapi.odds
+    capabilities: [sport.competitions_list]
+    summary: "Every sport/competition with its key. FREE — this call costs no quota. Start here to get the sport_key the other tools need."
+    base: default
+    path: /sports
+    auth: default
+    params:
+      - { name: all, in: query, type: boolean, description: "true also returns out-of-season competitions." }
+    response_hint: "[{key:'americanfootball_nfl', group:'American Football', title, description, active, has_outrights}]  (top-level array)"
+    examples:
+      - description: "In-season competitions"
+        params: {}
+
+  - name: theoddsapi_odds
+    group: theoddsapi.odds
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Odds for a competition across many bookmakers. QUOTA COSTS markets × regions per call — keep both narrow."
+    base: default
+    path: /sports/{sport}/odds
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "sport_key from theoddsapi_sports, e.g. soccer_epl, americanfootball_nfl." }
+      - { name: regions, in: query, type: string_csv, default: [au], description: "Bookmaker regions: us, us2, uk, eu, au. EACH region multiplies the quota cost." }
+      - { name: markets, in: query, type: string_csv, default: [h2h], description: "h2h, spreads, totals, outrights. EACH market multiplies the quota cost." }
+      - { name: oddsFormat, in: query, type: string, default: decimal, enum: [decimal, american], description: "Price format." }
+      - { name: dateFormat, in: query, type: string, default: iso, enum: [iso, unix], description: "Timestamp format." }
+      - { name: bookmakers, in: query, type: string_csv, description: "Specific bookmaker keys instead of whole regions (does not reduce quota cost)." }
+      - { name: eventIds, in: query, type: string_csv, description: "Restrict to specific event ids." }
+    response_hint: "[{id, sport_key, sport_title, commence_time, home_team, away_team, bookmakers:[{key, title, last_update, markets:[{key:'h2h', last_update, outcomes:[{name, price, point}]}]}]}]  — outcome `name` is a TEAM NAME, not home/away; `point` appears on spreads/totals only"
+    examples:
+      - description: "EPL head-to-head across AU books"
+        params: {sport: soccer_epl, regions: [au], markets: [h2h]}
+
+  - name: theoddsapi_event_odds
+    group: theoddsapi.odds
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Odds for ONE event, including player props and other markets not available on the competition-wide call."
+    base: default
+    path: /sports/{sport}/events/{eventId}/odds
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "sport_key." }
+      - { name: eventId, in: path, type: string, required: true, description: "Event id from theoddsapi_odds or theoddsapi_events." }
+      - { name: regions, in: query, type: string_csv, default: [au], description: "Bookmaker regions." }
+      - { name: markets, in: query, type: string_csv, default: [h2h], description: "Includes player-prop markets here, e.g. player_pass_tds." }
+      - { name: oddsFormat, in: query, type: string, default: decimal, enum: [decimal, american], description: "Price format." }
+    response_hint: "{id, sport_key, commence_time, home_team, away_team, bookmakers:[{key, title, markets:[{key, outcomes:[{name, price, point, description}]}]}]}  — a single object, unlike the competition call's array; `description` carries the player name on prop markets"
+    examples:
+      - description: "One event's markets"
+        params: {sport: soccer_epl, eventId: "<event id>", regions: [au], markets: [h2h]}
+
+  - name: theoddsapi_events
+    group: theoddsapi.odds
+    capabilities: [sport.fixtures_by_date]
+    summary: "Upcoming events for a competition WITHOUT odds. Free — costs no quota — so use it to find event ids cheaply."
+    base: default
+    path: /sports/{sport}/events
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "sport_key." }
+      - { name: dateFormat, in: query, type: string, default: iso, enum: [iso, unix], description: "Timestamp format." }
+    response_hint: "[{id, sport_key, sport_title, commence_time, home_team, away_team}]  (top-level array, no bookmakers)"
+    examples:
+      - description: "Upcoming EPL fixtures"
+        params: {sport: soccer_epl}
+
+  - name: theoddsapi_scores
+    group: theoddsapi.odds
+    capabilities: [sport.match_score]
+    summary: "Live and recently-completed scores for a competition."
+    base: default
+    path: /sports/{sport}/scores
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "sport_key." }
+      - { name: daysFrom, in: query, type: integer, description: "Include completed games from this many days ago (1-3). Omitting it returns live/upcoming only." }
+      - { name: dateFormat, in: query, type: string, default: iso, enum: [iso, unix], description: "Timestamp format." }
+    response_hint: "[{id, sport_key, commence_time, completed, home_team, away_team, scores:[{name, score}], last_update}]  — `scores` is null until the game starts; `score` values are STRINGS"
+    examples:
+      - description: "Recent EPL scores"
+        params: {sport: soccer_epl, daysFrom: 1}
+
+  - name: theoddsapi_historical_odds
+    group: theoddsapi.odds
+    capabilities: [stats.closing_odds, sport.prices]
+    summary: "Odds as they stood at a past timestamp — the paid-tier time machine for CLV work."
+    base: default
+    path: /historical/sports/{sport}/odds
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, required: true, description: "sport_key." }
+      - { name: date, in: query, type: string, required: true, description: "ISO8601 timestamp to snapshot, e.g. 2024-08-16T12:00:00Z." }
+      - { name: regions, in: query, type: string_csv, default: [au], description: "Bookmaker regions." }
+      - { name: markets, in: query, type: string_csv, default: [h2h], description: "Markets." }
+      - { name: oddsFormat, in: query, type: string, default: decimal, enum: [decimal, american], description: "Price format." }
+    response_hint: "{timestamp, previous_timestamp, next_timestamp, data:[…same shape as theoddsapi_odds…]}  — WRAPPED in a snapshot envelope, unlike the live call. Historical access is a PAID add-on: the free tier returns 401/422 here."
+    examples:
+      - description: "EPL odds at a past moment"
+        params: {sport: soccer_epl, date: "2024-08-16T12:00:00Z", regions: [au], markets: [h2h]}

@@ -37,6 +37,11 @@ class AuthStaticQuery(BaseModel):
     param: str
     value: str | None = None
     env: str | None = None
+    # Optional tier: an unset env var sends the request WITHOUT the key rather than
+    # raising AuthMissingError. Same contract as AuthStaticHeader.optional — it keeps a
+    # BYO-key provider from breaking startup for everyone who hasn't configured it; the
+    # upstream's own 401 is then what the caller sees, which is the honest error.
+    optional: bool = False
 
 
 class AuthOAuthRefresh(BaseModel):
@@ -153,6 +158,18 @@ class Provider(BaseModel):
     # var is set, means the customer supplied their own key → call the upstream directly.
     proxied: bool = False
     byo_key_env: str | None = None
+    # False = the `response_hint`s in this spec were derived from the VENDOR'S
+    # DOCUMENTATION, not confirmed against a live response. That happens for providers
+    # whose data requires a key we don't hold: the paths and auth mechanism are probed
+    # (a keyless call returns a clean 401/403), but the response shapes are not.
+    #
+    # This is not cosmetic. Roughly a third of the shapes assumed while building this
+    # catalogue turned out to be wrong when probed — nested where they looked flat,
+    # grouped where they looked like a list — and those errors are the silent kind that
+    # produce confident wrong answers rather than an exception. The flag is surfaced in
+    # every affected tool's description so the model treats the shape as approximate
+    # and reads what it actually got.
+    shapes_verified: bool = True
 
 
 # ─── Endpoint params ───────────────────────────────────────────────────

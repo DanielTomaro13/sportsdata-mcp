@@ -140,10 +140,20 @@ def _build_body(ep: Endpoint, kwargs: dict) -> dict | list | None:
 # ─── Descriptions ──────────────────────────────────────────────────────
 
 
-def _describe(tool: Endpoint | Dispatcher) -> str:
+def _describe(tool: Endpoint | Dispatcher, *, shapes_verified: bool = True) -> str:
     lines = [tool.summary.strip()]
     hint = getattr(tool, "response_hint", None)
     lines.append(f"\nReturns: {hint or '(JSON object)'}")
+    if not shapes_verified:
+        # Tell the MODEL, not just the reader: this shape came from the vendor's docs
+        # and was never confirmed against a live response, so it should read what it
+        # actually received rather than trusting the sketch above.
+        lines.append(
+            "\nNOTE: this shape is from the vendor's documentation and has NOT been "
+            "verified against a live response (we hold no key for this provider). "
+            "Treat it as approximate — inspect the actual payload before relying on "
+            "a field name."
+        )
     examples = getattr(tool, "examples", None) or []
     if examples:
         lines.append(f"\nExample: {examples[0].description}")
@@ -295,7 +305,7 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             handler = _guard(make_endpoint_handler(endpoint, http), endpoint.name, endpoint.group)
             mcp.tool(
                 name=endpoint.name,
-                description=_describe(endpoint),
+                description=_describe(endpoint, shapes_verified=provider.shapes_verified),
                 annotations=_READ_ONLY,
             )(handler)
             registered.tools.append(endpoint.name)
@@ -308,7 +318,7 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             )
             mcp.tool(
                 name=dispatcher.name,
-                description=_describe(dispatcher),
+                description=_describe(dispatcher, shapes_verified=provider.shapes_verified),
                 annotations=_READ_ONLY,
             )(handler)
             registered.tools.append(dispatcher.name)

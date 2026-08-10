@@ -141,7 +141,14 @@ class HTTPClient:
             else:
                 provider = StaticHeaderAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthStaticQuery):
-            provider = StaticQueryAuthProvider(spec, self._secrets)
+            if spec.optional and not (
+                (spec.env and (os.environ.get(spec.env) or (self._secrets or {}).get(spec.env))) or spec.value
+            ):
+                # optional tier with no key configured → send unauthenticated and let
+                # the upstream's 401 be the message the caller sees
+                provider = NullAuthProvider()
+            else:
+                provider = StaticQueryAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthOAuthRefresh):
             if spec.optional and not (
                 os.environ.get(spec.client_id_env) or (self._secrets or {}).get(spec.client_id_env)

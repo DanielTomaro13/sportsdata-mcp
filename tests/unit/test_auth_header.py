@@ -176,3 +176,55 @@ async def test_non_optional_header_still_raises_when_unset(monkeypatch):
     with pytest.raises(AuthMissingError):
         await http.request_json(method="GET", base="default", url="/v2/thing", auth_key="default")
     await http.aclose()
+
+
+# ─── optional static_query (BYO-key providers keyed on a query param) ──────
+
+
+async def test_optional_query_key_unset_sends_no_key(monkeypatch):
+    """A BYO-key provider must not break startup for the majority who never configure
+    it — the request goes out unauthenticated and the upstream's own 401 is the message
+    the caller sees, which is more honest than a local error."""
+    monkeypatch.delenv("DEMO_QKEY", raising=False)
+    seen: dict = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["url"] = str(req.url)
+        return httpx.Response(200, json={"ok": True}, headers={"content-type": "application/json"})
+
+    from sportsdata_mcp.spec import AuthStaticQuery
+
+    provider = Provider(
+        id="demo", display_name="Demo",
+        base_urls={"default": "https://api.demo.test"},
+        auth={"default": AuthStaticQuery(type="static_query", param="apiKey",
+                                         env="DEMO_QKEY", optional=True)},
+    )
+    http = HTTPClient(provider, Config(cache_ttl_override=0))
+    http._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await http.request_json(method="GET", base="default", url="/v4/sports")
+    assert "apiKey" not in seen["url"]
+    await http.aclose()
+
+
+async def test_optional_query_key_is_sent_once_configured(monkeypatch):
+    monkeypatch.setenv("DEMO_QKEY", "abc123")
+    seen: dict = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["url"] = str(req.url)
+        return httpx.Response(200, json={"ok": True}, headers={"content-type": "application/json"})
+
+    from sportsdata_mcp.spec import AuthStaticQuery
+
+    provider = Provider(
+        id="demo", display_name="Demo",
+        base_urls={"default": "https://api.demo.test"},
+        auth={"default": AuthStaticQuery(type="static_query", param="apiKey",
+                                         env="DEMO_QKEY", optional=True)},
+    )
+    http = HTTPClient(provider, Config(cache_ttl_override=0))
+    http._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await http.request_json(method="GET", base="default", url="/v4/sports")
+    assert "apiKey=abc123" in seen["url"]
+    await http.aclose()
