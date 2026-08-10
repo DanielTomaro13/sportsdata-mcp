@@ -1,0 +1,93 @@
+spec_version: 1
+
+# NCAA college sports — via the community `ncaa-api` (ncaa-api.henrygd.me), which
+# normalises NCAA.com's own JSON feeds into a stable REST shape.
+#
+# WHAT THIS ADDS OVER `espn`. The ESPN dispatchers already return college scoreboards
+# (verified: `football/college-football` returns 99 events). What they don't give you
+# is the NCAA's own **rankings** (AP and coaches polls) and **conference standings**
+# in a normalised form across every college sport. That's the reason to carry this.
+#
+# THE PATH IS THE QUERY. There are no query params: the sport, division and report
+# type are all path segments, mirroring NCAA.com's own URLs.
+#
+#   /scoreboard/{sport}/{division}          e.g. football/fbs, basketball-men/d1
+#   /standings/{sport}/{division}
+#   /rankings/{sport}/{division}/{poll}     e.g. associated-press
+#
+# Sport slugs are hyphenated and gendered: `basketball-men`, `basketball-women`,
+# `football`, `lacrosse-men`, `ice-hockey-men`, … Divisions are `fbs`/`fcs` for
+# football and `d1`/`d2`/`d3` for everything else. A wrong slug returns an error rather
+# than empty data, which is at least loud.
+#
+# RATE LIMIT: the host asks for ≤5 requests/second; this provider is capped at 3.
+#
+# Probed live 2026-08-10: scoreboard, standings and rankings all 200 for both
+# football/fbs and basketball-men/d1.
+
+provider:
+  id: ncaa
+  display_name: "NCAA college sports (ncaa-api, community mirror of NCAA.com)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/NCAA.md"
+  base_urls:
+    default: https://ncaa-api.henrygd.me
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # The host documents a 5 req/s ceiling — stay under it.
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: ncaa_scoreboard
+    group: ncaa.college
+    capabilities: [sport.fixtures_by_date, sport.match_score, sport.in_play]
+    summary: "Current scoreboard for one college sport and division — games with scores, state and clock."
+    base: default
+    path: /scoreboard/{sport}/{division}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, default: football, description: "Hyphenated, gendered sport slug: football, basketball-men, basketball-women, ice-hockey-men, lacrosse-men, …" }
+      - { name: division, in: path, type: string, default: fbs, description: "fbs/fcs for football; d1/d2/d3 for other sports." }
+    response_hint: "{updated_at, games:[{game:{gameID, startDate, startTime, gameState, currentPeriod, contestClock, home:{names:{short, full}, score, winner, conferences}, away:{…}, url, network}}]}  — note each entry is a one-key object wrapping `game`"
+    examples:
+      - description: "FBS football scoreboard"
+        params: {sport: football, division: fbs}
+
+  - name: ncaa_standings
+    group: ncaa.college
+    capabilities: [stats.ladder]
+    summary: "Conference standings for a college sport and division."
+    base: default
+    path: /standings/{sport}/{division}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, default: football, description: "Sport slug." }
+      - { name: division, in: path, type: string, default: fbs, description: "Division slug." }
+    response_hint: "{sport, title, updated, page, pages, data:[{conference:'ACC', standings:[{School, 'Conference W', 'Conference L', 'Overall W', 'Overall L', 'Overall PF', 'Overall PA', 'Overall HOME', 'Overall AWAY', 'Overall STREAK'}]}]}  — GROUPED BY CONFERENCE: data[] is one entry per conference, each holding its own `standings` list. The inner column names are human-readable strings WITH SPACES and vary by sport; all values are strings."
+    examples:
+      - description: "FBS football standings"
+        params: {sport: football, division: fbs}
+
+  - name: ncaa_rankings
+    group: ncaa.college
+    capabilities: [sport.rankings]
+    summary: "Poll rankings — AP, coaches and others — for a college sport and division."
+    base: default
+    path: /rankings/{sport}/{division}/{poll}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, default: football, description: "Sport slug." }
+      - { name: division, in: path, type: string, default: fbs, description: "Division slug." }
+      - { name: poll, in: path, type: string, default: associated-press, description: "Poll slug, e.g. associated-press, coaches-poll (availability varies by sport)." }
+    response_hint: "{sport, title, updated, page, pages, data:[{RANK, SCHOOL, POINTS, PREVIOUS, RECORD}]}  — keys here are UPPERCASE, unlike standings"
+    examples:
+      - description: "AP football poll"
+        params: {sport: football, division: fbs, poll: associated-press}

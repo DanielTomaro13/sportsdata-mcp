@@ -1,0 +1,205 @@
+spec_version: 1
+
+# OpenDota (api.opendota.com) — Dota 2 esports analytics, no key for the public tier.
+#
+# The server's first esports provider. OpenDota ingests Valve's match data and exposes
+# it with derived analytics: professional matches, hero win rates by skill bracket,
+# team and league catalogues, and per-player histories.
+#
+# SIZE IS THE MAIN DESIGN CONSTRAINT here. Several endpoints return multi-megabyte
+# documents, and one is excluded outright:
+#   * /proPlayers   ~4.4 MB — every registered pro player. NOT modelled: it would
+#     blow the model's context for a list that is almost never what you wanted.
+#   * /leagues      ~1.0 MB — every league ever. Modelled, but flagged.
+#   * /matches/{id} ~250 KB — a full match with per-player, per-minute detail.
+#   * /heroStats    ~165 KB — 120+ heroes with win/pick rates per skill bracket.
+# The engine's per-provider `max_response_bytes` can cap these if a client's context
+# is tight; see README configuration.
+#
+# ID NOTE: `account_id` here is the Steam 32-bit id, not the 64-bit steamid you see in
+# Steam URLs. OpenDota returns both on a player profile — `profile.account_id` (32-bit,
+# what every endpoint here takes) and `profile.steamid` (64-bit).
+#
+# Free tier: 60 requests/minute, 50k/month, no key. A key raises those limits but is
+# not required, so this provider stays keyless.
+#
+# Probed live 2026-08-10: proMatches, publicMatches, heroes, heroStats, leagues, teams,
+# match detail, player profile/matches/wl/heroes all 200.
+
+provider:
+  id: opendota
+  display_name: "OpenDota (Dota 2 esports analytics)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/OpenDota.md"
+  base_urls:
+    default: https://api.opendota.com/api
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # Free tier is 60/min — 1 rps sustained keeps well inside it with room for bursts.
+    rate_limit_rps: 1
+    burst: 5
+    request_timeout_seconds: 45
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  # ─── opendota.reference ───────────────────────────────────────────────
+  - name: opendota_heroes
+    group: opendota.reference
+    capabilities: [ref.players]
+    summary: "The hero catalogue — id, name, primary attribute, attack type and roles."
+    base: default
+    path: /heroes
+    auth: default
+    response_hint: "[{id, name:'npc_dota_hero_antimage', localized_name:'Anti-Mage', primary_attr:'agi', attack_type:'Melee', roles:[str], legs}]  (top-level array, ~127 heroes)"
+    examples:
+      - description: "All heroes"
+        params: {}
+
+  - name: opendota_hero_stats
+    group: opendota.reference
+    capabilities: [stats.advanced_metrics]
+    summary: "Per-hero win and pick counts broken down by skill bracket — the hero meta."
+    base: default
+    path: /heroStats
+    auth: default
+    response_hint: "[{id, localized_name, pro_pick, pro_win, pro_ban, 1_pick, 1_win, …, 8_pick, 8_win}]  — the numeric prefixes are skill brackets (1=lowest … 8=highest); win rate is <n>_win / <n>_pick, NOT a percentage field"
+    examples:
+      - description: "Hero meta across brackets"
+        params: {}
+
+  - name: opendota_teams
+    group: opendota.reference
+    capabilities: [ref.teams]
+    summary: "Professional teams ranked by rating, with win/loss records."
+    base: default
+    path: /teams
+    auth: default
+    response_hint: "[{team_id, name, tag, rating, wins, losses, last_match_time, logo_url}]  (~250 KB, ordered by rating)"
+    examples:
+      - description: "Pro teams by rating"
+        params: {}
+
+  - name: opendota_leagues
+    group: opendota.reference
+    capabilities: [sport.competitions_list]
+    summary: "Every Dota 2 league/tournament OpenDota knows. LARGE (~1 MB) — includes years of historical events."
+    base: default
+    path: /leagues
+    auth: default
+    response_hint: "[{leagueid, name, tier:'premium'|'professional'|'amateur', ticket, banner}]  (~1 MB — filter client-side by tier)"
+    examples:
+      - description: "All leagues"
+        params: {}
+
+  # ─── opendota.matches ─────────────────────────────────────────────────
+  - name: opendota_pro_matches
+    group: opendota.matches
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Recent professional matches with teams, league, duration and result."
+    base: default
+    path: /proMatches
+    auth: default
+    params:
+      - { name: less_than_match_id, in: query, type: integer, description: "Paginate backwards: pass the lowest match_id you've seen to get older matches." }
+    response_hint: "[{match_id, duration, start_time, radiant_team_id, radiant_name, dire_team_id, dire_name, leagueid, league_name, series_id, series_type, radiant_score, dire_score, radiant_win}]  — Dota sides are RADIANT and DIRE, not home/away; `radiant_win` is the result"
+    examples:
+      - description: "Latest pro matches"
+        params: {}
+
+  - name: opendota_match
+    group: opendota.matches
+    capabilities: [sport.match_detail, sport.match_boxscore, stats.player_match]
+    summary: "Full detail for one match: every player's hero, items, KDA, gold/XP curves and objectives. LARGE (~250 KB)."
+    base: default
+    path: /matches/{match_id}
+    auth: default
+    params:
+      - { name: match_id, in: path, type: integer, required: true, description: "Match id (from opendota_pro_matches)." }
+    response_hint: "{match_id, duration, radiant_win, radiant_score, dire_score, league, players:[{account_id, hero_id, player_slot, kills, deaths, assists, gold_per_min, xp_per_min, last_hits, hero_damage, items, gold_t:[…], xp_t:[…]}], objectives, picks_bans, teamfights}  — player_slot < 128 means Radiant"
+    examples:
+      - description: "One professional match"
+        params: {match_id: 8937822821}
+
+  - name: opendota_public_matches
+    group: opendota.matches
+    capabilities: [sport.match_score]
+    summary: "A sample of recent public (non-professional) matches — the ladder meta rather than the pro scene."
+    base: default
+    path: /publicMatches
+    auth: default
+    params:
+      - { name: less_than_match_id, in: query, type: integer, description: "Paginate backwards from this match id." }
+      - { name: min_rank, in: query, type: integer, description: "Minimum rank tier (10=Herald … 80=Immortal)." }
+    response_hint: "[{match_id, start_time, duration, avg_rank_tier, radiant_win, radiant_team:[hero_id], dire_team:[hero_id]}]  — hero ids only, no player identity"
+    examples:
+      - description: "Recent public matches"
+        params: {}
+
+  # ─── opendota.players ─────────────────────────────────────────────────
+  - name: opendota_player
+    group: opendota.players
+    capabilities: [stats.player_profile]
+    summary: "A player's profile with rank tier and estimated MMR."
+    base: default
+    path: /players/{account_id}
+    auth: default
+    params:
+      - { name: account_id, in: path, type: integer, required: true, description: "Steam 32-bit account id (NOT the 64-bit steamid from a Steam URL)." }
+    response_hint: "{profile:{account_id, personaname, name, avatarfull, steamid, country_code, is_pro}, rank_tier, leaderboard_rank, competitive_rank}  — rank_tier is two digits: tens=medal (1 Herald … 8 Immortal), units=star"
+    examples:
+      - description: "One player's profile"
+        params: {account_id: 88367253}
+
+  - name: opendota_player_matches
+    group: opendota.players
+    capabilities: [stats.player_game_log]
+    summary: "A player's recent matches with hero, result and KDA."
+    base: default
+    path: /players/{account_id}/matches
+    auth: default
+    params:
+      - { name: account_id, in: path, type: integer, required: true, description: "Steam 32-bit account id." }
+      - { name: limit, in: query, type: integer, default: 20, description: "How many matches. Omit and you get the player's whole history." }
+      - { name: hero_id, in: query, type: integer, description: "Only matches on this hero." }
+      - { name: win, in: query, type: integer, description: "1 = wins only, 0 = losses only." }
+    response_hint: "[{match_id, player_slot, radiant_win, duration, hero_id, kills, deaths, assists, start_time, lane_role}]  — you won a match when (player_slot < 128) == radiant_win"
+    examples:
+      - description: "Last 20 matches"
+        params: {account_id: 88367253, limit: 20}
+
+  - name: opendota_player_winloss
+    group: opendota.players
+    capabilities: [stats.player_season]
+    summary: "A player's win/loss totals, with the same filters as their match list."
+    base: default
+    path: /players/{account_id}/wl
+    auth: default
+    params:
+      - { name: account_id, in: path, type: integer, required: true, description: "Steam 32-bit account id." }
+      - { name: limit, in: query, type: integer, description: "Restrict to the most recent N matches." }
+      - { name: hero_id, in: query, type: integer, description: "Only this hero." }
+    response_hint: "{win, lose}  — two integers"
+    examples:
+      - description: "Career win/loss"
+        params: {account_id: 88367253}
+
+  - name: opendota_player_heroes
+    group: opendota.players
+    capabilities: [stats.player_career]
+    summary: "Which heroes a player uses and how they perform on each."
+    base: default
+    path: /players/{account_id}/heroes
+    auth: default
+    params:
+      - { name: account_id, in: path, type: integer, required: true, description: "Steam 32-bit account id." }
+      - { name: limit, in: query, type: integer, description: "Restrict to the most recent N matches." }
+    response_hint: "[{hero_id, games, win, with_games, with_win, against_games, against_win, last_played}]  — ordered by games played; join hero_id via opendota_heroes"
+    examples:
+      - description: "Hero pool"
+        params: {account_id: 88367253}

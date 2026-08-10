@@ -1,0 +1,157 @@
+spec_version: 1
+
+# EuroLeague Basketball (api-live.euroleague.net/v2) — the official feed behind
+# euroleaguebasketball.net. No key, no signup.
+#
+# Completes the basketball picture: the server already has the NBA (nba, espn) and
+# Australia's NBL, but nothing for Europe's top competition.
+#
+# TWO COMPETITIONS, ONE API, selected by a single letter:
+#   E = EuroLeague     U = EuroCup
+# Both accept the same paths, so every tool takes a `competition` param.
+#
+# SEASON CODES are the competition letter plus the starting year: `E2024` is the
+# 2024-25 EuroLeague season, `U2024` the matching EuroCup. Passing a bare year fails.
+#
+# ENVELOPE: list endpoints wrap results as {"total": N, "data": [...]}; single-object
+# endpoints (one game) return the object directly. Mixing those up is the usual error.
+#
+# GAME NUMBERING: `gameCode` is a per-season sequential integer (1, 2, 3 …) and is what
+# the per-game paths take — NOT the `id` UUID that also appears on a game object.
+#
+# Home and away are `local` and `road` throughout, including in box scores.
+#
+# Probed live 2026-08-10: seasons, games, rounds, clubs, people, single game and game
+# stats all 200. Standings/statistics paths that exist on the website are NOT on this
+# host (verified 404) — see documentation/EuroLeague.md.
+
+provider:
+  id: euroleague
+  display_name: "EuroLeague Basketball (EuroLeague + EuroCup, official)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/EuroLeague.md"
+  base_urls:
+    default: https://api-live.euroleague.net/v2
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  - name: euroleague_seasons
+    group: euroleague.basketball
+    capabilities: [ref.seasons]
+    summary: "Seasons for a competition — call this to get valid season codes like E2024."
+    base: default
+    path: /competitions/{competition}/seasons
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "E = EuroLeague, U = EuroCup." }
+    response_hint: "{total, data:[{code:'E2024', name:'EuroLeague 2024-25', alias:'2024-25', year, startDate, endDate, competitionCode, winner}]}"
+    examples:
+      - description: "EuroLeague seasons"
+        params: {competition: E}
+
+  - name: euroleague_clubs
+    group: euroleague.basketball
+    capabilities: [ref.teams]
+    summary: "The clubs in one season, with city, country and venue detail."
+    base: default
+    path: /competitions/{competition}/seasons/{season}/clubs
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "E = EuroLeague, U = EuroCup." }
+      - { name: season, in: path, type: string, required: true, description: "Season code, e.g. E2024 (competition letter + starting year)." }
+    response_hint: "{total, data:[{code, name, abbreviatedName, editorialName, city, country:{code, name}, address, images, isVirtual}]}  — `code` (e.g. 'MAD') is the club key used elsewhere"
+    examples:
+      - description: "2024-25 EuroLeague clubs"
+        params: {competition: E, season: E2024}
+
+  - name: euroleague_people
+    group: euroleague.basketball
+    capabilities: [ref.players]
+    summary: "Players and coaches registered for a season. LARGE (~600 KB) — page it."
+    base: default
+    path: /competitions/{competition}/seasons/{season}/people
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "Competition letter." }
+      - { name: season, in: path, type: string, required: true, description: "Season code, e.g. E2024." }
+      - { name: limit, in: query, type: integer, default: 100, description: "Page size — the unpaged response is ~600 KB." }
+      - { name: offset, in: query, type: integer, description: "Page offset." }
+    response_hint: "{total, data:[{code, name, alias, height, birthDate, country, position, club}]}"
+    examples:
+      - description: "First page of registered people"
+        params: {competition: E, season: E2024, limit: 100}
+
+  - name: euroleague_rounds
+    group: euroleague.basketball
+    capabilities: []
+    summary: "The rounds (matchdays) in a season, with their date windows."
+    base: default
+    path: /competitions/{competition}/seasons/{season}/rounds
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "Competition letter." }
+      - { name: season, in: path, type: string, required: true, description: "Season code." }
+    response_hint: "{total, data:[{round, name, seasonCode, phaseTypeCode, minGameStartDate, maxGameStartDate}]}"
+    examples:
+      - description: "EuroLeague rounds"
+        params: {competition: E, season: E2024}
+
+  - name: euroleague_games
+    group: euroleague.basketball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Games in a season with scores, venue and officials. Unpaged this is ~800 KB — pass a limit or filter by round."
+    base: default
+    path: /competitions/{competition}/seasons/{season}/games
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "Competition letter." }
+      - { name: season, in: path, type: string, required: true, description: "Season code." }
+      - { name: roundNumber, in: query, type: integer, description: "Restrict to one round." }
+      - { name: limit, in: query, type: integer, default: 50, description: "Page size. The whole season unpaged is ~800 KB." }
+      - { name: offset, in: query, type: integer, description: "Page offset." }
+    response_hint: "{total, data:[{id (uuid), gameCode, identifier:'E2024_330', date, localDate, played, gameStatus, group, phaseType, local:{club, score}, road:{club, score}, isNeutralVenue, referee1..4, audience}]}  — HOME/AWAY are `local`/`road`; use gameCode (an int) for the per-game tools, not the uuid"
+    examples:
+      - description: "First 50 games of the season"
+        params: {competition: E, season: E2024, limit: 50}
+
+  - name: euroleague_game
+    group: euroleague.basketball
+    capabilities: [sport.match_detail]
+    summary: "One game's detail by its per-season game code."
+    base: default
+    path: /competitions/{competition}/seasons/{season}/games/{gameCode}
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "Competition letter." }
+      - { name: season, in: path, type: string, required: true, description: "Season code." }
+      - { name: gameCode, in: path, type: integer, required: true, description: "Per-season sequential game code (an integer like 1 or 330) — NOT the uuid." }
+    response_hint: "{id, gameCode, identifier, date, played, gameStatus, local:{club, score}, road:{club, score}, group, phaseType, referee1..4, audience}  — a single object, NOT wrapped in {data}"
+    examples:
+      - description: "Game 1 of the season"
+        params: {competition: E, season: E2024, gameCode: 1}
+
+  - name: euroleague_game_stats
+    group: euroleague.basketball
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Box score for one game: both teams' player lines plus team totals and coach."
+    base: default
+    path: /competitions/{competition}/seasons/{season}/games/{gameCode}/stats
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, default: E, enum: [E, U], description: "Competition letter." }
+      - { name: season, in: path, type: string, required: true, description: "Season code." }
+      - { name: gameCode, in: path, type: integer, required: true, description: "Per-season game code." }
+    response_hint: "{local:{team, coach, total:{…team totals…}, players:[{player:{person, dorsal, position, club}, stats:{timePlayed, valuation, points, fieldGoalsMade2/3, freeThrowsMade, offensiveRebounds, defensiveRebounds, assistances, steals, turnovers, plusMinus, foulsCommited}}]}, road:{…}}  — a player line is NESTED as {player, stats}: identity under `player`, numbers under `stats`. `valuation` is EuroLeague's PIR efficiency metric. `timePlayed` is SECONDS as a float (1088.0 = 18:08), not a MM:SS string."
+    examples:
+      - description: "Box score for game 1"
+        params: {competition: E, season: E2024, gameCode: 1}

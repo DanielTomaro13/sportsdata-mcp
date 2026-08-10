@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~590 tools across 35 providers in Claude Desktop,
+Free & open source (MIT). ~600 tools across 39 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -32,11 +32,11 @@ invisible unless something is reading every book at once.*
 sports MCP servers will get you fixtures and standings. This one is built around
 *disagreement between books* — eleven bookmakers, the Betfair exchange, and two
 prediction markets (Kalshi, Polymarket) side by side on the same market, plus
-twenty official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
+twenty-four official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than thirty-five integrations.
+across books" is one question rather than thirty-nine integrations.
 
 ### Built on this server
 
@@ -394,6 +394,51 @@ All ESPN tools are parametric over `sport` + `league` slugs (e.g. `football`/`nf
 `basketball`/`nba`, `soccer`/`eng.1`), so the five groups cover **every** league ESPN
 carries. Browse each dispatcher's operations in its `espn://{site,core,web,cdn}/operations`
 resource.
+
+### OpenDota — `api.opendota.com` (Dota 2 esports, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `opendota.reference` | 4 | Heroes, hero meta by skill bracket, pro teams, leagues |
+| `opendota.matches` | 3 | Pro matches, full match detail, public ladder matches |
+| `opendota.players` | 4 | Profile + rank, match log, win/loss, hero pool |
+
+The catalogue's first **esports** provider. Sides are Radiant/Dire rather than
+home/away, and hero stats are paired pick/win counts per skill bracket rather than
+rates — both documented, both test-pinned. The 4.4 MB pro-player list is deliberately
+not exposed. See [documentation/OpenDota.md](documentation/OpenDota.md).
+
+### OpenLigaDB — `api.openligadb.de` (German football, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `openligadb.football` | 8 | Bundesliga 1/2/3 + DFB-Pokal: fixtures, results, tables, matchdays |
+
+Fills the big-five hole — you had the Premier League, La Liga and Serie A but no
+**Bundesliga**. Crowd-maintained, so the long tail can lag. Note scores live in
+`matchResults`, which holds *both* half-time and full-time entries. See
+[documentation/OpenLigaDB.md](documentation/OpenLigaDB.md).
+
+### EuroLeague — `api-live.euroleague.net` (basketball, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `euroleague.basketball` | 7 | EuroLeague + EuroCup: seasons, clubs, rounds, games, box scores |
+
+Completes basketball alongside the NBA and NBL. One letter selects the competition
+(`E`/`U`), season codes are `E2024`, home/away are `local`/`road`, and box scores carry
+**PIR** rather than an NBA-style efficiency number. See
+[documentation/EuroLeague.md](documentation/EuroLeague.md).
+
+### NCAA — `ncaa-api.henrygd.me` (US college sports, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `ncaa.college` | 3 | Scoreboards, conference standings, AP/coaches polls across every college sport |
+
+ESPN already gives you college scores; this adds the NCAA's own **polls and conference
+standings** in a normalised shape. A third-party mirror of NCAA.com rather than an
+official feed. See [documentation/NCAA.md](documentation/NCAA.md).
 
 ### Jolpica F1 — `api.jolpi.ca` (F1 history 1950 →, no key)
 

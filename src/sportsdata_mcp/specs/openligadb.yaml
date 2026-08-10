@@ -1,0 +1,159 @@
+spec_version: 1
+
+# OpenLigaDB (api.openligadb.de) — community-maintained German football data.
+#
+# Fills the conspicuous hole in the big-five league coverage: the server already
+# carries the Premier League, La Liga and Serie A officially, but had nothing for the
+# Bundesliga. OpenLigaDB is crowd-maintained (like a wiki), free, keyless, and covers
+# 1. and 2. Bundesliga, the DFB-Pokal and a long tail of other competitions —
+# 819 league-seasons at the time of writing.
+#
+# THE LEAGUE SHORTCUT IS THE KEY CONCEPT. Everything is addressed by a short slug plus
+# a season year: `bl1` (1. Bundesliga), `bl2`, `bl3`, `dfb` (DFB-Pokal), and many more.
+# Call openligadb_leagues to discover valid shortcuts — an unknown one returns HTTP 404
+# (verified live 2026-08-10), which the engine surfaces as a clean tool error.
+#
+# SEASON YEAR IS THE STARTING YEAR: the 2024/25 Bundesliga season is `2024`.
+#
+# GERMAN FIELD NAMES appear throughout the data even though the API keys are English —
+# a matchday is a "Spieltag", and `group.groupName` reads "1. Spieltag". Matchdays are
+# called "groups" in this API, which is the other thing that confuses newcomers.
+#
+# Probed live 2026-08-10: leagues, teams, groups, season matches, matchday matches,
+# single match, table and current matchday all 200.
+
+provider:
+  id: openligadb
+  display_name: "OpenLigaDB (German football — Bundesliga, DFB-Pokal)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/OpenLigaDB.md"
+  base_urls:
+    default: https://api.openligadb.de
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  - name: openligadb_leagues
+    group: openligadb.football
+    capabilities: [sport.competitions_list]
+    summary: "Every competition + season OpenLigaDB carries — call this to find the league shortcut and season year the other tools need."
+    base: default
+    path: /getavailableleagues
+    auth: default
+    response_hint: "[{leagueId, leagueName, leagueShortcut:'bl1', leagueSeason:'2024', sport:{sportId, sportName}}]  (~819 entries, ~120 KB)"
+    examples:
+      - description: "All competitions"
+        params: {}
+
+  - name: openligadb_teams
+    group: openligadb.football
+    capabilities: [ref.teams]
+    summary: "The clubs contesting one league season."
+    base: default
+    path: /getavailableteams/{league}/{season}
+    auth: default
+    params:
+      - { name: league, in: path, type: string, default: bl1, description: "League shortcut, e.g. bl1, bl2, bl3, dfb." }
+      - { name: season, in: path, type: string, required: true, description: "Season STARTING year — 2024/25 is '2024'." }
+    response_hint: "[{teamId, teamName, shortName, teamIconUrl, teamGroupName}]"
+    examples:
+      - description: "2024/25 Bundesliga clubs"
+        params: {league: bl1, season: "2024"}
+
+  - name: openligadb_matchdays
+    group: openligadb.football
+    capabilities: []
+    summary: "The matchdays ('groups') in a season — OpenLigaDB calls a Spieltag a 'group'."
+    base: default
+    path: /getavailablegroups/{league}/{season}
+    auth: default
+    params:
+      - { name: league, in: path, type: string, default: bl1, description: "League shortcut." }
+      - { name: season, in: path, type: string, required: true, description: "Season starting year." }
+    response_hint: "[{groupID, groupName:'1. Spieltag', groupOrderID}]  — groupOrderID is the matchday number the match tools take"
+    examples:
+      - description: "Bundesliga matchdays"
+        params: {league: bl1, season: "2024"}
+
+  - name: openligadb_current_matchday
+    group: openligadb.football
+    capabilities: []
+    summary: "Which matchday a league is currently on — resolve 'this week' without guessing."
+    base: default
+    path: /getcurrentgroup/{league}
+    auth: default
+    params:
+      - { name: league, in: path, type: string, default: bl1, description: "League shortcut." }
+    response_hint: "{groupID, groupName:'1. Spieltag', groupOrderID}  — a single object, not a list"
+    examples:
+      - description: "Current Bundesliga matchday"
+        params: {league: bl1}
+
+  - name: openligadb_season_matches
+    group: openligadb.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Every match in a league season with results. LARGE (~550 KB for a Bundesliga season) — prefer the matchday tool."
+    base: default
+    path: /getmatchdata/{league}/{season}
+    auth: default
+    params:
+      - { name: league, in: path, type: string, default: bl1, description: "League shortcut." }
+      - { name: season, in: path, type: string, required: true, description: "Season starting year." }
+    response_hint: "[{matchID, matchDateTime, matchDateTimeUTC, timeZoneID, leagueName, leagueSeason, group:{groupName, groupOrderID}, team1:{teamId, teamName}, team2:{…}, matchIsFinished, matchResults:[{resultName:'Endergebnis'|'Halbzeit', pointsTeam1, pointsTeam2}], goals:[…], location}]"
+    examples:
+      - description: "Whole 2024/25 Bundesliga season"
+        params: {league: bl1, season: "2024"}
+
+  - name: openligadb_matchday_matches
+    group: openligadb.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "One matchday's fixtures and results — the everyday call."
+    base: default
+    path: /getmatchdata/{league}/{season}/{matchday}
+    auth: default
+    params:
+      - { name: league, in: path, type: string, default: bl1, description: "League shortcut." }
+      - { name: season, in: path, type: string, required: true, description: "Season starting year." }
+      - { name: matchday, in: path, type: integer, required: true, description: "Matchday number (groupOrderID)." }
+    response_hint: "Same shape as openligadb_season_matches, restricted to one matchday (~9 matches for the Bundesliga)"
+    examples:
+      - description: "Matchday 1 of 2024/25"
+        params: {league: bl1, season: "2024", matchday: 1}
+
+  - name: openligadb_match
+    group: openligadb.football
+    capabilities: [sport.match_detail]
+    summary: "One match by id, with goals and scorers."
+    base: default
+    path: /getmatchdata/{matchId}
+    auth: default
+    params:
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id (from either match-list tool)." }
+    response_hint: "{matchID, matchDateTime, team1, team2, matchIsFinished, matchResults:[…], goals:[{goalID, scoreTeam1, scoreTeam2, matchMinute, goalGetterName, isPenalty, isOwnGoal}], location}"
+    examples:
+      - description: "A single match"
+        params: {matchId: 66222}
+
+  - name: openligadb_table
+    group: openligadb.football
+    capabilities: [stats.ladder]
+    summary: "The league table for a season."
+    base: default
+    path: /getbltable/{league}/{season}
+    auth: default
+    params:
+      - { name: league, in: path, type: string, default: bl1, description: "League shortcut." }
+      - { name: season, in: path, type: string, required: true, description: "Season starting year." }
+    response_hint: "[{teamInfoId, teamName, shortName, points, opponentGoals, goals, matches, won, lost, draw, goalDiff, teamIconUrl}]  — ordered top to bottom; `goals` is scored, `opponentGoals` is conceded"
+    examples:
+      - description: "Bundesliga table"
+        params: {league: bl1, season: "2024"}

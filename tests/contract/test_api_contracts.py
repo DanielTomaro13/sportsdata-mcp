@@ -140,6 +140,20 @@ CONTRACTS: list[Contract] = [
     Contract("chesscom_player", {"username": "hikaru"},
              ("username", "player_id", "joined", "status")),
     Contract("chesscom_titled_players", {"title": "GM"}, ("players",)),
+    # ── OpenDota / OpenLigaDB / EuroLeague / NCAA (public, keyless) ──
+    # 2024 seasons are complete, so these shapes are frozen.
+    Contract("opendota_heroes", {}, list_at="", item_keys=("id", "localized_name", "primary_attr")),
+    Contract("openligadb_table", {"league": "bl1", "season": "2024"},
+             list_at="", item_keys=("teamName", "points", "goals", "opponentGoals")),
+    Contract("openligadb_leagues", {}, list_at="",
+             item_keys=("leagueId", "leagueName", "leagueShortcut", "leagueSeason")),
+    Contract("euroleague_seasons", {"competition": "E"}, ("total", "data"),
+             "data", ("code", "name", "year")),
+    Contract("euroleague_game_stats", {"competition": "E", "season": "E2024", "gameCode": 1},
+             ("local", "road")),
+    Contract("ncaa_rankings",
+             {"sport": "football", "division": "fbs", "poll": "associated-press"},
+             ("sport", "title", "data")),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

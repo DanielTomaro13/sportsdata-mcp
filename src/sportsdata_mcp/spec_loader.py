@@ -241,11 +241,12 @@ PRESETS: dict[str, list[str]] = {
     "arb": ["betfair", "pinnacle", "kalshi", "polymarket"],
     "fantasy": ["espnfantasy", "supercoach", "sleeper"],
     "chess": ["lichess", "chesscom"],
+    "esports": ["opendota"],
     # Official league / governing-body feeds only — no bookmakers.
     "official-stats": [
         "afl.public.*", "nrl", "nba", "nbl", "mlb", "premierleague", "laliga",
         "seriea", "wta", "cricketaustralia", "openf1", "espn", "nhl", "jolpicaf1",
-        "squiggle",
+        "squiggle", "openligadb", "euroleague", "ncaa",
     ],
     # Live telemetry (openf1, 2023→) plus the historical record (jolpicaf1, 1950→):
     # neither answers the other's questions, so the preset carries both.
