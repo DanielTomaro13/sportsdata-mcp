@@ -1,0 +1,147 @@
+{
+  "manifest_version": "0.2",
+  "name": "sportsdata-mcp",
+  "display_name": "SportsData",
+  "version": "0.23.1",
+  "description": "Live sports data and cross-book betting odds from 60 providers.",
+  "long_description": "736 tools across 60 providers: AFL, NRL, NBA, MLB, NHL, EPL, LaLiga, Serie A, F1, tennis, cricket, golf, chess and esports, alongside live prices from Sportsbet, TAB, PointsBet, BetR, Unibet, Entain, Dabble, Betfair and Pinnacle.\n\n41 of those providers need no key, no signup and no configuration \u2014 install it and everything works. The remaining providers are optional and unlock by pasting a key you get yourself; leave them blank and they simply stay hidden.",
+  "author": {
+    "name": "Daniel Tomaro",
+    "url": "https://github.com/DanielTomaro13"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DanielTomaro13/sportsdata-mcp"
+  },
+  "homepage": "https://github.com/DanielTomaro13/sportsdata-mcp",
+  "documentation": "https://github.com/DanielTomaro13/sportsdata-mcp#readme",
+  "license": "MIT",
+  "keywords": [
+    "sports",
+    "betting",
+    "odds",
+    "afl",
+    "nrl",
+    "nba",
+    "mlb",
+    "nhl",
+    "football",
+    "cricket",
+    "f1"
+  ],
+  "server": {
+    "type": "python",
+    "entry_point": "src/sportsdata_mcp/__main__.py",
+    "mcp_config": {
+      "command": "uvx",
+      "args": [
+        "sportsdata-mcp",
+        "serve",
+        "--groups",
+        "${user_config.groups}"
+      ],
+      "env": {
+        "THE_ODDS_API_KEY": "${user_config.the_odds_api_key}",
+        "API_SPORTS_KEY": "${user_config.api_sports_key}",
+        "ODDS_API_IO_KEY": "${user_config.odds_api_io_key}",
+        "SPORTSGAMEODDS_API_KEY": "${user_config.sportsgameodds_api_key}",
+        "CFBD_API_KEY": "${user_config.cfbd_api_key}",
+        "FOOTBALL_DATA_ORG_KEY": "${user_config.football_data_org_key}",
+        "API_TENNIS_KEY": "${user_config.api_tennis_key}",
+        "CRICKETDATA_API_KEY": "${user_config.cricketdata_api_key}",
+        "PANDASCORE_TOKEN": "${user_config.pandascore_token}",
+        "DATAGOLF_KEY": "${user_config.datagolf_key}"
+      }
+    }
+  },
+  "user_config": {
+    "groups": {
+      "type": "string",
+      "title": "Tool groups",
+      "description": "Which tools to expose. 'free' (the default) is every provider that needs no key. Other presets: all, racing, arb, fantasy, au-books, official-stats, motorsport, esports. Provider globs (espn.*) and exclusions (all,-twitter) also work.",
+      "default": "free",
+      "required": false
+    },
+    "the_odds_api_key": {
+      "type": "string",
+      "title": "The Odds API key",
+      "description": "Optional \u2014 odds from ~40 international bookmakers.",
+      "sensitive": true,
+      "required": false
+    },
+    "api_sports_key": {
+      "type": "string",
+      "title": "API-Sports key",
+      "description": "Optional \u2014 ten sports on one key, including rugby union.",
+      "sensitive": true,
+      "required": false
+    },
+    "odds_api_io_key": {
+      "type": "string",
+      "title": "Odds-API.io key",
+      "description": "Optional \u2014 274 bookmakers across 34 sports.",
+      "sensitive": true,
+      "required": false
+    },
+    "sportsgameodds_api_key": {
+      "type": "string",
+      "title": "SportsGameOdds key",
+      "description": "Optional \u2014 player props with stable market ids.",
+      "sensitive": true,
+      "required": false
+    },
+    "cfbd_api_key": {
+      "type": "string",
+      "title": "College Football Data key",
+      "description": "Optional \u2014 SP+, Elo and college-football analytics.",
+      "sensitive": true,
+      "required": false
+    },
+    "football_data_org_key": {
+      "type": "string",
+      "title": "football-data.org key",
+      "description": "Optional \u2014 UCL, Eredivisie, Championship.",
+      "sensitive": true,
+      "required": false
+    },
+    "api_tennis_key": {
+      "type": "string",
+      "title": "API-Tennis key",
+      "description": "Optional \u2014 ATP and ITF draws, H2H and rankings.",
+      "sensitive": true,
+      "required": false
+    },
+    "cricketdata_api_key": {
+      "type": "string",
+      "title": "CricketData key",
+      "description": "Optional \u2014 international and franchise cricket.",
+      "sensitive": true,
+      "required": false
+    },
+    "pandascore_token": {
+      "type": "string",
+      "title": "PandaScore token",
+      "description": "Optional \u2014 CS2, LoL, Valorant and R6 esports.",
+      "sensitive": true,
+      "required": false
+    },
+    "datagolf_key": {
+      "type": "string",
+      "title": "Data Golf key",
+      "description": "Optional \u2014 fields, live models and betting markets.",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  }
+}

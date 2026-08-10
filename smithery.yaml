@@ -1,0 +1,79 @@
+# Smithery deployment descriptor (https://smithery.ai).
+#
+# Everything here is OPTIONAL. The server starts with the `free` preset — 41 providers
+# that need no key, no signup and no configuration — so an empty config is a working
+# install, not a broken one. The fields below only widen what is available.
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required: []
+    properties:
+      groups:
+        type: string
+        title: "Tool groups"
+        default: "free"
+        description: >-
+          Which tools to expose. Presets: free (no key needed), all, racing, arb,
+          fantasy, au-books, official-stats, motorsport, esports. Also accepts provider
+          globs (espn.*), bare provider ids (nhl), literal group names, and exclusions
+          with a leading dash (all,-twitter). Comma-separated.
+      # ─── Bring-your-own keys. Each one unlocks its provider; none are required. ───
+      theOddsApiKey:
+        type: string
+        title: "The Odds API key"
+        description: "Unlocks `theoddsapi` — odds from ~40 international bookmakers."
+      apiSportsKey:
+        type: string
+        title: "API-Sports key"
+        description: "Unlocks `apisports` — ten sports on one key, including rugby union."
+      oddsApiIoKey:
+        type: string
+        title: "Odds-API.io key"
+        description: "Unlocks `oddsapiio` — 274 bookmakers across 34 sports."
+      sportsGameOddsKey:
+        type: string
+        title: "SportsGameOdds key"
+        description: "Unlocks `sportsgameodds` — player props with stable market ids."
+      cfbdKey:
+        type: string
+        title: "College Football Data key"
+        description: "Unlocks `cfbd` — SP+, Elo, advanced box scores, historical lines."
+      footballDataOrgKey:
+        type: string
+        title: "football-data.org key"
+        description: "Unlocks `footballdataorg` — UCL, Eredivisie, Championship and more."
+      apiTennisKey:
+        type: string
+        title: "API-Tennis key"
+        description: "Unlocks `apitennis` — ATP and ITF draws, H2H and rankings."
+      cricketDataKey:
+        type: string
+        title: "CricketData key"
+        description: "Unlocks `cricketdata` — international and franchise cricket."
+      pandascoreToken:
+        type: string
+        title: "PandaScore token"
+        description: "Unlocks `pandascore` — CS2, LoL, Valorant and R6 esports."
+      dataGolfKey:
+        type: string
+        title: "Data Golf key"
+        description: "Unlocks `datagolf` — fields, live models and betting markets."
+  commandFunction: |-
+    (config) => ({
+      command: "sportsdata-mcp",
+      args: ["serve", "--groups", config.groups || "free"],
+      env: Object.fromEntries(Object.entries({
+        THE_ODDS_API_KEY: config.theOddsApiKey,
+        API_SPORTS_KEY: config.apiSportsKey,
+        ODDS_API_IO_KEY: config.oddsApiIoKey,
+        SPORTSGAMEODDS_API_KEY: config.sportsGameOddsKey,
+        CFBD_API_KEY: config.cfbdKey,
+        FOOTBALL_DATA_ORG_KEY: config.footballDataOrgKey,
+        API_TENNIS_KEY: config.apiTennisKey,
+        CRICKETDATA_API_KEY: config.cricketDataKey,
+        PANDASCORE_TOKEN: config.pandascoreToken,
+        DATAGOLF_KEY: config.dataGolfKey,
+      }).filter(([, v]) => v))
+    })
