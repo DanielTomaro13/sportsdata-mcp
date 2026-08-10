@@ -6,7 +6,11 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
-## Unreleased
+## 0.24.0 — 2026-08-11
+
+**32 new providers (28 → 60) and 753 tools.** The largest release so far: a complete
+bring-your-own-key tier, fifteen new keyless providers, four engine features, and a
+drift check that no longer lies in either direction.
 
 ### Added
 
@@ -44,6 +48,14 @@ Full history is in `git log`; this file covers what a user would notice.
   documented shape.
 - `manifest.json` (Claude Desktop extension) and `smithery.yaml`, both defaulting to the
   `free` preset so an empty configuration is a working install.
+- **Relative date tokens** (`{{today}}`, `{{today+N}}`) in spec examples, rendered as a
+  real date when probing and as `<today>` in tool descriptions, so neither can rot.
+- **`sportsdata-mcp stats`** and the `sportsdata_session_stats` tool: per-tool call
+  counts, error rates and empty-result counts, recorded locally and never transmitted.
+- **`sportsdata_feedback`** for reporting a wrong or useless answer.
+- **Opt-in telemetry** — off by default, needing two explicit acts, with tool arguments
+  structurally impossible to record. See [docs/TELEMETRY.md](docs/TELEMETRY.md).
+- **`scripts/metrics.py`** — adoption figures from PyPI and GitHub, touching no user.
 
 ### Fixed
 
@@ -59,6 +71,22 @@ Full history is in `git log`; this file covers what a user would notice.
 - `doctor` reported SKIP rather than FAIL for providers with no auth configured.
 - `server.json` advertised "~500 tools, 28 providers" at version 0.22.1 while the package
   was 0.23.1 with far more of both. Version lockstep and count accuracy are now tested.
+- **Credential leak in verbose mode.** `sportsdata-mcp -v` printed API keys: seven
+  providers authenticate with a query parameter, and httpx logs the fully-composed URL.
+  A redaction filter now scrubs known secrets from every log record, whichever library
+  emitted it.
+- **The drift check was wrong in both directions.** It reported ✓ passed for three
+  providers that were returning auth errors inside HTTP 200 (doctor never applied
+  `error_signals`), failed 13 healthy BYO providers for correctly refusing an
+  unauthenticated probe, and called `footballdatauk`'s CSV a bot challenge.
+- **Ten spec examples had hardcoded dates** that providers now reject — Sportsbet answers
+  a five-week-old racing date with HTTP 400 — turning healthy providers red on the
+  nightly check. `sportsdata-mcp lint` now rejects any example date under 400 days old.
+- **Four providers had no documentation at all** while their `doc_url` — rendered into
+  every one of their tool descriptions — pointed at a GitHub 404. NBA and NRL had
+  documentation that nothing linked to.
+- **api-sports advertised ten sports and delivered eight**; handball and volleyball had
+  hosts declared but no endpoints behind them.
 
 ### Excluded on purpose
 
