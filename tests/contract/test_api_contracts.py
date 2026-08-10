@@ -160,6 +160,10 @@ CONTRACTS: list[Contract] = [
     Contract("formulae_championships", {}, ("championships",),
              "championships", ("id", "name", "status")),
     Contract("nascar_race_list", {"season": 2024}, ("series_1", "series_2", "series_3")),
+    # ── Football-Data.co.uk (CSV, public) ──
+    # 2024/25 is complete. This row also proves the CSV decoder is still wired up.
+    Contract("footballdatauk_season", {"season": "2425", "division": "E0"},
+             list_at="", item_keys=("Div", "Date", "HomeTeam", "AwayTeam", "FTR")),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

@@ -178,6 +178,7 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             headers=header,
             json_body=body,
             auth_key=ep.auth,
+            response_format=ep.response_format,
         )
         # Pure passthrough unless the endpoint opted into additive `classify` tags.
         return apply_classify(result, ep.classify) if ep.classify else result

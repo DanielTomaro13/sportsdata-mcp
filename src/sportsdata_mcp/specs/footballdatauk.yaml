@@ -1,0 +1,65 @@
+spec_version: 1
+
+# football-data.co.uk — decades of football results WITH CLOSING ODDS from a dozen
+# bookmakers, published as CSV downloads. Free, keyless, no rate limit stated.
+#
+# WHY THIS IS HERE AND NOT JUST ANOTHER RESULTS FEED. Every other football provider in
+# this catalogue tells you what happened. This one tells you what the market thought
+# would happen, match by match, going back to the 1990s — B365H/D/A, PSH/D/A (Pinnacle),
+# WHH/D/A, plus closing lines and Asian handicaps. That makes it the only source here
+# you can BACKTEST against: pull a season, compare closing odds to results, and you have
+# a CLV baseline to measure today's live prices from `sportsbet`/`pinnacle` against.
+#
+# CSV, NOT JSON. This is the only provider using `response_format: csv`; the engine
+# parses the body into row objects keyed by the header line, so the model still receives
+# ordinary JSON. The files are Windows-authored and start with a UTF-8 BOM, which the
+# decoder strips — left in, it becomes part of the first column name ("﻿Div") and
+# every lookup of that column silently misses.
+#
+# THE PATH IS THE QUERY. There are no parameters: season and division are path segments.
+#   /mmz4281/{season}/{division}.csv     season = 4-digit "2425" for 2024/25
+# Division codes: E0 Premier League, E1 Championship, E2/E3 lower tiers, EC Conference,
+# SC0 Scottish Prem, D1/D2 Bundesliga, I1/I2 Serie A/B, SP1/SP2 La Liga, F1/F2 Ligue 1/2,
+# N1 Eredivisie, B1 Belgian, P1 Portuguese, T1 Turkish, G1 Greek.
+#
+# COLUMN NAMES ARE TERSE and documented in the site's notes.txt: FTHG/FTAG full-time
+# goals, FTR result (H/D/A), HTHG/HTAG half time, HS/AS shots, HST/AST on target,
+# B365H = Bet365 home price. Every value arrives as a STRING because it's CSV.
+#
+# Probed live 2026-08-10: E0 2024/25 returns 197 KB of CSV with 100+ columns.
+
+provider:
+  id: footballdatauk
+  display_name: "Football-Data.co.uk (historical results + closing odds, CSV)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FootballDataUK.md"
+  base_urls:
+    default: https://www.football-data.co.uk
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "text/csv, */*"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 45
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: footballdatauk_season
+    group: footballdatauk.history
+    capabilities: [sport.match_score, stats.closing_odds]
+    summary: "One league season: every match with full/half-time score, shots, cards, and CLOSING ODDS from ~10 bookmakers. The backtesting dataset."
+    base: default
+    path: /mmz4281/{season}/{division}.csv
+    auth: default
+    response_format: csv
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Four digits, start+end year without century: '2425' = 2024/25, '1516' = 2015/16." }
+      - { name: division, in: path, type: string, default: E0, description: "Division code: E0 Premier League, E1 Championship, SC0 Scottish Prem, D1 Bundesliga, I1 Serie A, SP1 La Liga, F1 Ligue 1, N1 Eredivisie, P1 Portugal, T1 Turkey, G1 Greece, B1 Belgium." }
+    response_hint: "[{Div, Date:'16/08/2024', Time, HomeTeam, AwayTeam, FTHG, FTAG, FTR:'H'|'D'|'A', HTHG, HTAG, HTR, Referee, HS, AS, HST, AST, HF, AF, HC, AC, HY, AY, HR, AR, B365H, B365D, B365A, PSH, PSD, PSA, WHH, WHD, WHA, MaxH, AvgH, B365CH…}]  (one row per match; ~380 rows for a 20-team season). ALL VALUES ARE STRINGS — cast before arithmetic. Dates are DD/MM/YYYY. A `C` in an odds column means CLOSING (B365CH = Bet365 closing home)."
+    examples:
+      - description: "Premier League 2024/25 with closing odds"
+        params: {season: "2425", division: E0}

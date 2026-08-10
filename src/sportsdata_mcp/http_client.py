@@ -5,6 +5,8 @@ credential once on 401, and retries transient upstream statuses (e.g. NBA/Akamai
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import logging
 import os
@@ -277,7 +279,12 @@ class HTTPClient:
         )
 
     async def request_json(self, **kwargs) -> dict | list:
-        """Request + defensive decode. Tool handlers call this — never a bare ``r.json()``."""
+        """Request + defensive decode. Tool handlers call this — never a bare ``r.json()``.
+
+        ``response_format='csv'`` switches the decoder for the handful of datasets that
+        are only published as CSV downloads; the model still receives ordinary JSON.
+        """
+        response_format = kwargs.pop("response_format", "json")
         key = self._cache_key(kwargs) if self._cache_ttl > 0 else None
         if key is not None:
             hit = self._cache.get(key)
@@ -285,7 +292,7 @@ class HTTPClient:
                 log.debug("cache hit (provider=%s) %s", self._provider.id, kwargs.get("url"))
                 return hit[1]
         r = await self.request(**kwargs)
-        body = self._decode(r)
+        body = self._decode_csv(r) if response_format == "csv" else self._decode(r)
         if key is not None:
             # Evict expired entries before inserting, and bound the map so a long-running
             # server driven over many distinct params can't grow without limit.
@@ -298,6 +305,59 @@ class HTTPClient:
                     self._cache.pop(next(iter(self._cache)), None)  # oldest insert
             self._cache[key] = (now + self._cache_ttl, body)
         return body
+
+    def _decode_csv(self, r: httpx.Response) -> list[dict]:
+        """Parse a CSV body into a list of row objects keyed by the header line.
+
+        Only used by endpoints declaring ``response_format: csv``. The status and size
+        guards in ``_decode`` still apply first — a bot-challenge page or an oversized
+        body must not be handed to the CSV parser and silently become one nonsense row.
+        """
+        self._guard_status_and_size(r)
+        text = r.text
+        # These files are Windows-authored and often start with a UTF-8 BOM, which would
+        # otherwise become part of the FIRST COLUMN NAME ("﻿Div") and quietly break
+        # every lookup of that column.
+        if text.startswith("﻿"):
+            text = text.lstrip("﻿")
+        try:
+            rows = list(csv.DictReader(io.StringIO(text)))
+        except csv.Error as e:
+            log.error("CSV parse failed (provider=%s): %s", self._provider.id, _snippet(r, 120))
+            raise ToolError(
+                f"{self._provider.id} returned a body that did not parse as CSV. "
+                f"Body starts: {_snippet(r)}",
+                recoverable=False,
+                code="CSV_DECODE_ERROR",
+            ) from e
+        # Trailing blank lines produce rows whose every value is None/''.
+        return [row for row in rows if any((v or "").strip() for v in row.values())]
+
+    def _guard_status_and_size(self, r: httpx.Response) -> None:
+        """Status + size checks shared by the JSON and CSV decoders."""
+        if r.status_code == 429:
+            log.warning("rate-limited (provider=%s, HTTP 429)", self._provider.id)
+            raise ToolError(
+                f"{self._provider.id} rate-limited the request (HTTP 429). Wait and retry; "
+                f"the per-provider rate limiter normally prevents this.",
+                recoverable=True,
+                code="HTTP_429",
+            )
+        if r.status_code >= 400:
+            log_at = log.error if r.status_code >= 500 else log.warning
+            log_at("HTTP %d (provider=%s): %s", r.status_code, self._provider.id, _snippet(r, 120))
+            raise ToolError(
+                f"{self._provider.id} returned HTTP {r.status_code}. Body starts: {_snippet(r)}",
+                recoverable=r.status_code >= 500,
+                code=f"HTTP_{r.status_code}",
+            )
+        if self._max_bytes > 0 and len(r.content) > self._max_bytes:
+            raise ToolError(
+                f"{self._provider.id} response is {len(r.content):,} bytes, over the configured cap "
+                f"(limit {self._max_bytes:,}). Narrow the query (date range, pageSize, filters) and retry.",
+                recoverable=True,
+                code="RESPONSE_TOO_LARGE",
+            )
 
     def _decode(self, r: httpx.Response) -> dict | list:
         # 1. Status guard — surface bot-blocks / rate-limits / server errors as clean

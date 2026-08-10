@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~620 tools across 42 providers in Claude Desktop,
+Free & open source (MIT). ~620 tools across 43 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -36,7 +36,7 @@ twenty-seven official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than forty-two integrations.
+across books" is one question rather than forty-three integrations.
 
 ### Built on this server
 
@@ -439,6 +439,21 @@ Completes basketball alongside the NBA and NBL. One letter selects the competiti
 ESPN already gives you college scores; this adds the NCAA's own **polls and conference
 standings** in a normalised shape. A third-party mirror of NCAA.com rather than an
 official feed. See [documentation/NCAA.md](documentation/NCAA.md).
+
+### Football-Data.co.uk — historical results **with closing odds** (no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `footballdatauk.history` | 1 | A league season per call: results, shots, cards, and closing prices from ~10 bookmakers, back to the 1990s |
+
+The only source here you can **backtest** against. Every other football provider tells
+you what happened; this one tells you what the market thought would happen, match by
+match. Pull a completed season, compare closing prices to results, and you have a CLV
+baseline to measure today's live `sportsbet`/`pinnacle`/`betfair` prices against.
+
+Published as CSV — the one provider using the engine's `response_format: csv`, so the
+model still receives ordinary JSON. See
+[documentation/FootballDataUK.md](documentation/FootballDataUK.md).
 
 ### Motorsport beyond F1 — MotoGP, Formula E, NASCAR (no key)
 

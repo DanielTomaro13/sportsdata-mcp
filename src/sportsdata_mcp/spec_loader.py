@@ -242,6 +242,8 @@ PRESETS: dict[str, list[str]] = {
     "fantasy": ["espnfantasy", "supercoach", "sleeper"],
     "chess": ["lichess", "chesscom"],
     "esports": ["opendota"],
+    # Historical closing odds — the backtesting half of the odds story.
+    "backtest": ["footballdatauk"],
     # Official league / governing-body feeds only — no bookmakers.
     "official-stats": [
         "afl.public.*", "nrl", "nba", "nbl", "mlb", "premierleague", "laliga",

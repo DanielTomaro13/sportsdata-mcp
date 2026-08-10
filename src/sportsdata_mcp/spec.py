@@ -288,6 +288,12 @@ class Endpoint(BaseModel):
     examples: list[Example] = Field(default_factory=list)
     # Optional, additive post-fetch tags (see Classify). Absent ⇒ pure passthrough.
     classify: list[Classify] = Field(default_factory=list)
+    # Wire format of the response body. `json` (the default) covers every provider
+    # here bar one: some datasets are only published as CSV downloads
+    # (football-data.co.uk's decades of results + closing odds). `csv` parses the
+    # body into a list of row objects keyed by the header line, so the tool returns
+    # ordinary JSON to the model.
+    response_format: Literal["json", "csv"] = "json"
 
     @model_validator(mode="after")
     def _path_params_required(self) -> Endpoint:
