@@ -154,6 +154,12 @@ CONTRACTS: list[Contract] = [
     Contract("ncaa_rankings",
              {"sport": "football", "division": "fbs", "poll": "associated-press"},
              ("sport", "title", "data")),
+    # ── Motorsport: MotoGP / Formula E / NASCAR (public, keyless) ──
+    # Seasons lists and a completed 2024 NASCAR season: no calendar drift.
+    Contract("motogp_seasons", {}, list_at="", item_keys=("id", "year")),
+    Contract("formulae_championships", {}, ("championships",),
+             "championships", ("id", "name", "status")),
+    Contract("nascar_race_list", {"season": 2024}, ("series_1", "series_2", "series_3")),
     # ── NBA (cdn.nba.com — public) ──
     Contract("nba_scoreboard_today", {}, ("scoreboard",)),
     Contract("nba_schedule", {}, ("leagueSchedule",)),

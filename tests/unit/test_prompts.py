@@ -55,6 +55,15 @@ async def test_racing_prompt_requires_racing_groups():
     assert "racing-next-to-go" in await _prompts(["racing"])
 
 
+async def test_motorsport_does_not_trigger_the_horse_racing_prompt():
+    """motogp.racing / formulae.racing / nascar.racing all end in ".racing" but have no
+    tote pools, scratchings or next-to-go. The original gate was a name heuristic and
+    started offering the horse-racing workflow to MotoGP installs the moment motorsport
+    landed — this pins the fix."""
+    names = await _prompts(["motorsport"])
+    assert "racing-next-to-go" not in names
+
+
 async def test_fantasy_prompt_requires_a_fantasy_provider():
     assert "fantasy-waiver-wire" not in await _prompts(["official-stats"])
     assert "fantasy-waiver-wire" in await _prompts(["fantasy"])

@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~600 tools across 39 providers in Claude Desktop,
+Free & open source (MIT). ~620 tools across 42 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -32,11 +32,11 @@ invisible unless something is reading every book at once.*
 sports MCP servers will get you fixtures and standings. This one is built around
 *disagreement between books* — eleven bookmakers, the Betfair exchange, and two
 prediction markets (Kalshi, Polymarket) side by side on the same market, plus
-twenty-four official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
+twenty-seven official league/stats feeds. Deep on AU/NZ books (Sportsbet, TAB,
 Ladbrokes, PointsBet, BetR, Dabble) and on racing — thoroughbred, greyhound and
 harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
-across books" is one question rather than thirty-nine integrations.
+across books" is one question rather than forty-two integrations.
 
 ### Built on this server
 
@@ -439,6 +439,21 @@ Completes basketball alongside the NBA and NBL. One letter selects the competiti
 ESPN already gives you college scores; this adds the NCAA's own **polls and conference
 standings** in a normalised shape. A third-party mirror of NCAA.com rather than an
 official feed. See [documentation/NCAA.md](documentation/NCAA.md).
+
+### Motorsport beyond F1 — MotoGP, Formula E, NASCAR (no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `motogp.racing` | 6 | MotoGP/Moto2/Moto3/MotoE back to 1949: events, sessions with track conditions, classifications, championships |
+| `formulae.racing` | 5 | Formula E from 2014-15: calendar, driver and team championships with per-race points |
+| `nascar.racing` | 2 | Cup/Xfinity/Truck: full season summaries and weekend feeds with practice, qualifying and race results |
+
+With `openf1` (live telemetry) and `jolpicaf1` (history), the `motorsport` preset now
+covers five series. Each has a structural quirk documented in its page — MotoGP needs a
+four-level uuid walk, Formula E wraps races but not standings, and NASCAR's results
+array is unsorted and **includes non-starters at position 0**, so `results[0]` is not
+the winner. See [MotoGP.md](documentation/MotoGP.md),
+[FormulaE.md](documentation/FormulaE.md), [NASCAR.md](documentation/NASCAR.md).
 
 ### Jolpica F1 — `api.jolpi.ca` (F1 history 1950 →, no key)
 

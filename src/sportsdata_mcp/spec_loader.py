@@ -246,11 +246,12 @@ PRESETS: dict[str, list[str]] = {
     "official-stats": [
         "afl.public.*", "nrl", "nba", "nbl", "mlb", "premierleague", "laliga",
         "seriea", "wta", "cricketaustralia", "openf1", "espn", "nhl", "jolpicaf1",
-        "squiggle", "openligadb", "euroleague", "ncaa",
+        "squiggle", "openligadb", "euroleague", "ncaa", "motogp", "formulae",
+        "nascar",
     ],
     # Live telemetry (openf1, 2023→) plus the historical record (jolpicaf1, 1950→):
     # neither answers the other's questions, so the preset carries both.
-    "motorsport": ["openf1", "jolpicaf1"],
+    "motorsport": ["openf1", "jolpicaf1", "motogp", "formulae", "nascar"],
     "aus": ["afl.public.*", "nrl", "nbl", "supercoach", "cricketaustralia",
             "racingandsports", "squiggle"],
 }

@@ -33,8 +33,20 @@ def _has(enabled: set[str], *providers: str) -> bool:
     return bool(_providers(enabled) & set(providers))
 
 
+# Providers that carry THOROUGHBRED / GREYHOUND / HARNESS racing. This is an explicit
+# list rather than a `g.endswith(".racing")` heuristic, which was the original version
+# and silently broke the moment motorsport arrived: `motogp.racing`, `formulae.racing`
+# and `nascar.racing` all end in ".racing" but have no tote pools, no scratchings and
+# no next-to-go — offering the horse-racing workflow for a MotoGP install is nonsense.
+_HORSE_RACING = ("sportsbet", "tab", "betr", "pointsbet", "unibet", "fanduel", "entain",
+                 "racingandsports", "betfair")
+
+
 def _racing_groups(enabled: set[str]) -> bool:
-    return any(g.endswith(".racing") or g.startswith("racingandsports") for g in enabled)
+    return any(
+        g.split(".", 1)[0] in _HORSE_RACING and (g.endswith(".racing") or g.startswith("racingandsports"))
+        for g in enabled
+    )
 
 
 # ─── the prompts ────────────────────────────────────────────────────────

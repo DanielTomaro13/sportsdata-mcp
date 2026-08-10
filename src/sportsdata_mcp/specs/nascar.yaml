@@ -1,0 +1,74 @@
+spec_version: 1
+
+# NASCAR — the public CDN feeds behind nascar.com (cf.nascar.com).
+#
+# Covers all three national series. No key, no auth. These are static JSON files on a
+# CDN rather than a REST API, which has two consequences worth knowing:
+#   * There are no query parameters. Everything is encoded in the PATH, so you must
+#     know the season, series and race id to address a race.
+#   * They are cache-friendly and fast, but there is no filtering — you fetch the whole
+#     file and filter client-side.
+#
+# THE THREE SERIES are numbered, and the number appears in both the response key and
+# the path: 1 = Cup, 2 = Xfinity, 3 = Craftsman Truck.
+#
+# THE ID CHAIN:
+#   nascar_race_list(season) → {series_1:[…], series_2:[…], series_3:[…]}
+#        each race has race_id + series_id
+#            └─ nascar_weekend_feed(season, series, race_id) → results + runs
+#
+# NOT MODELLED: /cacher/drivers.json is ~1.4 MB of every driver ever, which is not a
+# sensible thing to hand a model. Driver identity comes back inside the weekend feed
+# anyway.
+#
+# Probed live 2026-08-10: race_list_basic and weekend-feed both 200.
+
+provider:
+  id: nascar
+  display_name: "NASCAR (cf.nascar.com CDN feeds — Cup/Xfinity/Truck)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/NASCAR.md"
+  base_urls:
+    default: https://cf.nascar.com
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 5
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  - name: nascar_race_list
+    group: nascar.racing
+    capabilities: [sport.fixtures_by_date, sport.season_summary]
+    summary: "Every race in a season across all three series, with winner, track, distance, cautions and lead changes. LARGE (~430 KB)."
+    base: default
+    path: /cacher/{season}/race_list_basic.json
+    auth: default
+    params:
+      - { name: season, in: path, type: integer, required: true, description: "Season year, e.g. 2024." }
+    response_hint: "{series_1:[{race_id, series_id, race_season, race_name, track_name, track_id, date_scheduled, scheduled_distance, actual_laps, number_of_cautions, number_of_lead_changes, average_speed, margin_of_victory, pole_winner_driver_id, winner_driver_id, attendance}], series_2:[…], series_3:[…]}  — series 1=Cup, 2=Xfinity, 3=Truck"
+    examples:
+      - description: "2024 season across all series"
+        params: {season: 2024}
+
+  - name: nascar_weekend_feed
+    group: nascar.racing
+    capabilities: [sport.match_detail, stats.player_match]
+    summary: "One race weekend in full: the finishing order with laps led, points and status, plus every practice and qualifying run."
+    base: default
+    path: /cacher/{season}/{series}/{raceId}/weekend-feed.json
+    auth: default
+    params:
+      - { name: season, in: path, type: integer, required: true, description: "Season year." }
+      - { name: series, in: path, type: integer, default: 1, enum: [1, 2, 3], description: "1 = Cup, 2 = Xfinity, 3 = Craftsman Truck." }
+      - { name: raceId, in: path, type: integer, required: true, description: "Race id from nascar_race_list (the `race_id` field)." }
+    response_hint: "{weekend_race:[{race_id, race_name, track_name, results:[{finishing_position, starting_position, car_number, driver_fullname, team_name, laps_completed, laps_led, points_earned, status, delta_leader}], caution_segments, race_comments}], weekend_runs:[{run_type, run_name, results:[{finishing_position, driver_name, best_lap_time, best_lap_speed}]}]}  — `weekend_race` is the race, `weekend_runs` is practice + qualifying. WARNING: `results` is NOT sorted and INCLUDES non-starters with finishing_position 0 (DNQ/DNS). Verified on the 2024 Daytona 500, where results[0] is a driver who did not qualify. The winner is the row with finishing_position == 1 — never results[0]."
+    examples:
+      - description: "One Cup race weekend"
+        params: {season: 2024, series: 1, raceId: 5376}

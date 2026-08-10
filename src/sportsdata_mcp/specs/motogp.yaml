@@ -1,0 +1,134 @@
+spec_version: 1
+
+# MotoGP — the official results API behind motogp.com (api.motogp.pulselive.com).
+#
+# Covers MotoGP, Moto2, Moto3 and MotoE, back to 1949. No key.
+#
+# UNOFFICIAL AND UNDOCUMENTED: this is the site's own backend, not a published API.
+# It has been stable for years, and the nightly drift check will catch it if that
+# changes. Note `api.motogp.com` (a different host) 403s — don't confuse them.
+#
+# EVERYTHING IS A UUID, and the chain is four levels deep. This is the whole story of
+# using this provider:
+#
+#   motogp_seasons                          → season uuid   (+ year)
+#     └─ motogp_events(seasonUuid)          → event uuid    (a Grand Prix weekend)
+#          └─ motogp_categories(eventUuid)  → category uuid (MotoGP / Moto2 / Moto3 / MotoE)
+#               └─ motogp_sessions(eventUuid, categoryUuid) → session uuid (FP1, Q1, SPR, RAC)
+#                    └─ motogp_session_classification(sessionUuid) → the results
+#
+# You cannot shortcut it: there is no "2024 Qatar MotoGP race result" endpoint. Every
+# id is a uuid, so none of them can be guessed or constructed.
+#
+# Standings take seasonUuid + categoryUuid and skip the event level.
+#
+# SESSION TYPES: `RAC` race, `SPR` sprint, `Q1`/`Q2` qualifying, `FP1`…/`PR` practice.
+#
+# Probed live 2026-08-10 against the completed 2024 season: seasons, events,
+# categories, sessions, classification and standings all 200.
+
+provider:
+  id: motogp
+  display_name: "MotoGP (official results API — MotoGP/Moto2/Moto3/MotoE)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/MotoGP.md"
+  base_urls:
+    default: https://api.motogp.pulselive.com/motogp/v1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  - name: motogp_seasons
+    group: motogp.racing
+    capabilities: [ref.seasons]
+    summary: "Every MotoGP season (1949 →) with its uuid — the entry point to everything else."
+    base: default
+    path: /results/seasons
+    auth: default
+    response_hint: "[{id (uuid), year, current}]  (top-level array, newest first) — `id` is the seasonUuid every other tool needs; `current: true` marks the live season"
+    examples:
+      - description: "All seasons"
+        params: {}
+
+  - name: motogp_events
+    group: motogp.racing
+    capabilities: [sport.fixtures_by_date]
+    summary: "The Grand Prix weekends in a season, with circuit, country and dates."
+    base: default
+    path: /results/events
+    auth: default
+    params:
+      - { name: seasonUuid, in: query, type: string, required: true, description: "Season uuid from motogp_seasons (a year like '2024' will NOT work)." }
+      - { name: isFinished, in: query, type: boolean, description: "true = completed rounds only." }
+    response_hint: "[{id (uuid), name, short_name:'QAT', sponsored_name, date_start, date_end, circuit:{id, name, nation}, country:{iso, name}, season, event_files}]"
+    examples:
+      - description: "Completed rounds of a season"
+        params: {seasonUuid: "dd12382e-1d9f-46ee-a5f7-c5104db28e43", isFinished: true}
+
+  - name: motogp_categories
+    group: motogp.racing
+    capabilities: [sport.competitions_list]
+    summary: "The classes running at one event — MotoGP, Moto2, Moto3, MotoE."
+    base: default
+    path: /results/categories
+    auth: default
+    params:
+      - { name: eventUuid, in: query, type: string, required: true, description: "Event uuid from motogp_events." }
+    response_hint: "[{id (uuid), name:'MotoGP™', legacy_id}]  — `id` is the categoryUuid the session and standings tools need"
+    examples:
+      - description: "Classes at one Grand Prix"
+        params: {eventUuid: "0f4c9f38-3e30-40f4-8a4a-9e05ba0d0daa"}
+
+  - name: motogp_sessions
+    group: motogp.racing
+    capabilities: []
+    summary: "The sessions for one class at one event — practice, qualifying, sprint and race."
+    base: default
+    path: /results/sessions
+    auth: default
+    params:
+      - { name: eventUuid, in: query, type: string, required: true, description: "Event uuid." }
+      - { name: categoryUuid, in: query, type: string, required: true, description: "Category uuid (both are required — one alone returns 400)." }
+    response_hint: "[{id (uuid), type:'RAC'|'SPR'|'Q1'|'Q2'|'FP1'|'PR', number, date, condition:{track, air, humidity, ground, weather}}]  — pick type 'RAC' for the race"
+    examples:
+      - description: "Sessions for MotoGP at one round"
+        params: {eventUuid: "0f4c9f38-3e30-40f4-8a4a-9e05ba0d0daa", categoryUuid: "e8c110ad-64aa-4e8e-8a86-f2f152f6a942"}
+
+  - name: motogp_session_classification
+    group: motogp.racing
+    capabilities: [sport.match_detail, stats.player_match]
+    summary: "The result of one session: finishing order, rider, team, bike, time/gap and points."
+    base: default
+    path: /results/session/{sessionUuid}/classification
+    auth: default
+    params:
+      - { name: sessionUuid, in: path, type: string, required: true, description: "Session uuid from motogp_sessions." }
+      - { name: test, in: query, type: boolean, description: "Set true only for pre-season test sessions." }
+    response_hint: "{classification:[{position, points, total_laps, time, gap:{first, lap}, rider:{id, full_name, number, country}, team:{name}, constructor:{name}, average_speed, top_speed, status}], records, file}"
+    examples:
+      - description: "A race result"
+        params: {sessionUuid: "5b0827b6-7faf-4a1b-a4c2-de630ba1941a"}
+
+  - name: motogp_standings
+    group: motogp.racing
+    capabilities: [stats.ladder]
+    summary: "Championship standings for one class in one season."
+    base: default
+    path: /results/standings
+    auth: default
+    params:
+      - { name: seasonUuid, in: query, type: string, required: true, description: "Season uuid." }
+      - { name: categoryUuid, in: query, type: string, required: true, description: "Category uuid — the classes have separate championships." }
+    response_hint: "{classification:[{position, points, rider:{id, full_name, number, country}, team:{name}, constructor:{name}}], file}"
+    examples:
+      - description: "MotoGP riders' championship"
+        params: {seasonUuid: "dd12382e-1d9f-46ee-a5f7-c5104db28e43", categoryUuid: "e8c110ad-64aa-4e8e-8a86-f2f152f6a942"}

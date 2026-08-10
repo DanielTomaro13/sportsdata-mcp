@@ -1,0 +1,110 @@
+spec_version: 1
+
+# Formula E — the official API behind fiaformulae.com (api.formula-e.pulselive.com).
+#
+# The all-electric single-seater championship, from its first season (2014-15). No key.
+# Unofficial and undocumented in the same sense as `motogp`: it is the site's own
+# backend, on the same Pulselive platform.
+#
+# CHAMPIONSHIP ID IS THE ROOT. Formula E calls a season a "championship", each with a
+# uuid — there is no /seasons endpoint (verified 404). Everything else takes a
+# `championshipId`, so formulae_championships is always the first call.
+#
+# STANDINGS ARE TOP-LEVEL ARRAYS while races are wrapped in {pageInfo, races} — the two
+# shapes differ, which is the usual parsing mistake here.
+#
+# WHAT'S NOT HERE: per-race results. `/races/{id}/results` 404s (verified); the race
+# detail object carries `hasRaceResults` but no results payload on this host. Team
+# standings do include a per-race points breakdown (`teamRaceStandings`), which is the
+# closest available substitute — see documentation/FormulaE.md.
+#
+# Probed live 2026-08-10: championships, races, race detail, driver standings and team
+# standings all 200.
+
+provider:
+  id: formulae
+  display_name: "Formula E (official API, fiaformulae.com)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FormulaE.md"
+  base_urls:
+    default: https://api.formula-e.pulselive.com/formula-e/v1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 0.5
+
+endpoints:
+  - name: formulae_championships
+    group: formulae.racing
+    capabilities: [ref.seasons]
+    summary: "Every Formula E season ('championship') with its uuid — call this first, everything else needs the id."
+    base: default
+    path: /championships
+    auth: default
+    response_hint: "{championships:[{id (uuid), name:'SEASON 2024-2025', status:'Past'|'Live'|'Future', lastFinishedRound, series:{id, name}}]}"
+    examples:
+      - description: "All seasons"
+        params: {}
+
+  - name: formulae_races
+    group: formulae.racing
+    capabilities: [sport.fixtures_by_date]
+    summary: "The race calendar — all seasons, or one championship's rounds."
+    base: default
+    path: /races
+    auth: default
+    params:
+      - { name: championshipId, in: query, type: string, description: "Championship uuid. Omit for every race across all seasons." }
+    response_hint: "{pageInfo:{…}, races:[{id (uuid), name:'Beijing E-Prix', sequence, date, city, country, circuit, championship, hasRaceResults, hasSessionResults}]}  — WRAPPED, unlike standings"
+    examples:
+      - description: "One season's calendar"
+        params: {championshipId: "4e287a6d-e2da-471a-9c8a-01141d6a1819"}
+
+  - name: formulae_race
+    group: formulae.racing
+    capabilities: [sport.match_detail]
+    summary: "One race's detail: circuit, city, date and whether results exist."
+    base: default
+    path: /races/{raceId}
+    auth: default
+    params:
+      - { name: raceId, in: path, type: string, required: true, description: "Race uuid from formulae_races." }
+    response_hint: "{id, name, sequence, date, city, country, circuit, championship, hasRaceResults, hasSessionResults, metadata}  — a single object; there is no results payload on this host (see the docs)"
+    examples:
+      - description: "One E-Prix"
+        params: {raceId: "c1dd1f8a-5112-4864-8d2d-cfcc8951d197"}
+
+  - name: formulae_driver_standings
+    group: formulae.racing
+    capabilities: [stats.ladder]
+    summary: "Drivers' championship standings for one season."
+    base: default
+    path: /standings/drivers
+    auth: default
+    params:
+      - { name: championshipId, in: query, type: string, required: true, description: "Championship uuid from formulae_championships." }
+    response_hint: "[{driverPosition, driverFirstName, driverLastName, driverTLA:'ROW', driverPoints, driverTeamName, driverTeamId, driverId, driverCountry}]  — a TOP-LEVEL ARRAY, not wrapped"
+    examples:
+      - description: "Drivers' championship"
+        params: {championshipId: "4e287a6d-e2da-471a-9c8a-01141d6a1819"}
+
+  - name: formulae_team_standings
+    group: formulae.racing
+    capabilities: [stats.ladder]
+    summary: "Teams' championship standings, including each team's points race by race."
+    base: default
+    path: /standings/teams
+    auth: default
+    params:
+      - { name: championshipId, in: query, type: string, required: true, description: "Championship uuid." }
+    response_hint: "[{teamPosition, teamName, teamId, teamPoints, teamRaceStandings:[{raceSequence, raceCountry, racePoints}]}]  — top-level array. `teamRaceStandings` is the per-race points breakdown, and the closest thing to race results this host exposes."
+    examples:
+      - description: "Teams' championship"
+        params: {championshipId: "4e287a6d-e2da-471a-9c8a-01141d6a1819"}
