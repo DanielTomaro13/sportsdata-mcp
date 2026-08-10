@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~620 tools across 43 providers in Claude Desktop,
+Free & open source (MIT). ~655 tools across 49 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -704,6 +704,56 @@ tier's monthly read cap (`twitter_usage`); the spec throttles ~0.5 req/s and
 never auto-retries 429s. Write/user-context surfaces (posting, DMs, follows)
 are out of scope. Flow: `twitter_user_by_username("AFL")` → id →
 `twitter_user_tweets`; search with X operators (`"Storm" lang:en -is:retweet`).
+
+## Bring your own key
+
+Six providers need a key you sign up for yourself. They are **excluded from the `free`
+preset** and from the default group set, so nothing here changes unless you opt in — set
+the environment variable and add the group.
+
+| Provider | Env var | Tools | What it adds that nothing else here has |
+|---|---|---:|---|
+| `theoddsapi` | `THE_ODDS_API_KEY` | 6 | Odds from ~40 **international** books — this catalogue is deep on AU books and blind outside them |
+| `pandascore` | `PANDASCORE_TOKEN` | 8 | Esports beyond Dota 2 — CS2, LoL, Valorant, R6 |
+| `cfbd` | `CFBD_API_KEY` | 10 | College-football **analytics**: SP+, Elo, advanced box scores, historical lines |
+| `footballdataorg` | `FOOTBALL_DATA_ORG_KEY` | 10 | European competitions with no official feed here — UCL, Eredivisie, Championship |
+| `apitennis` | `API_TENNIS_KEY` | 7 | **ATP and ITF** draws, H2H and rankings (`wta` is women's-tour only) |
+| `cricketdata` | `CRICKETDATA_API_KEY` | 8 | International and franchise cricket (`cricketaustralia` is AU-only) |
+
+```bash
+export THE_ODDS_API_KEY=...
+sportsdata-mcp serve --groups "free,theoddsapi.*"
+```
+
+### Two things to know before you rely on these
+
+**Their response shapes are documented, not verified.** We hold no key for any of them,
+so the shapes in each spec come from the vendor's own documentation rather than from a
+live probe. Every one of these tools carries an explicit note telling the model to
+inspect the payload it actually received rather than trusting the sketch. Elsewhere in
+this catalogue the shapes were probed and corrected — roughly one in three turned out to
+differ from what the docs implied — so treat this tier as the lower-confidence one until
+you have run it with your key. If you do, a PR flipping `shapes_verified: true` with the
+corrections is the single most useful contribution available.
+
+**Two of them report failures with HTTP 200.** `apitennis` answers a bad key with
+`200 {"error":"1", …}` and `cricketdata` with `200 {"status":"failure","reason":"Invalid
+API Key"}`. A naive client hands that object to the model, which then reports the
+validation complaint as though it were a tennis draw. Their specs declare `error_signals`
+so the engine raises a real error naming the variable to set. If you consume these APIs
+outside this server, check the body — the status code will lie to you.
+
+### Not included
+
+**SportDevs** appears in comparable catalogues, but as of 2026-08-10 `sportdevs.com`,
+`api.sportdevs.com` and `rugby.sportdevs.com` have **no DNS record at all**. The service
+is gone, so the rugby/volleyball/handball coverage it advertised is not actually
+available from it.
+
+**TheSportsDB**'s free tier returns silently truncated data — an EPL table comes back
+with 5 rows of 20, with nothing marking it as partial. A provider that quietly answers
+with a fifth of the table is worse than no provider, so it is excluded rather than
+shipped with a warning.
 
 ## Cross-provider comparison
 

@@ -1,0 +1,163 @@
+spec_version: 1
+
+# CricketData / CricAPI (api.cricapi.com) — international and franchise cricket,
+# BYO key. Free tier: 100 requests/day.
+#
+# ⚠ SHAPES FROM VENDOR DOCS, not probed (`shapes_verified: false`).
+#
+# ⚠⚠ ANOTHER 200-WITH-AN-ERROR-BODY API. An invalid or missing key returns HTTP 200
+# with {"status":"failure","reason":"Invalid API Key"} (verified live). The
+# `error_signals` block turns that into a real error — without it the model receives
+# the failure object as data and reports it as a cricket result.
+#
+# WHY IT IS WORTH CARRYING. `cricketaustralia` is official but AU-only. This adds
+# international cricket — Test/ODI/T20I, IPL, BBL, PSL and the rest — which the
+# catalogue otherwise cannot see. The AU books price all of it.
+#
+# EVERY RESPONSE IS ENVELOPED: {apikey, data, status, info}. The payload is under
+# `data`; `info` carries your remaining quota (hitsToday / hitsLimit), which is worth
+# watching on a 100/day tier.
+
+provider:
+  id: cricketdata
+  display_name: "CricketData / CricAPI (international cricket — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/CricketData.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.cricapi.com/v1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  # A 200 whose top-level `status` is "failure" is an error, not data. VERIFIED live.
+  error_signals:
+    - { field: status, equals: failure }
+  auth:
+    default:
+      type: static_query
+      param: apikey
+      env: CRICKETDATA_API_KEY
+      optional: true
+  defaults:
+    # 100 requests/DAY on the free tier — be frugal.
+    rate_limit_rps: 1
+    burst: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 1
+    retry_backoff_seconds: 2.0
+
+endpoints:
+  - name: cricketdata_current_matches
+    group: cricketdata.cricket
+    capabilities: [sport.fixtures_by_date, sport.in_play]
+    summary: "Matches in progress or starting soon, with live scores."
+    base: default
+    path: /currentMatches
+    auth: default
+    params:
+      - { name: offset, in: query, type: integer, default: 0, description: "Page offset (25 per page)." }
+    response_hint: "{status:'success', data:[{id, name, matchType:'t20'|'odi'|'test', status, venue, date, dateTimeGMT, teams:[str], teamInfo:[{name, shortname, img}], score:[{r, w, o, inning}], series_id, matchStarted, matchEnded}], info:{hitsToday, hitsLimit}}  — SHAPE FROM VENDOR DOCS. Score fields are terse: r runs, w wickets, o overs."
+    examples:
+      - description: "Live and upcoming matches"
+        params: {}
+
+  - name: cricketdata_matches
+    group: cricketdata.cricket
+    capabilities: [sport.fixtures_by_date]
+    summary: "All matches, paginated — recent and upcoming across every series."
+    base: default
+    path: /matches
+    auth: default
+    params:
+      - { name: offset, in: query, type: integer, default: 0, description: "Page offset (25 per page)." }
+    response_hint: "{status, data:[{id, name, matchType, status, venue, date, teams, teamInfo, series_id, matchStarted, matchEnded}], info:{hitsToday, hitsLimit}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Recent matches"
+        params: {}
+
+  - name: cricketdata_match_info
+    group: cricketdata.cricket
+    capabilities: [sport.match_detail]
+    summary: "One match: toss, venue, teams and result."
+    base: default
+    path: /match_info
+    auth: default
+    params:
+      - { name: id, in: query, type: string, required: true, description: "Match id (from a match list)." }
+    response_hint: "{status, data:{id, name, matchType, status, venue, date, dateTimeGMT, teams, teamInfo, score:[{r, w, o, inning}], tossWinner, tossChoice, matchWinner, matchStarted, matchEnded}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "One match"
+        params: {id: "<match id>"}
+
+  - name: cricketdata_scorecard
+    group: cricketdata.cricket
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Full scorecard: batting and bowling figures per innings."
+    base: default
+    path: /match_scorecard
+    auth: default
+    params:
+      - { name: id, in: query, type: string, required: true, description: "Match id." }
+    response_hint: "{status, data:{id, name, scorecard:[{inning, batting:[{batsman:{id, name}, r, b, '4s', '6s', sr, 'dismissal-text'}], bowling:[{bowler:{id, name}, o, m, r, w, eco}], extras, totals}]}}  — SHAPE FROM VENDOR DOCS. Cricket abbreviations: r runs, b balls, sr strike rate, o overs, m maidens, w wickets, eco economy."
+    examples:
+      - description: "One match's scorecard"
+        params: {id: "<match id>"}
+
+  - name: cricketdata_series
+    group: cricketdata.cricket
+    capabilities: [sport.competitions_list]
+    summary: "Series (tours and tournaments) with their match counts and dates."
+    base: default
+    path: /series
+    auth: default
+    params:
+      - { name: offset, in: query, type: integer, default: 0, description: "Page offset." }
+      - { name: search, in: query, type: string, description: "Partial series-name match." }
+    response_hint: "{status, data:[{id, name, startDate, endDate, odi, t20, test, squads, matches}], info:{hitsToday, hitsLimit}}  — SHAPE FROM VENDOR DOCS. The format counts (odi/t20/test) are how many matches of each type the series holds."
+    examples:
+      - description: "All series"
+        params: {}
+
+  - name: cricketdata_series_info
+    group: cricketdata.cricket
+    capabilities: [sport.competition_screen]
+    summary: "One series with its full match list."
+    base: default
+    path: /series_info
+    auth: default
+    params:
+      - { name: id, in: query, type: string, required: true, description: "Series id (from cricketdata_series)." }
+    response_hint: "{status, data:{info:{id, name, startdate, enddate, odi, t20, test, squads, matches}, matchList:[{id, name, matchType, status, venue, date, teams}]}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "One series"
+        params: {id: "<series id>"}
+
+  - name: cricketdata_players
+    group: cricketdata.cricket
+    capabilities: [ref.players]
+    summary: "Search the player catalogue by name."
+    base: default
+    path: /players
+    auth: default
+    params:
+      - { name: offset, in: query, type: integer, default: 0, description: "Page offset." }
+      - { name: search, in: query, type: string, description: "Partial player-name match." }
+    response_hint: "{status, data:[{id, name, country}], info:{hitsToday, hitsLimit}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Search players"
+        params: {search: "Kohli"}
+
+  - name: cricketdata_player_info
+    group: cricketdata.cricket
+    capabilities: [stats.player_profile, stats.player_career]
+    summary: "One player's profile and career batting/bowling statistics."
+    base: default
+    path: /players_info
+    auth: default
+    params:
+      - { name: id, in: query, type: string, required: true, description: "Player id (from cricketdata_players)." }
+    response_hint: "{status, data:{id, name, dateOfBirth, role, battingStyle, bowlingStyle, placeOfBirth, country, playerImg, stats:[{fn:'batting'|'bowling', matchtype:'test'|'odi'|'t20i', stat:'m'|'runs'|'avg', value}]}}  — SHAPE FROM VENDOR DOCS. NOTE `stats` is LONG format: one row per (function, format, statistic), not a nested object."
+    examples:
+      - description: "One player's career"
+        params: {id: "<player id>"}

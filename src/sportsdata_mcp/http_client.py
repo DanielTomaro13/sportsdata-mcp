@@ -340,6 +340,32 @@ class HTTPClient:
         # Trailing blank lines produce rows whose every value is None/''.
         return [row for row in rows if any((v or "").strip() for v in row.values())]
 
+    def _raise_on_error_signal(self, body: object) -> None:
+        """Turn a 200-with-an-error-body into a real error.
+
+        Providers that never use status codes for failures (api-tennis, cricketdata)
+        declare `error_signals`. Without this the model receives the error object as
+        data and reports it as though it were a result.
+        """
+        signals = self._provider.error_signals
+        if not signals or not isinstance(body, dict):
+            return
+        for sig in signals:
+            if str(body.get(sig.field, "")) != sig.equals:
+                continue
+            detail = body.get("reason") or body.get("message") or json.dumps(body)[:160]
+            missing = self._unset_key_envs()
+            hint = (
+                f" Set {' or '.join(sorted(missing))} in your environment and restart."
+                if missing else ""
+            )
+            log.warning("error-in-200 (provider=%s): %s", self._provider.id, detail)
+            raise ToolError(
+                f"{self._provider.id} returned HTTP 200 with an error body: {detail}.{hint}",
+                recoverable=False,
+                code="AUTH_REQUIRED" if missing else "UPSTREAM_ERROR",
+            )
+
     def _unset_key_envs(self) -> set[str]:
         """Env vars this provider's auth reads that are NOT set.
 
@@ -444,7 +470,9 @@ class HTTPClient:
         #    consulted on a parse *failure*: a non-JSON type then points to an HTML
         #    bot-challenge page (Akamai/Cloudflare), a JSON type to a malformed body.
         try:
-            return r.json()
+            body = r.json()
+            self._raise_on_error_signal(body)
+            return body
         except (json.JSONDecodeError, ValueError) as e:
             ctype = r.headers.get("content-type", "")
             if "json" not in ctype:

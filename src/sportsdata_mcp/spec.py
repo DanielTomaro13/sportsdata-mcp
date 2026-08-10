@@ -105,6 +105,24 @@ AuthSpec = Annotated[
 # ─── Provider ──────────────────────────────────────────────────────────
 
 
+class ErrorSignal(BaseModel):
+    """A top-level field/value pair that means "this 200 is actually an error".
+
+    Some APIs never use HTTP status codes for auth or validation failures: api-tennis
+    returns 200 with {"error":"1", ...} and cricketdata returns 200 with
+    {"status":"failure","reason":"Invalid API Key"}. Without this, the engine hands
+    that object to the model AS DATA, and the model dutifully reports "the API says
+    your key is invalid" as though it were a match result — or worse, tries to read
+    fixtures out of it. This is the silent-wrongness failure class, so it is worth
+    declaring per provider.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    equals: str
+
+
 class HashRefresh(BaseModel):
     bundle_host: str
     bundle_url_pattern: str
@@ -169,6 +187,8 @@ class Provider(BaseModel):
     # produce confident wrong answers rather than an exception. The flag is surfaced in
     # every affected tool's description so the model treats the shape as approximate
     # and reads what it actually got.
+    # Top-level markers that turn an HTTP 200 into a ToolError. See ErrorSignal.
+    error_signals: list[ErrorSignal] = Field(default_factory=list)
     shapes_verified: bool = True
     # True = this provider returns NOTHING USEFUL without a key the user must obtain.
     #

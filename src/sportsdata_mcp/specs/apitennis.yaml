@@ -1,0 +1,159 @@
+spec_version: 1
+
+# API-Tennis (api-tennis.com) — ATP, WTA and ITF, BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS, not probed (`shapes_verified: false`; the caveat appears
+# in every tool description). Verified keylessly 2026-08-10: the host answers and
+# reports the missing key — see the error-signal note below.
+#
+# ⚠⚠ THIS API NEVER USES HTTP STATUS CODES FOR FAILURES. A missing or invalid key
+# returns **HTTP 200** with {"error":"1","result":[{"param":"APIkey","msg":"The field
+# is mandatory"}]}. Without the `error_signals` block below, the engine would hand that
+# object to the model as DATA — and a model asked for today's matches would report the
+# validation complaint as though it were a result. That is exactly the silent-wrongness
+# failure this catalogue works to avoid, so the signal is declared and tested.
+#
+# WHY IT IS WORTH CARRYING. `wta` is official but women's-tour only, and `tab`/
+# `sportsbet` price tennis without any draw or ranking context. This is the catalogue's
+# only ATP + ITF source: draws, H2H, live scores and both tours' rankings behind one
+# key.
+#
+# EVERYTHING IS ONE ENDPOINT. The API is `GET /tennis/?method=<name>` — the method name
+# selects the resource, exactly like Squiggle's `q=`. Each tool below fixes `method`.
+
+provider:
+  id: apitennis
+  display_name: "API-Tennis (ATP/WTA/ITF — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/APITennis.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.api-tennis.com
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  # A 200 whose top-level `error` is "1" is a failure, not data. VERIFIED live.
+  error_signals:
+    - { field: error, equals: "1" }
+  auth:
+    default:
+      type: static_query
+      param: APIkey
+      env: API_TENNIS_KEY
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: apitennis_events
+    group: apitennis.tennis
+    capabilities: [sport.competitions_list]
+    summary: "Event types the API covers (ATP singles, WTA doubles, ITF, …)."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_events, description: "Leave as-is." }
+    response_hint: "{success:1, result:[{event_type_key, event_type_type:'Atp Singles'}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Event types"
+        params: {method: get_events}
+
+  - name: apitennis_tournaments
+    group: apitennis.tennis
+    capabilities: [sport.competitions_list]
+    summary: "Tournaments, optionally for one event type."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_tournaments, description: "Leave as-is." }
+      - { name: event_type_key, in: query, type: integer, description: "Restrict to one event type (from apitennis_events)." }
+    response_hint: "{success:1, result:[{tournament_key, tournament_name, event_type_key, event_type_type}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "All tournaments"
+        params: {method: get_tournaments}
+
+  - name: apitennis_fixtures
+    group: apitennis.tennis
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Matches in a date range, with scores and set-by-set detail once played."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_fixtures, description: "Leave as-is." }
+      - { name: date_start, in: query, type: string, required: true, description: "YYYY-MM-DD." }
+      - { name: date_stop, in: query, type: string, required: true, description: "YYYY-MM-DD." }
+      - { name: tournament_key, in: query, type: integer, description: "Restrict to one tournament." }
+      - { name: player_key, in: query, type: integer, description: "Restrict to one player." }
+      - { name: event_type_key, in: query, type: integer, description: "Restrict to one event type." }
+    response_hint: "{success:1, result:[{event_key, event_date, event_time, event_first_player, first_player_key, event_second_player, second_player_key, event_final_result:'2 - 0', event_status, tournament_name, tournament_round, scores:[{score_first, score_second, score_set}], pointbypoint:[…]}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A day's matches"
+        params: {method: get_fixtures, date_start: "2025-01-20", date_stop: "2025-01-20"}
+
+  - name: apitennis_livescore
+    group: apitennis.tennis
+    capabilities: [sport.in_play, sport.match_score]
+    summary: "Matches in progress right now, with live scores."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_livescore, description: "Leave as-is." }
+      - { name: event_type_key, in: query, type: integer, description: "Restrict to one event type." }
+    response_hint: "{success:1, result:[{event_key, event_first_player, event_second_player, event_game_result, event_serve, event_status, scores:[…]}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Live matches"
+        params: {method: get_livescore}
+
+  - name: apitennis_standings
+    group: apitennis.tennis
+    capabilities: [sport.rankings]
+    summary: "ATP or WTA rankings."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_standings, description: "Leave as-is." }
+      - { name: event_type, in: query, type: string, default: ATP, enum: [ATP, WTA], description: "Tour." }
+    response_hint: "{success:1, result:[{place, player, player_key, league, movement, country, points}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "ATP rankings"
+        params: {method: get_standings, event_type: ATP}
+
+  - name: apitennis_players
+    group: apitennis.tennis
+    capabilities: [ref.players, stats.player_profile]
+    summary: "One player's profile and recent results."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_players, description: "Leave as-is." }
+      - { name: player_key, in: query, type: integer, required: true, description: "Player key (from fixtures or standings)." }
+    response_hint: "{success:1, result:[{player_key, player_name, player_country, player_bday, player_logo, stats:[{season, type, rank, titles, matches_won, matches_lost, hard_won, clay_won, grass_won}]}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "One player"
+        params: {method: get_players, player_key: 1905}
+
+  - name: apitennis_h2h
+    group: apitennis.tennis
+    capabilities: [stats.head_to_head]
+    summary: "Head-to-head history between two players, plus each one's recent form."
+    base: default
+    path: /tennis/
+    auth: default
+    params:
+      - { name: method, in: query, type: string, default: get_H2H, description: "Leave as-is (note the capital H2H)." }
+      - { name: first_player_key, in: query, type: integer, required: true, description: "First player key." }
+      - { name: second_player_key, in: query, type: integer, required: true, description: "Second player key." }
+    response_hint: "{success:1, result:{H2H:[{event_key, event_date, event_first_player, event_second_player, event_final_result, tournament_name}], firstPlayerResults:[…], secondPlayerResults:[…]}}  — SHAPE FROM VENDOR DOCS. Note `result` here is an OBJECT, not a list like the other methods."
+    examples:
+      - description: "Two players' H2H"
+        params: {method: get_H2H, first_player_key: 1905, second_player_key: 1903}
