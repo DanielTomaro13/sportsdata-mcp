@@ -96,8 +96,22 @@ class AuthAFLWMCTok(BaseModel):
     header: str = "x-media-mis-token"
 
 
+class AuthStaticBasic(BaseModel):
+    """HTTP Basic. `password` may be a literal because some APIs use a constant for it
+    (MySportsFeeds wants the fixed string "MYSPORTSFEEDS"); `password_env` wins when set.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["static_basic"]
+    username_env: str
+    password_env: str | None = None
+    password: str | None = None
+    optional: bool = False
+
+
 AuthSpec = Annotated[
-    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthOAuthRefresh | AuthKalshiRSA | AuthAFLWMCTok,
+    AuthNone | AuthStaticHeader | AuthStaticQuery | AuthStaticBasic | AuthOAuthRefresh | AuthKalshiRSA | AuthAFLWMCTok,
     Field(discriminator="type"),
 ]
 

@@ -1,0 +1,115 @@
+spec_version: 1
+
+# iSportsAPI (api.isportsapi.com) — football, basketball and more. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10.
+#
+# ⚠⚠ A THIRD 200-WITH-AN-ERROR API. A missing or wrong key returns
+#     HTTP 200  {"code":2,"message":"Invalid [api_key], illegal access."}
+# `code` is 0 on success and non-zero on failure, so the spec declares a presence-mode
+# error signal on `code` — 0 is falsy and passes through, anything else raises. Without
+# it the model is handed the complaint object as data.
+#
+# WHAT IT ADDS. Asian-handicap and Asian-market odds coverage that the Western
+# aggregators here index thinly, plus a live-odds surface. If you are comparing an AH
+# line across Asian books, this is the source; for AU and European markets the direct
+# providers and `theoddsapi`/`oddsapiio` are better.
+
+provider:
+  id: isportsapi
+  display_name: "iSportsAPI (football/basketball, Asian markets — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/ISportsAPI.md"
+  shapes_verified: false
+  base_urls:
+    default: http://api.isportsapi.com
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  # `code` is 0 on success; any non-zero code is a failure delivered with HTTP 200.
+  error_signals:
+    - { field: code }
+  auth:
+    default:
+      type: static_query
+      param: api_key
+      env: ISPORTS_API_KEY
+      optional: true
+  defaults:
+    rate_limit_rps: 1
+    burst: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: isportsapi_football_competitions
+    group: isportsapi.football
+    capabilities: [sport.competitions_list]
+    summary: "Football competitions with their ids."
+    base: default
+    path: /sport/football/competitions
+    auth: default
+    response_hint: "{code:0, data:[{competitionId, name, shortName, logo, type, color}]}  — SHAPE FROM VENDOR DOCS. `code: 0` means success; anything else is an error delivered with HTTP 200."
+    examples:
+      - description: "Every competition"
+        params: {}
+
+  - name: isportsapi_football_schedule
+    group: isportsapi.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Football fixtures and results by date."
+    base: default
+    path: /sport/football/schedule
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: leagueId, in: query, type: string, description: "Restrict to one competition." }
+    response_hint: "{code:0, data:[{matchId, competitionId, homeId, homeName, awayId, awayName, matchTime, status, homeScore, awayScore, halfHomeScore, halfAwayScore}]}  — SHAPE FROM VENDOR DOCS. `matchTime` is a UNIX TIMESTAMP, not an ISO string."
+    examples:
+      - description: "A day's fixtures"
+        params: {date: "2024-08-17"}
+
+  - name: isportsapi_football_odds_asian
+    group: isportsapi.football
+    capabilities: [sport.prices, sport.event_markets]
+    summary: "Asian-handicap odds across companies — the reason to use this provider."
+    base: default
+    path: /sport/football/odds/main
+    auth: default
+    params:
+      - { name: companyId, in: query, type: string, description: "Odds company id." }
+      - { name: matchId, in: query, type: string, description: "One match." }
+    response_hint: "{code:0, data:{handicap:[[matchId, companyId, initialHandicap, initialHome, initialAway, liveHandicap, liveHome, liveAway, …]], europeOdds:[[…]], overUnder:[[…]]}}  — SHAPE FROM VENDOR DOCS. NOTE the payload is ARRAYS OF POSITIONAL ARRAYS, not objects: fields are identified by INDEX. Read the vendor's column order before parsing, and do not assume it matches other providers here."
+    examples:
+      - description: "Asian handicap odds"
+        params: {}
+
+  - name: isportsapi_football_live
+    group: isportsapi.football
+    capabilities: [sport.in_play, sport.match_score]
+    summary: "Football matches in play now."
+    base: default
+    path: /sport/football/livescores
+    auth: default
+    response_hint: "{code:0, data:[{matchId, status, homeScore, awayScore, homeHalfScore, awayHalfScore, homeRed, awayRed, homeYellow, awayYellow, homeCorner, awayCorner, updateTime}]}  — SHAPE FROM VENDOR DOCS. Corners and cards live here rather than in a separate statistics call."
+    examples:
+      - description: "In play now"
+        params: {}
+
+  - name: isportsapi_basketball_schedule
+    group: isportsapi.basketball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Basketball fixtures and results by date."
+    base: default
+    path: /sport/basketball/schedule
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: leagueId, in: query, type: string, description: "Restrict to one competition." }
+    response_hint: "{code:0, data:[{matchId, leagueId, homeName, awayName, matchTime, status, homeScore, awayScore, quarterScores}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A day's games"
+        params: {date: "2024-01-15"}

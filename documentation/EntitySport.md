@@ -1,0 +1,58 @@
+# Entity Sport (`entitysport`) — cricket, ball-by-ball
+
+**5 tools · BYO token · shapes unverified**
+
+From [entitysport.com](https://www.entitysport.com). The deeper of the two cricket
+providers in the BYO tier.
+
+## How it differs from `cricketdata`
+
+| | `cricketdata` | `entitysport` |
+|---|---|---|
+| Scorecards | yes | yes, with fall-of-wickets |
+| **Ball-by-ball commentary** | no | **yes** |
+| Live match state | basic | rich (`equation`, `live`) |
+| Price | free tier, 100/day | paid |
+
+If you are doing in-play work, the commentary endpoint is the reason to be here.
+
+## Auth is a token, not a key
+
+Entity Sport issues an **access token** from your key/secret pair, and the token — not
+the key — goes in the request. Tokens expire, so if calls start failing after working
+for a while, mint a new one.
+
+```bash
+export ENTITYSPORT_TOKEN=your_access_token
+```
+
+Minting is a separate authenticated call this server does not make; get the token from
+their dashboard or their auth endpoint.
+
+## Tools
+
+| Tool | What it gives you |
+|---|---|
+| `entitysport_matches` | Live, upcoming and completed matches |
+| `entitysport_match_info` | One match: squads, toss, state |
+| `entitysport_match_scorecard` | Innings-by-innings batting and bowling, plus fall of wickets |
+| `entitysport_match_commentary` | **Ball-by-ball** for one innings |
+| `entitysport_competitions` | Competitions and tours |
+
+## Two parsing traps
+
+**`scores_full` vs `scores`.** The first is a display string (`"187/4 (20)"`), the
+second the bare runs. Parsing the display string when you wanted the number is the usual
+mistake.
+
+**Commentary includes non-ball events.** Rows carry `event: "ball" | "overend" |
+"wicket"`. Filter on `event` before counting deliveries, or your over count will drift.
+
+## Status codes for `entitysport_matches`
+
+`1` scheduled · `2` completed · `3` live · `4` cancelled
+
+## See also
+
+- [CricketData.md](CricketData.md) — free tier, scorecards, no commentary
+- [CricketAustralia.md](CricketAustralia.md) — official, keyless, AU-only

@@ -24,8 +24,14 @@ def test_unverified_providers_are_explicitly_flagged():
     for spec in load_all_specs():
         if spec.provider.shapes_verified:
             continue
+        # `username_env` is the HTTP Basic case (MySportsFeeds). Checking only `env`
+        # made this fire on it — correctly reporting that the RULE had a blind spot,
+        # not that the provider was wrong. The same blind spot existed in the engine's
+        # "which key is missing" message, and this is what surfaced it.
         needs_key = any(
-            getattr(a, "env", None) for a in spec.provider.auth.values()
+            getattr(a, attr, None)
+            for a in spec.provider.auth.values()
+            for attr in ("env", "username_env")
         )
         assert needs_key, (
             f"{spec.provider.id} is flagged unverified but needs no key — "

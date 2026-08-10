@@ -38,6 +38,7 @@ from sportsdata_mcp.spec_loader import load_all_specs
 BYO = [
     "theoddsapi", "pandascore", "cfbd", "footballdataorg", "apitennis", "cricketdata",
     "apisports", "oddsapiio", "balldontlie", "sportsgameodds", "sportmonks", "sportsdataio",
+    "mysportsfeeds", "isportsapi", "highlightly", "entitysport", "golfcourseapi",
 ]
 
 _GROUPS = [f"{p}.*" for p in BYO]
@@ -78,10 +79,18 @@ def test_all_are_flagged_and_none_leak_into_free():
 
 def test_each_declares_the_env_var_it_needs():
     """"Set a key" is useless advice without the variable's name; the error messages are
-    built from these, so an unset `env` would produce an unactionable failure."""
+    built from these, so an unset `env` would produce an unactionable failure.
+
+    `username_env` is checked too: MySportsFeeds uses HTTP Basic, and looking only at
+    `env` would silently exempt it from this guarantee.
+    """
     specs = {s.provider.id: s.provider for s in load_all_specs()}
     for pid in BYO:
-        envs = [getattr(a, "env", None) for a in specs[pid].auth.values()]
+        envs = [
+            getattr(a, attr, None)
+            for a in specs[pid].auth.values()
+            for attr in ("env", "username_env")
+        ]
         assert any(envs), f"{pid} declares no env var to read its key from"
 
 
@@ -200,3 +209,49 @@ async def test_sportsgameodds_keyless_raises(server):
 async def test_sportsdataio_keyless_raises(server):
     with pytest.raises(MCPToolError):
         await server.call_tool("sportsdataio_nfl_teams", {})
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("ISPORTS_API_KEY")), reason="a key is set")
+async def test_isportsapi_keyless_raises_instead_of_returning_the_error_body(server):
+    """VERIFIED live 2026-08-10: HTTP 200 + {"code":2,"message":"Invalid [api_key]…"}.
+    `code` is 0 on success, so the presence-mode signal passes success through and
+    catches every non-zero code."""
+    with pytest.raises(MCPToolError) as e:
+        await server.call_tool("isportsapi_football_competitions", {})
+    _assert_refused(e.value, "ISPORTS_API_KEY", "error body", "illegal access")
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("MYSPORTSFEEDS_API_KEY")), reason="a key is set")
+async def test_mysportsfeeds_keyless_raises(server):
+    """Answers with a WWW-Authenticate challenge and an HTML body, not JSON — the engine
+    must still surface it as an error rather than a decode failure the user cannot act
+    on."""
+    with pytest.raises(MCPToolError) as e:
+        await server.call_tool("mysportsfeeds_standings", {"league": "nba", "season": "current"})
+    _assert_refused(e.value)
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("HIGHLIGHTLY_API_KEY")), reason="a key is set")
+async def test_highlightly_keyless_raises(server):
+    with pytest.raises(MCPToolError) as e:
+        await server.call_tool("highlightly_soccer_leagues", {})
+    _assert_refused(e.value)
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("ENTITYSPORT_TOKEN")), reason="a token is set")
+async def test_entitysport_keyless_raises(server):
+    with pytest.raises(MCPToolError) as e:
+        await server.call_tool("entitysport_competitions", {})
+    _assert_refused(e.value)
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("GOLFCOURSE_API_KEY")), reason="a key is set")
+async def test_golfcourseapi_keyless_raises(server):
+    with pytest.raises(MCPToolError) as e:
+        await server.call_tool("golfcourseapi_search", {"search_query": "Pebble Beach"})
+    _assert_refused(e.value)

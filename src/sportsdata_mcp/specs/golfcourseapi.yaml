@@ -1,0 +1,69 @@
+spec_version: 1
+
+# GolfCourse API (api.golfcourseapi.com) — course and hole reference data. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10: 401 {"error":"you must be authenticated to access this resource"}.
+#
+# THIS IS REFERENCE DATA, NOT RESULTS. `datagolf` gives you tournaments, fields, live
+# models and betting markets; it does not give you the course. This does: 30,000+
+# courses with per-hole yardage, par and handicap for each tee box. That is the layer
+# under a course-fit or a par-3 scoring question.
+#
+# AUTH is `Authorization: Key <your key>` — the prefix is the literal word "Key", not
+# "Bearer". Using "Bearer" is the usual mistake, and the API's 401 does not say so.
+
+provider:
+  id: golfcourseapi
+  display_name: "GolfCourse API (30k+ courses, per-hole data — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/GolfCourseAPI.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.golfcourseapi.com/v1
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: Authorization
+      env: GOLFCOURSE_API_KEY
+      # "Key ", not "Bearer " — this API is unusual and its 401 will not tell you.
+      value_prefix: "Key "
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: golfcourseapi_search
+    group: golfcourseapi.golf
+    capabilities: [ref.venues]
+    summary: "Search the course catalogue by name or club."
+    base: default
+    path: /search
+    auth: default
+    params:
+      - { name: search_query, in: query, type: string, required: true, description: "Course or club name, e.g. 'Pebble Beach'." }
+    response_hint: "{courses:[{id, club_name, course_name, location:{address, city, state, country, latitude, longitude}}]}  — SHAPE FROM VENDOR DOCS. Search returns the summary only; per-hole data needs golfcourseapi_course."
+    examples:
+      - description: "Find a course"
+        params: {search_query: "Pebble Beach"}
+
+  - name: golfcourseapi_course
+    group: golfcourseapi.golf
+    capabilities: [ref.venues]
+    summary: "One course in full: every tee box with per-hole par, yardage and stroke index."
+    base: default
+    path: /courses/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Course id (from golfcourseapi_search)." }
+    response_hint: "{course:{id, club_name, course_name, location:{…}, tees:{male:[{tee_name, course_rating, slope_rating, par_total, total_yards, number_of_holes, holes:[{par, yardage, handicap}]}], female:[…]}}}  — SHAPE FROM VENDOR DOCS. NOTE `tees` is split by MALE/FEMALE tee sets, each a LIST of tee boxes, each with its own 18-hole array — three levels before a hole. `handicap` here is the hole's stroke index (1 = hardest), not a player handicap."
+    examples:
+      - description: "One course in full"
+        params: {id: 1}

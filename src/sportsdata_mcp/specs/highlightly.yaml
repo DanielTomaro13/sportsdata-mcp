@@ -1,0 +1,168 @@
+spec_version: 1
+
+# Highlightly (*.highlightly.net) — match HIGHLIGHT VIDEO across five sports. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). All five sport hosts probed live
+# 2026-08-10: each answers
+#   403 {"status":403,"error":"Missing mandatory HTTP Headers…"}
+# without a key — so the hosts and paths are real, and the refusal is a proper status.
+#
+# WHAT IT ADDS THAT NOTHING ELSE HERE DOES: video. Every other provider in this
+# catalogue answers "what happened" with numbers. This one returns links to the actual
+# highlight clips, keyed to the match. `content.video` exists as a capability because of
+# providers like this one and the AFL/NRL official feeds — but those are single-league.
+#
+# ONE KEY, FIVE HOSTS — soccer, basketball, american-football, baseball and hockey each
+# have their own subdomain, the same pattern as api-sports.
+#
+# NOTE ON MARKETPLACE LISTINGS: this vendor is also sold through RapidAPI, where the key
+# goes in `x-rapidapi-key` against a *.p.rapidapi.com host. This spec targets the DIRECT
+# hosts with `x-api-key`; a RapidAPI subscription will not authenticate against them.
+
+provider:
+  id: highlightly
+  display_name: "Highlightly (match highlight video, 5 sports — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Highlightly.md"
+  shapes_verified: false
+  base_urls:
+    soccer: https://soccer.highlightly.net
+    basketball: https://basketball.highlightly.net
+    nfl: https://american-football.highlightly.net
+    baseball: https://baseball.highlightly.net
+    hockey: https://hockey.highlightly.net
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: x-api-key
+      env: HIGHLIGHTLY_API_KEY
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: highlightly_soccer_highlights
+    group: highlightly.video
+    capabilities: [content.video]
+    summary: "Football highlight clips, by match, league or date. The main tool here."
+    base: soccer
+    path: /highlights
+    auth: default
+    params:
+      - { name: matchId, in: query, type: string, description: "One match." }
+      - { name: leagueId, in: query, type: string, description: "One competition." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size (max 40)." }
+      - { name: offset, in: query, type: integer, description: "Page offset." }
+    response_hint: "{data:[{id, title, type, url, imgUrl, embedUrl, channel, source, match:{id, date, league, homeTeam, awayTeam}}], pagination:{totalCount, limit, offset}}  — SHAPE FROM VENDOR DOCS. `url` is a page link and `embedUrl` an iframe source; they are not interchangeable."
+    examples:
+      - description: "A day's football highlights"
+        params: {date: "2024-08-17"}
+
+  - name: highlightly_soccer_matches
+    group: highlightly.video
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Football matches, to find the matchId a highlight lookup needs."
+    base: soccer
+    path: /matches
+    auth: default
+    params:
+      - { name: leagueId, in: query, type: string, description: "One competition." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{data:[{id, date, country, league:{id, name, logo}, homeTeam:{id, name, logo}, awayTeam:{…}, state:{description, score:{current, penalties}}}], pagination}  — SHAPE FROM VENDOR DOCS. The score is nested under `state`, not on the match."
+    examples:
+      - description: "A day's matches"
+        params: {date: "2024-08-17"}
+
+  - name: highlightly_soccer_leagues
+    group: highlightly.video
+    capabilities: [sport.competitions_list]
+    summary: "Football competitions covered, with the leagueId filters."
+    base: soccer
+    path: /leagues
+    auth: default
+    params:
+      - { name: leagueName, in: query, type: string, description: "Name search." }
+      - { name: countryCode, in: query, type: string, description: "Two-letter country code." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{data:[{id, name, logo, country:{code, name, logo}, seasons:[…]}], pagination}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Competitions covered"
+        params: {}
+
+  - name: highlightly_basketball_highlights
+    group: highlightly.video
+    capabilities: [content.video]
+    summary: "Basketball highlight clips (NBA, EuroLeague and others)."
+    base: basketball
+    path: /highlights
+    auth: default
+    params:
+      - { name: matchId, in: query, type: string, description: "One match." }
+      - { name: leagueId, in: query, type: string, description: "One competition." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{data:[{id, title, url, embedUrl, imgUrl, match:{…}}], pagination}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A day's basketball highlights"
+        params: {date: "2024-01-15"}
+
+  - name: highlightly_nfl_highlights
+    group: highlightly.video
+    capabilities: [content.video]
+    summary: "American-football highlight clips."
+    base: nfl
+    path: /highlights
+    auth: default
+    params:
+      - { name: matchId, in: query, type: string, description: "One match." }
+      - { name: leagueId, in: query, type: string, description: "One competition." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{data:[{id, title, url, embedUrl, imgUrl, match:{…}}], pagination}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A day's NFL highlights"
+        params: {date: "2024-01-15"}
+
+  - name: highlightly_baseball_highlights
+    group: highlightly.video
+    capabilities: [content.video]
+    summary: "Baseball highlight clips."
+    base: baseball
+    path: /highlights
+    auth: default
+    params:
+      - { name: matchId, in: query, type: string, description: "One match." }
+      - { name: leagueId, in: query, type: string, description: "One competition." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{data:[{id, title, url, embedUrl, imgUrl, match:{…}}], pagination}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A day's baseball highlights"
+        params: {date: "2024-07-04"}
+
+  - name: highlightly_hockey_highlights
+    group: highlightly.video
+    capabilities: [content.video]
+    summary: "Ice-hockey highlight clips."
+    base: hockey
+    path: /highlights
+    auth: default
+    params:
+      - { name: matchId, in: query, type: string, description: "One match." }
+      - { name: leagueId, in: query, type: string, description: "One competition." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: limit, in: query, type: integer, default: 20, description: "Page size." }
+    response_hint: "{data:[{id, title, url, embedUrl, imgUrl, match:{…}}], pagination}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A day's hockey highlights"
+        params: {date: "2024-01-15"}

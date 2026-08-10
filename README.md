@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~712 tools across 55 providers in Claude Desktop,
+Free & open source (MIT). ~736 tools across 60 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -707,7 +707,7 @@ are out of scope. Flow: `twitter_user_by_username("AFL")` → id →
 
 ## Bring your own key
 
-Twelve providers need a key you sign up for yourself. They are **excluded from the `free`
+Seventeen providers need a key you sign up for yourself. They are **excluded from the `free`
 preset** and from the default group set, so nothing here changes unless you opt in — set
 the environment variable and add the group.
 
@@ -725,6 +725,11 @@ the environment variable and add the group.
 | `pandascore` | `PANDASCORE_TOKEN` | 8 | Esports beyond Dota 2 — CS2, LoL, Valorant, R6 |
 | `apitennis` | `API_TENNIS_KEY` | 7 | **ATP and ITF** draws, H2H and rankings (`wta` is women's-tour only) |
 | `cricketdata` | `CRICKETDATA_API_KEY` | 8 | International and franchise cricket (`cricketaustralia` is AU-only) |
+| `highlightly` | `HIGHLIGHTLY_API_KEY` | 7 | **Highlight video** across five sports — the only video surface here that isn't single-league |
+| `mysportsfeeds` | `MYSPORTSFEEDS_API_KEY` | 5 | US majors on a **free non-commercial** tier, with clean per-game player logs |
+| `isportsapi` | `ISPORTS_API_KEY` | 5 | **Asian-handicap** odds across Asian books |
+| `entitysport` | `ENTITYSPORT_TOKEN` | 5 | Cricket **ball-by-ball commentary** (deeper than `cricketdata`) |
+| `golfcourseapi` | `GOLFCOURSE_API_KEY` | 2 | 30k+ golf courses with per-hole par, yardage and stroke index |
 
 ```bash
 export THE_ODDS_API_KEY=...
@@ -742,12 +747,13 @@ differ from what the docs implied — so treat this tier as the lower-confidence
 you have run it with your key. If you do, a PR flipping `shapes_verified: true` with the
 corrections is the single most useful contribution available.
 
-**Three of them report failures with HTTP 200.** `apitennis` answers a bad key with
+**Four of them report failures with HTTP 200.** `apitennis` answers a bad key with
 `200 {"error":"1", …}`, `cricketdata` with `200 {"status":"failure","reason":"Invalid
-API Key"}`, and `apisports` returns `200` with a populated `errors` object and an
-**empty `response`** when you exhaust the daily quota. That last one is the nastiest: a
+API Key"}`, `isportsapi` with `200 {"code":2,"message":"Invalid [api_key]…"}`, and `apisports`
+returns `200` with a populated `errors` object and an **empty `response`** when you
+exhaust the daily quota. That last one is the nastiest: a
 model asking for today's fixtures gets an empty list and reports "no matches today", so
-a blown quota is indistinguishable from a quiet Tuesday. All three specs declare
+a blown quota is indistinguishable from a quiet Tuesday. All four specs declare
 `error_signals`, and the engine raises a real error naming the variable to set. If you
 consume these APIs outside this server, check the body — the status code will lie to
 you.
@@ -758,10 +764,19 @@ tools would have shipped broken.
 
 ### Not included
 
-**SportDevs** appears in comparable catalogues, but as of 2026-08-10 `sportdevs.com`,
-`api.sportdevs.com` and `rugby.sportdevs.com` have **no DNS record at all**. The service
-is gone, so the rugby/volleyball/handball coverage it advertised is not actually
-available from it.
+Three candidates were probed and rejected rather than shipped broken:
+
+**SportDevs** — as of 2026-08-10 `sportdevs.com`, `api.sportdevs.com` and
+`rugby.sportdevs.com` have **no DNS record at all**. The service is gone, so the
+rugby/volleyball/handball coverage it advertised is not available from it. (Rugby union
+is instead covered by `apisports`.)
+
+**Live Golf API** — `use.livegolfapi.com` resolves, but every path including the root
+returns `404 {"message":"Application not found"}`. The host is up; the application
+behind it is not deployed.
+
+**Fighting Tomatoes** — the documented API paths under `fightingtomatoes.com/API/…`
+return the site's 404 page. The domain serves a web app, not the API it advertises.
 
 **TheSportsDB**'s free tier returns silently truncated data — an EPL table comes back
 with 5 rows of 20, with nothing marking it as partial. A provider that quietly answers

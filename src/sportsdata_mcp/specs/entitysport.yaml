@@ -1,0 +1,117 @@
+spec_version: 1
+
+# Entity Sport (rest.entitysport.com) — cricket, ball-by-ball. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10: 401 {"status":"unauthorized","response":"Invalid API Token"} with a token
+# present, 400 {"status":"error","response":"Invalid request"} without one.
+#
+# TOKEN FLOW: Entity Sport issues an ACCESS TOKEN from your key/secret pair, and the
+# token — not the key — goes in the `token` query parameter. Tokens expire, so if calls
+# start failing after working for a while, refresh it. This spec reads the token, since
+# minting one is a separate authenticated call the engine does not make.
+#
+# HOW IT DIFFERS FROM `cricketdata`. CricketData gives you scorecards; Entity Sport
+# gives you BALL-BY-BALL commentary and richer live match state, which is what you need
+# for in-play work. It is the paid, deeper option of the two.
+
+provider:
+  id: entitysport
+  display_name: "Entity Sport (cricket, ball-by-ball — BYO token)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/EntitySport.md"
+  shapes_verified: false
+  base_urls:
+    default: https://rest.entitysport.com/v2
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_query
+      param: token
+      env: ENTITYSPORT_TOKEN
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: entitysport_matches
+    group: entitysport.cricket
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Cricket matches — live, upcoming and completed."
+    base: default
+    path: /matches
+    auth: default
+    params:
+      - { name: status, in: query, type: integer, description: "1 = scheduled, 2 = completed, 3 = live, 4 = cancelled." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: per_page, in: query, type: integer, description: "Page size." }
+      - { name: paged, in: query, type: integer, description: "Page number." }
+    response_hint: "{status:'ok', response:{items:[{match_id, title, short_title, subtitle, format_str:'T20'|'ODI'|'Test', status, status_str, game_state_str, teama:{team_id, name, short_name, scores_full, scores, overs}, teamb:{…}, date_start, venue, toss:{text, winner, decision}}], total_items, total_pages}}  — SHAPE FROM VENDOR DOCS. `scores_full` is the display string ('187/4 (20)') and `scores` the bare runs — do not parse the first when you want the second."
+    examples:
+      - description: "Live matches"
+        params: {status: 3}
+
+  - name: entitysport_match_info
+    group: entitysport.cricket
+    capabilities: [sport.match_detail]
+    summary: "One match with squads, toss and current state."
+    base: default
+    path: /matches/{matchId}/info
+    auth: default
+    params:
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "{status:'ok', response:{match_id, title, format_str, status_str, teama, teamb, venue, toss, umpires, referee, players:[…], equation, live}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "One match"
+        params: {matchId: 12345}
+
+  - name: entitysport_match_scorecard
+    group: entitysport.cricket
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Full innings-by-innings scorecard."
+    base: default
+    path: /matches/{matchId}/scorecard
+    auth: default
+    params:
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "{status:'ok', response:{innings:[{iid, number, name, batsmen:[{name, batsman_id, runs, balls_faced, fours, sixes, strike_rate, how_out}], bowlers:[{name, overs, maidens, runs, wickets, econ}], extras, equations:{runs, wickets, overs, runrate}, fows:[…], did_not_bat:[…]}]}}  — SHAPE FROM VENDOR DOCS. `fows` is the fall-of-wickets list."
+    examples:
+      - description: "One match's scorecard"
+        params: {matchId: 12345}
+
+  - name: entitysport_match_commentary
+    group: entitysport.cricket
+    capabilities: [sport.commentary, stats.play_by_play]
+    summary: "Ball-by-ball commentary for an innings — the reason to choose this provider over cricketdata."
+    base: default
+    path: /matches/{matchId}/innings/{inningsId}/commentary
+    auth: default
+    params:
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id." }
+      - { name: inningsId, in: path, type: integer, required: true, description: "Innings id (`iid` from the scorecard)." }
+    response_hint: "{status:'ok', response:{commentaries:[{event:'ball'|'overend'|'wicket', over, ball, batsman_id, bowler_id, score, run_str, commentary, noball, wide, byes, legbyes, six, four}]}}  — SHAPE FROM VENDOR DOCS. Rows include NON-BALL events ('overend'), so filter on `event` before counting deliveries."
+    examples:
+      - description: "An innings' commentary"
+        params: {matchId: 12345, inningsId: 1}
+
+  - name: entitysport_competitions
+    group: entitysport.cricket
+    capabilities: [sport.competitions_list]
+    summary: "Competitions and tours."
+    base: default
+    path: /competitions
+    auth: default
+    params:
+      - { name: status, in: query, type: string, description: "live, upcoming, result." }
+      - { name: per_page, in: query, type: integer, description: "Page size." }
+      - { name: paged, in: query, type: integer, description: "Page number." }
+    response_hint: "{status:'ok', response:{items:[{cid, title, abbr, category, game_format, status, season, datestart, dateend, total_matches, total_teams}], total_pages}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Live competitions"
+        params: {status: live}

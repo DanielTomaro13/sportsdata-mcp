@@ -16,6 +16,7 @@ import httpx
 
 from .auth.afl import AFLTokenProvider
 from .auth.base import AuthProvider
+from .auth.basic import StaticBasicAuthProvider
 from .auth.header import StaticHeaderAuthProvider
 from .auth.kalshi import KalshiRSASigner
 from .auth.none import NullAuthProvider
@@ -24,7 +25,16 @@ from .auth.query import StaticQueryAuthProvider
 from .config import Config
 from .errors import ToolError
 from .licence import proxy_base_for
-from .spec import AuthAFLWMCTok, AuthKalshiRSA, AuthNone, AuthOAuthRefresh, AuthStaticHeader, AuthStaticQuery, Provider
+from .spec import (
+    AuthAFLWMCTok,
+    AuthKalshiRSA,
+    AuthNone,
+    AuthOAuthRefresh,
+    AuthStaticBasic,
+    AuthStaticHeader,
+    AuthStaticQuery,
+    Provider,
+)
 
 log = logging.getLogger("sportsdata_mcp.http")
 
@@ -149,6 +159,13 @@ class HTTPClient:
                 provider = NullAuthProvider()
             else:
                 provider = StaticQueryAuthProvider(spec, self._secrets)
+        elif isinstance(spec, AuthStaticBasic):
+            if spec.optional and not (
+                os.environ.get(spec.username_env) or (self._secrets or {}).get(spec.username_env)
+            ):
+                provider = NullAuthProvider()
+            else:
+                provider = StaticBasicAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthOAuthRefresh):
             if spec.optional and not (
                 os.environ.get(spec.client_id_env) or (self._secrets or {}).get(spec.client_id_env)
@@ -387,9 +404,12 @@ class HTTPClient:
         """
         missing: set[str] = set()
         for spec in self._provider.auth.values():
-            env = getattr(spec, "env", None)
-            if env and not (os.environ.get(env) or (self._secrets or {}).get(env)):
-                missing.add(env)
+            # `env` covers header/query auth; Basic auth names its halves separately, and
+            # skipping them would leave MySportsFeeds users with a bare 401 and no hint.
+            for attr in ("env", "username_env", "password_env"):
+                env = getattr(spec, attr, None)
+                if env and not (os.environ.get(env) or (self._secrets or {}).get(env)):
+                    missing.add(env)
         return missing
 
     def _guard_status_and_size(self, r: httpx.Response) -> None:

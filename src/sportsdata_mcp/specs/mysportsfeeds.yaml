@@ -1,0 +1,133 @@
+spec_version: 1
+
+# MySportsFeeds (api.mysportsfeeds.com) — NFL, NBA, MLB, NHL. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10: 401 with an HTML "Authentication Required" page — this API answers a
+# missing credential with a WWW-Authenticate challenge, not JSON.
+#
+# AUTH IS HTTP BASIC, and asymmetric in a way that trips people up: the USERNAME is your
+# API key and the PASSWORD is the literal constant `MYSPORTSFEEDS`. That is not a
+# placeholder in their docs — it really is the same string for every account. This spec
+# encodes it for you; set MYSPORTSFEEDS_API_KEY and nothing else.
+#
+# WHY CARRY IT. It is the only provider here with a **non-commercial free tier for
+# personal projects** across all four major US leagues, and its per-game player logs are
+# unusually clean. `sportsdataio` overlaps on scope but is trial-only; the official
+# `mlb`/`nhl`/`nba` providers are deeper but do not offer this shape.
+#
+# SEASON STRINGS ARE THEIR OWN LANGUAGE: `current`, `latest`, `upcoming`, or an explicit
+# `2023-2024-regular` / `2023-regular` / `2023-playoff`. Getting this wrong is the most
+# common 404 here — the format differs by sport (NFL and MLB use one year, NBA and NHL
+# use a span).
+
+provider:
+  id: mysportsfeeds
+  display_name: "MySportsFeeds (US majors, free for personal use — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/MySportsFeeds.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.mysportsfeeds.com/v2.1/pull
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_basic
+      username_env: MYSPORTSFEEDS_API_KEY
+      # Not a placeholder — the literal password every MySportsFeeds account uses.
+      password: MYSPORTSFEEDS
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: mysportsfeeds_games
+    group: mysportsfeeds.us
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Games for a season in one league, with scores and venue."
+    base: default
+    path: /{league}/{season}/games.json
+    auth: default
+    params:
+      - { name: league, in: path, type: string, required: true, enum: [nfl, nba, mlb, nhl], description: "League." }
+      - { name: season, in: path, type: string, required: true, description: "'current', 'latest', or explicit: NFL/MLB use '2023-regular', NBA/NHL use '2023-2024-regular'." }
+      - { name: date, in: query, type: string, description: "Filter, e.g. '20240115' or 'from-20240101-to-20240131'." }
+      - { name: team, in: query, type: string_csv, description: "Team abbreviations." }
+      - { name: status, in: query, type: string, description: "unplayed, in-progress, final." }
+    response_hint: "{lastUpdatedOn, games:[{schedule:{id, week, startTime, awayTeam:{id, abbreviation}, homeTeam:{…}, venue, playedStatus}, score:{awayScoreTotal, homeScoreTotal, quarters|periods|innings:[…], currentQuarter, currentIntermission}}]}  — SHAPE FROM VENDOR DOCS. NOTE identity lives under `schedule` and the result under `score`: a game is TWO nested objects, not one flat one."
+    examples:
+      - description: "This NFL season's games"
+        params: {league: nfl, season: current}
+
+  - name: mysportsfeeds_boxscore
+    group: mysportsfeeds.us
+    capabilities: [sport.match_boxscore, stats.player_match]
+    summary: "Full box score for one game, team and player level."
+    base: default
+    path: /{league}/{season}/games/{game}/boxscore.json
+    auth: default
+    params:
+      - { name: league, in: path, type: string, required: true, enum: [nfl, nba, mlb, nhl], description: "League." }
+      - { name: season, in: path, type: string, required: true, description: "Season string." }
+      - { name: game, in: path, type: string, required: true, description: "Game id, or the date-team form '20240115-LAL-BOS'." }
+      - { name: playerstats, in: query, type: string_csv, description: "Restrict to named stat groups." }
+    response_hint: "{game:{…}, scoring:{…}, stats:{away:{teamStats:[…], players:[{player:{id, firstName, lastName, position}, playerStats:[…]}]}, home:{…}}}  — SHAPE FROM VENDOR DOCS. The `game` id may be given as '20240115-LAL-BOS', which is often easier than looking one up."
+    examples:
+      - description: "One game's box score"
+        params: {league: nba, season: current, game: "20240115-LAL-BOS"}
+
+  - name: mysportsfeeds_player_gamelogs
+    group: mysportsfeeds.us
+    capabilities: [stats.player_game_log]
+    summary: "Per-game statistics for players across a season — the cleanest surface this API has."
+    base: default
+    path: /{league}/{season}/player_gamelogs.json
+    auth: default
+    params:
+      - { name: league, in: path, type: string, required: true, enum: [nfl, nba, mlb, nhl], description: "League." }
+      - { name: season, in: path, type: string, required: true, description: "Season string." }
+      - { name: player, in: query, type: string_csv, description: "Player ids or 'firstname-lastname' slugs." }
+      - { name: team, in: query, type: string_csv, description: "Team abbreviations." }
+      - { name: date, in: query, type: string, description: "Date filter." }
+    response_hint: "{gamelogs:[{game:{id, startTime, awayTeamAbbreviation, homeTeamAbbreviation}, player:{id, firstName, lastName, position, jerseyNumber}, team:{id, abbreviation}, stats:{…sport-specific groups…}}]}  — SHAPE FROM VENDOR DOCS. `stats` groups differ per sport (passing/rushing for NFL, offense/rebounds for NBA)."
+    examples:
+      - description: "A team's player game logs"
+        params: {league: nba, season: current, team: ["LAL"]}
+
+  - name: mysportsfeeds_standings
+    group: mysportsfeeds.us
+    capabilities: [stats.ladder]
+    summary: "Standings for a league and season."
+    base: default
+    path: /{league}/{season}/standings.json
+    auth: default
+    params:
+      - { name: league, in: path, type: string, required: true, enum: [nfl, nba, mlb, nhl], description: "League." }
+      - { name: season, in: path, type: string, required: true, description: "Season string." }
+      - { name: team, in: query, type: string_csv, description: "Team abbreviations." }
+    response_hint: "{teams:[{team:{id, abbreviation, city, name}, stats:{standings:{wins, losses, winPct, gamesBack}}, divisionRank:{rank, gamesBack}, conferenceRank:{…}, overallRank:{…}}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "This season's standings"
+        params: {league: nba, season: current}
+
+  - name: mysportsfeeds_injuries
+    group: mysportsfeeds.us
+    capabilities: [sport.injuries]
+    summary: "Current injury list for a league."
+    base: default
+    path: /{league}/injuries.json
+    auth: default
+    params:
+      - { name: league, in: path, type: string, required: true, enum: [nfl, nba, mlb, nhl], description: "League." }
+      - { name: team, in: query, type: string_csv, description: "Team abbreviations." }
+      - { name: player, in: query, type: string_csv, description: "Player ids or slugs." }
+    response_hint: "{players:[{id, firstName, lastName, position, currentTeam:{abbreviation}, currentInjury:{description, playingProbability}}]}  — SHAPE FROM VENDOR DOCS. Note there is NO season segment on this path — injuries are always 'now'."
+    examples:
+      - description: "NBA injuries"
+        params: {league: nba}
