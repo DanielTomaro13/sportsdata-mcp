@@ -1,0 +1,150 @@
+spec_version: 1
+
+# SportsGameOdds (api.sportsgameodds.com) — odds and PLAYER PROPS across US and
+# international sports. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10: 401 {"success":false,"error":"Missing API key"} — a clean status code,
+# unlike some of its neighbours in this tier.
+#
+# WHY IT IS HERE ALONGSIDE `theoddsapi` AND `oddsapiio`. Player props. The other two
+# aggregators are strongest on match-level markets (h2h, spreads, totals); this one
+# models props as first-class objects with a structured `oddID` that encodes the
+# statistic, the player and the side. If the question is "what is the market on this
+# player's rushing yards", this is the aggregator that answers it.
+#
+# THE oddID IS THE KEY IDEA. Markets are identified by a composite string, roughly
+#     {statID}-{statEntityID}-{periodID}-{betTypeID}-{sideID}
+# e.g. `passing_yards-JOSH_ALLEN_1_NFL-game-ou-over`. It is stable, so you can follow
+# one prop across books and across time by matching on it rather than on display names
+# — which is exactly the join that fails when you use scraped bookmaker feeds.
+
+provider:
+  id: sportsgameodds
+  display_name: "SportsGameOdds (odds + player props — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/SportsGameOdds.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.sportsgameodds.com/v2
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: X-Api-Key
+      env: SPORTSGAMEODDS_API_KEY
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: sportsgameodds_sports
+    group: sportsgameodds.odds
+    capabilities: [sport.competitions_list]
+    summary: "Sports covered, with the sportID other tools filter on."
+    base: default
+    path: /sports/
+    auth: default
+    response_hint: "{success:true, data:[{sportID:'FOOTBALL', enabled}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Every sport"
+        params: {}
+
+  - name: sportsgameodds_leagues
+    group: sportsgameodds.odds
+    capabilities: [sport.competitions_list]
+    summary: "Leagues, with the leagueID other tools filter on (NFL, NBA, MLB, NHL, EPL, NCAAF…)."
+    base: default
+    path: /leagues/
+    auth: default
+    params:
+      - { name: sportID, in: query, type: string, description: "Restrict to one sport." }
+    response_hint: "{success:true, data:[{leagueID:'NFL', sportID:'FOOTBALL', name, enabled}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Football leagues"
+        params: {sportID: FOOTBALL}
+
+  - name: sportsgameodds_events
+    group: sportsgameodds.odds
+    capabilities: [sport.fixtures_by_date, sport.event_markets, sport.prices]
+    summary: "Events with their odds attached, including player props. The main tool here."
+    base: default
+    path: /events/
+    auth: default
+    params:
+      - { name: leagueID, in: query, type: string, description: "League id, e.g. NFL." }
+      - { name: sportID, in: query, type: string, description: "Sport id." }
+      - { name: eventID, in: query, type: string, description: "One event." }
+      - { name: startsAfter, in: query, type: string, description: "ISO date — events starting after this." }
+      - { name: startsBefore, in: query, type: string, description: "ISO date — events starting before this." }
+      - { name: oddsAvailable, in: query, type: boolean, description: "true = only events that currently have prices." }
+      - { name: bookmakerID, in: query, type: string, description: "Restrict odds to one bookmaker." }
+      - { name: limit, in: query, type: integer, default: 10, description: "Page size." }
+      - { name: cursor, in: query, type: string, description: "From `nextCursor` of the previous page." }
+    response_hint: "{success:true, data:[{eventID, leagueID, sportID, status:{started, completed, displayShort}, teams:{home:{teamID, names}, away:{…}}, odds:{'<oddID>':{oddID, statID, statEntityID, periodID, betTypeID, sideID, bookOdds, bookSpread, bookOverUnder, byBookmaker:{'<book>':{odds, spread, overUnder, available, lastUpdatedAt}}}}}], nextCursor}  — SHAPE FROM VENDOR DOCS. NOTE `odds` is an OBJECT KEYED BY oddID, not a list, and each entry carries a `byBookmaker` map: two levels of dictionary before you reach a price."
+    examples:
+      - description: "NFL events with odds"
+        params: {leagueID: NFL, oddsAvailable: true}
+
+  - name: sportsgameodds_bookmakers
+    group: sportsgameodds.odds
+    capabilities: []
+    summary: "The bookmakers indexed, with the ids used in `byBookmaker`."
+    base: default
+    path: /bookmakers/
+    auth: default
+    response_hint: "{success:true, data:[{bookmakerID, name, isLive}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Every bookmaker"
+        params: {}
+
+  - name: sportsgameodds_teams
+    group: sportsgameodds.odds
+    capabilities: [ref.teams]
+    summary: "Teams in a league, with the teamIDs used inside event objects."
+    base: default
+    path: /teams/
+    auth: default
+    params:
+      - { name: leagueID, in: query, type: string, description: "League id." }
+      - { name: teamID, in: query, type: string, description: "One team." }
+    response_hint: "{success:true, data:[{teamID, leagueID, names:{long, medium, short}, colors}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "NFL teams"
+        params: {leagueID: NFL}
+
+  - name: sportsgameodds_players
+    group: sportsgameodds.odds
+    capabilities: [ref.players]
+    summary: "Players, with the playerIDs that appear inside prop oddIDs."
+    base: default
+    path: /players/
+    auth: default
+    params:
+      - { name: leagueID, in: query, type: string, description: "League id." }
+      - { name: teamID, in: query, type: string, description: "Team id." }
+      - { name: playerID, in: query, type: string, description: "One player." }
+    response_hint: "{success:true, data:[{playerID:'JOSH_ALLEN_1_NFL', teamID, leagueID, firstName, lastName, position}]}  — SHAPE FROM VENDOR DOCS. The playerID is the `statEntityID` half of a prop's oddID, which is how you find every market on one player."
+    examples:
+      - description: "A team's players"
+        params: {leagueID: NFL, teamID: "BUFFALO_BILLS_NFL"}
+
+  - name: sportsgameodds_stats
+    group: sportsgameodds.odds
+    capabilities: []
+    summary: "The statistics catalogue — the statIDs that form the first segment of every prop oddID."
+    base: default
+    path: /stats/
+    auth: default
+    params:
+      - { name: leagueID, in: query, type: string, description: "League id." }
+    response_hint: "{success:true, data:[{statID:'passing_yards', name, leagueID, entityType:'player'|'team'}]}  — SHAPE FROM VENDOR DOCS. Read this before constructing prop filters; guessing statIDs is the usual way to get an empty result."
+    examples:
+      - description: "NFL statistics"
+        params: {leagueID: NFL}

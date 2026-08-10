@@ -1,0 +1,117 @@
+spec_version: 1
+
+# Odds-API.io — odds from 274 bookmakers across 34 sports. BYO key.
+#
+# ⚠ MIXED VERIFICATION. Two endpoints are OPEN and were probed live 2026-08-10:
+#     oddsapiio_sports      → 34 sports (VERIFIED, real payload below)
+#     oddsapiio_bookmakers  → 274 bookmakers, 263 active (VERIFIED)
+# The rest return 401 {"error":"You need to provide a valid apiKey"}, so their shapes
+# come from the vendor's docs (`shapes_verified: false`).
+#
+# ⚠⚠ THE API IS **v3**, NOT v2. The vendor's own marketing pages still show `/v2/`
+# paths; every one of them returns `404 page not found`. This was caught by probing —
+# a spec written from the docs would have shipped with every tool broken. If a call
+# here 404s, check the version segment before anything else.
+#
+# HOW IT DIFFERS FROM `theoddsapi`. The Odds API is the better-known aggregator and
+# indexes ~40 books; this one indexes 274 (including many the other misses) and covers
+# 34 sports down to bandy, padel and beach handball. It is the wider net; The Odds API
+# has the cleaner historical product. For AU markets, the direct providers in this
+# catalogue (sportsbet, tab, pointsbet, betr, betfair) remain deeper and live.
+
+provider:
+  id: oddsapiio
+  display_name: "Odds-API.io (274 bookmakers, 34 sports — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/OddsAPIio.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.odds-api.io/v3
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_query
+      param: apiKey
+      env: ODDS_API_IO_KEY
+      # Two endpoints work without it, so the server must start either way.
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: oddsapiio_sports
+    group: oddsapiio.odds
+    capabilities: [sport.competitions_list]
+    summary: "The 34 sports covered, with the slug every other tool needs. VERIFIED live — works without a key."
+    base: default
+    path: /sports
+    auth: default
+    response_hint: "[{name:'Football', slug:'football'}]  — VERIFIED live: 34 entries, slugs include football, basketball, tennis, baseball, american-football, ice-hockey, esports, darts, mixed-martial-arts, boxing, handball, volleyball, snooker, table-tennis, rugby, cricket, aussie-rules, gaelic-football, padel, bandy, golf, cycling."
+    examples:
+      - description: "Every sport"
+        params: {}
+
+  - name: oddsapiio_bookmakers
+    group: oddsapiio.odds
+    capabilities: []
+    summary: "The 274 bookmakers indexed, and whether each is currently active. VERIFIED live — works without a key."
+    base: default
+    path: /bookmakers
+    auth: default
+    response_hint: "[{name:'10BET', active:true}]  — VERIFIED live: 274 entries, 263 active. Names are the vendor's own spelling and are what the odds calls filter on."
+    examples:
+      - description: "Every bookmaker"
+        params: {}
+
+  - name: oddsapiio_leagues
+    group: oddsapiio.odds
+    capabilities: [sport.competitions_list]
+    summary: "Leagues within a sport. NEEDS A KEY."
+    base: default
+    path: /leagues
+    auth: default
+    params:
+      - { name: sport, in: query, type: string, required: true, description: "Sport slug from oddsapiio_sports." }
+      - { name: country, in: query, type: string, description: "Restrict to one country." }
+    response_hint: "[{id, name, country, sport}]  — SHAPE FROM VENDOR DOCS, not probed."
+    examples:
+      - description: "Football leagues"
+        params: {sport: football}
+
+  - name: oddsapiio_events
+    group: oddsapiio.odds
+    capabilities: [sport.fixtures_by_date]
+    summary: "Upcoming events for a sport or league, without prices. NEEDS A KEY."
+    base: default
+    path: /events
+    auth: default
+    params:
+      - { name: sport, in: query, type: string, description: "Sport slug." }
+      - { name: league, in: query, type: string, description: "League id or name." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+    response_hint: "[{id, sport, league, home, away, starts, status}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Upcoming football"
+        params: {sport: football}
+
+  - name: oddsapiio_odds
+    group: oddsapiio.odds
+    capabilities: [sport.prices, sport.event_markets]
+    summary: "Odds for one event across the indexed bookmakers. NEEDS A KEY."
+    base: default
+    path: /odds
+    auth: default
+    params:
+      - { name: eventId, in: query, type: string, required: true, description: "Event id from oddsapiio_events." }
+      - { name: bookmakers, in: query, type: string_csv, description: "Restrict to specific bookmaker names (as spelled by oddsapiio_bookmakers)." }
+      - { name: markets, in: query, type: string_csv, description: "Restrict to specific markets." }
+    response_hint: "{id, home, away, starts, bookmakers:{'<bookmaker name>':{markets…}}}  — SHAPE FROM VENDOR DOCS. Reported to key bookmakers by NAME rather than as a list; inspect what you receive before indexing."
+    examples:
+      - description: "One event's odds"
+        params: {eventId: "<event id>"}

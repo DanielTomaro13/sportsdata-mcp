@@ -1,0 +1,190 @@
+spec_version: 1
+
+# SportsDataIO (api.sportsdata.io) — US sports (NFL, NBA, MLB, NHL, soccer), BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10: 401 {"HttpStatusCode":401,"Code":401,"Description":"API key missing in
+# request"} — a proper status code.
+#
+# KEYS ARE PER-SPORT. This is the trap. SportsDataIO issues a SEPARATE key for each
+# sport, and a trial key for one sport returns 401 on another. This spec reads one
+# variable per sport (SPORTSDATAIO_NFL_KEY, …_NBA_KEY, …) rather than pretending a
+# single key works everywhere. Set only the ones you actually have.
+#
+# WHY CARRY IT WHEN `mlb`, `nhl` AND `nba` ARE OFFICIAL AND KEYLESS? For the two things
+# the official feeds do not publish: DFS SALARIES (DraftKings/FanDuel) and PROJECTIONS.
+# The official APIs give you what happened; the fantasy tools here (`espnfantasy`,
+# `sleeper`) give you your league; this gives you the pricing and projection layer in
+# between. If you only want scores and box scores, use the official providers.
+
+provider:
+  id: sportsdataio
+  display_name: "SportsDataIO (US sports, DFS salaries + projections — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/SportsDataIO.md"
+  shapes_verified: false
+  base_urls:
+    nfl: https://api.sportsdata.io/v3/nfl
+    nba: https://api.sportsdata.io/v3/nba
+    mlb: https://api.sportsdata.io/v3/mlb
+    nhl: https://api.sportsdata.io/v3/nhl
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    # One key per sport — see the note above. A key for the wrong sport 401s.
+    nfl:
+      type: static_header
+      header: Ocp-Apim-Subscription-Key
+      env: SPORTSDATAIO_NFL_KEY
+      optional: true
+    nba:
+      type: static_header
+      header: Ocp-Apim-Subscription-Key
+      env: SPORTSDATAIO_NBA_KEY
+      optional: true
+    mlb:
+      type: static_header
+      header: Ocp-Apim-Subscription-Key
+      env: SPORTSDATAIO_MLB_KEY
+      optional: true
+    nhl:
+      type: static_header
+      header: Ocp-Apim-Subscription-Key
+      env: SPORTSDATAIO_NHL_KEY
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: sportsdataio_nfl_teams
+    group: sportsdataio.nfl
+    capabilities: [ref.teams]
+    summary: "NFL franchises with conference, division, stadium and coach."
+    base: nfl
+    path: /scores/json/Teams
+    auth: nfl
+    response_hint: "[{Key:'BUF', TeamID, PlayerID, City, Name, Conference, Division, FullName, StadiumDetails:{…}, HeadCoach, OffensiveCoordinator, PrimaryColor}]  — SHAPE FROM VENDOR DOCS. Fields are PascalCase throughout this API."
+    examples:
+      - description: "Every NFL team"
+        params: {}
+
+  - name: sportsdataio_nfl_scores
+    group: sportsdataio.nfl
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "NFL scores for one season and week."
+    base: nfl
+    path: /scores/json/ScoresByWeek/{season}/{week}
+    auth: nfl
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season with an optional type suffix: 2023, 2023PRE, 2023POST. The BARE year is the regular season." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number." }
+    response_hint: "[{GameKey, SeasonType, Season, Week, Date, AwayTeam, HomeTeam, AwayScore, HomeScore, Quarter, TimeRemaining, PointSpread, OverUnder, StadiumDetails}]  — SHAPE FROM VENDOR DOCS. `SeasonType` 1=pre, 2=regular, 3=post."
+    examples:
+      - description: "A week's scores"
+        params: {season: "2023", week: 1}
+
+  - name: sportsdataio_nfl_dfs_slates
+    group: sportsdataio.nfl
+    capabilities: [stats.fantasy_projections]
+    summary: "DFS slates and player SALARIES for a week — DraftKings, FanDuel and Yahoo. Not available from the official NFL feeds."
+    base: nfl
+    path: /projections/json/DfsSlatesByWeek/{season}/{week}
+    auth: nfl
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season, e.g. 2023." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number." }
+    response_hint: "[{SlateID, Operator:'DraftKings'|'FanDuel'|'Yahoo', OperatorSlateID, OperatorName, OperatorDay, OperatorStartTime, NumberOfGames, IsMultiDaySlate, DfsSlateGames:[…], DfsSlatePlayers:[{SlatePlayerID, PlayerID, OperatorPlayerName, OperatorPosition, OperatorSalary, FantasyPoints, FantasyPointsPerDollar}]}]  — SHAPE FROM VENDOR DOCS. `FantasyPointsPerDollar` is value; salaries are integers in dollars."
+    examples:
+      - description: "A week's DFS slates"
+        params: {season: "2023", week: 1}
+
+  - name: sportsdataio_nfl_projections
+    group: sportsdataio.nfl
+    capabilities: [stats.fantasy_projections]
+    summary: "Projected NFL player game statistics for a week."
+    base: nfl
+    path: /projections/json/PlayerGameProjectionStatsByWeek/{season}/{week}
+    auth: nfl
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number." }
+    response_hint: "[{PlayerID, Name, Team, Position, PassingYards, PassingTouchdowns, RushingYards, ReceivingYards, Receptions, FantasyPoints, FantasyPointsPPR, FantasyPointsDraftKings, FantasyPointsFanDuel}]  — SHAPE FROM VENDOR DOCS. Note the per-operator scoring columns: DraftKings and FanDuel score differently, so use the matching one."
+    examples:
+      - description: "A week's projections"
+        params: {season: "2023", week: 1}
+
+  - name: sportsdataio_nfl_injuries
+    group: sportsdataio.nfl
+    capabilities: [sport.injuries]
+    summary: "NFL injury report for a week."
+    base: nfl
+    path: /scores/json/InjuriesByWeek/{season}/{week}
+    auth: nfl
+    params:
+      - { name: season, in: path, type: string, required: true, description: "Season." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number." }
+    response_hint: "[{InjuryID, PlayerID, Name, Position, Team, Status:'Questionable'|'Out'|…, BodyPart, Practice, PracticeDescription, Updated}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A week's injuries"
+        params: {season: "2023", week: 1}
+
+  - name: sportsdataio_nba_games_by_date
+    group: sportsdataio.nba
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "NBA games on a date, with the closing spread and total."
+    base: nba
+    path: /scores/json/GamesByDate/{date}
+    auth: nba
+    params:
+      - { name: date, in: path, type: string, required: true, description: "YYYY-MM-DD (or 2024-JAN-15 — this API accepts both)." }
+    response_hint: "[{GameID, Season, Status, DateTime, AwayTeam, HomeTeam, AwayTeamScore, HomeTeamScore, PointSpread, OverUnder, Quarters:[…], StadiumID}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A date's NBA games"
+        params: {date: "2024-01-15"}
+
+  - name: sportsdataio_nba_dfs_slates
+    group: sportsdataio.nba
+    capabilities: [stats.fantasy_projections]
+    summary: "NBA DFS slates and salaries for a date."
+    base: nba
+    path: /projections/json/DfsSlatesByDate/{date}
+    auth: nba
+    params:
+      - { name: date, in: path, type: string, required: true, description: "YYYY-MM-DD." }
+    response_hint: "[{SlateID, Operator, OperatorName, OperatorStartTime, DfsSlatePlayers:[{SlatePlayerID, PlayerID, OperatorPlayerName, OperatorPosition, OperatorSalary, FantasyPoints}]}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A date's NBA slates"
+        params: {date: "2024-01-15"}
+
+  - name: sportsdataio_mlb_games_by_date
+    group: sportsdataio.mlb
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "MLB games on a date, with probable pitchers and the line."
+    base: mlb
+    path: /scores/json/GamesByDate/{date}
+    auth: mlb
+    params:
+      - { name: date, in: path, type: string, required: true, description: "YYYY-MM-DD." }
+    response_hint: "[{GameID, Season, Status, DateTime, AwayTeam, HomeTeam, AwayTeamRuns, HomeTeamRuns, Inning, InningHalf, AwayTeamProbablePitcherID, HomeTeamProbablePitcherID, PointSpread, OverUnder}]  — SHAPE FROM VENDOR DOCS. The keyless official `mlb` provider is deeper for everything except the line and the DFS layer."
+    examples:
+      - description: "A date's MLB games"
+        params: {date: "2024-07-04"}
+
+  - name: sportsdataio_nhl_games_by_date
+    group: sportsdataio.nhl
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "NHL games on a date, with the line."
+    base: nhl
+    path: /scores/json/GamesByDate/{date}
+    auth: nhl
+    params:
+      - { name: date, in: path, type: string, required: true, description: "YYYY-MM-DD." }
+    response_hint: "[{GameID, Season, Status, DateTime, AwayTeam, HomeTeam, AwayTeamScore, HomeTeamScore, Period, TimeRemainingMinutes, PointSpread, OverUnder, Periods:[…]}]  — SHAPE FROM VENDOR DOCS. The keyless official `nhl` provider is deeper for play-by-play and box scores."
+    examples:
+      - description: "A date's NHL games"
+        params: {date: "2024-01-15"}

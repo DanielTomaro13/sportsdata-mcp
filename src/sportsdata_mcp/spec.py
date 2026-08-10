@@ -120,7 +120,11 @@ class ErrorSignal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field: str
-    equals: str
+    # Omit `equals` to fire whenever the field is present and TRUTHY. api-sports needs
+    # this: it reports failures in an `errors` object whose contents vary
+    # ({"token": …}, {"requests": "You have reached the request limit"}), and returns
+    # `errors: []` on success — so there is no fixed value to match, only emptiness.
+    equals: str | None = None
 
 
 class HashRefresh(BaseModel):

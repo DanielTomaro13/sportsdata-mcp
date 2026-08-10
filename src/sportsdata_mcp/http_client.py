@@ -351,9 +351,20 @@ class HTTPClient:
         if not signals or not isinstance(body, dict):
             return
         for sig in signals:
-            if str(body.get(sig.field, "")) != sig.equals:
+            if sig.field not in body:
                 continue
-            detail = body.get("reason") or body.get("message") or json.dumps(body)[:160]
+            value = body[sig.field]
+            if sig.equals is not None:
+                if str(value) != sig.equals:
+                    continue
+            elif not value:
+                # presence-mode: `errors: []` / `""` / null is the SUCCESS case
+                continue
+            detail = (
+                body.get("reason")
+                or body.get("message")
+                or (json.dumps(value)[:160] if sig.equals is None else json.dumps(body)[:160])
+            )
             missing = self._unset_key_envs()
             hint = (
                 f" Set {' or '.join(sorted(missing))} in your environment and restart."

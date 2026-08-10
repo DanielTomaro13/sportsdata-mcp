@@ -1,0 +1,168 @@
+spec_version: 1
+
+# Sportmonks (api.sportmonks.com) — football, with a genuinely free tier covering the
+# Danish and Scottish leagues. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Host and refusal probed live
+# 2026-08-10: 401 {"message":"No token provided. You can supply your token by query
+# string or authorization header."}
+#
+# THE ONE THING THAT MAKES THIS API DIFFERENT: **`include`**. Almost every response is
+# skeletal by default — a fixture comes back with ids and nothing else. You ask for the
+# rest by naming relations:
+#     include=participants;scores;events;lineups.player;statistics
+# Nested relations use a dot, multiple relations a semicolon. If a field you expected is
+# missing, the answer is nearly always that you did not include it. Every tool below
+# exposes `include` for this reason, and the free tier caps how many you may nest.
+#
+# WHY CARRY IT. Its free tier is real — no trial clock — and it is the only football
+# provider here that will give you lineups, events and per-player match statistics for
+# free, even if only for two leagues. Treat it as a place to develop against.
+
+provider:
+  id: sportmonks
+  display_name: "Sportmonks (football, free Danish/Scottish tier — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Sportmonks.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.sportmonks.com/v3
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_query
+      param: api_token
+      env: SPORTMONKS_TOKEN
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: sportmonks_leagues
+    group: sportmonks.football
+    capabilities: [sport.competitions_list]
+    summary: "Leagues your plan can see. On the free tier this is the Danish Superliga and Scottish Premiership."
+    base: default
+    path: /football/leagues
+    auth: default
+    params:
+      - { name: include, in: query, type: string, description: "Relations to expand, e.g. 'country;currentSeason'. Semicolon-separated; dots nest." }
+      - { name: page, in: query, type: integer, description: "Page number." }
+      - { name: per_page, in: query, type: integer, description: "Page size (max 50)." }
+    response_hint: "{data:[{id, sport_id, country_id, name, active, short_code, image_path, type, sub_type, last_played_at}], pagination:{count, per_page, current_page, next_page, has_more}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Leagues on your plan"
+        params: {}
+
+  - name: sportmonks_fixtures_by_date
+    group: sportmonks.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Fixtures on one date. Add `include=participants;scores` or you will get ids without teams or a score."
+    base: default
+    path: /football/fixtures/date/{date}
+    auth: default
+    params:
+      - { name: date, in: path, type: string, required: true, description: "YYYY-MM-DD." }
+      - { name: include, in: query, type: string, description: "e.g. 'participants;scores;league;venue'. WITHOUT THIS the response has no team names and no score." }
+      - { name: per_page, in: query, type: integer, description: "Page size." }
+    response_hint: "{data:[{id, sport_id, league_id, season_id, name:'Home vs Away', starting_at, result_info, state_id, participants:[…only if included…], scores:[{score:{goals, participant}, description:'CURRENT'|'1ST_HALF'|…}]}], pagination}  — SHAPE FROM VENDOR DOCS. `scores` is a LIST of period scores; pick description == 'CURRENT' for the live/final figure."
+    examples:
+      - description: "A date's fixtures with teams and scores"
+        params: {date: "2024-08-17", include: "participants;scores"}
+
+  - name: sportmonks_fixture
+    group: sportmonks.football
+    capabilities: [sport.match_detail, sport.match_boxscore]
+    summary: "One fixture. The `include` you choose decides whether you get lineups, events and statistics."
+    base: default
+    path: /football/fixtures/{id}
+    auth: default
+    params:
+      - { name: id, in: path, type: integer, required: true, description: "Fixture id." }
+      - { name: include, in: query, type: string, description: "e.g. 'participants;scores;events;lineups.player;statistics'. Nesting depth is capped on the free tier." }
+    response_hint: "{data:{id, name, starting_at, result_info, participants:[…], scores:[…], events:[{type_id, minute, player_name, related_player_name, result}], lineups:[…], statistics:[…]}}  — SHAPE FROM VENDOR DOCS. Events use NUMERIC `type_id`s, not names — resolve them via sportmonks_types."
+    examples:
+      - description: "A fixture with events"
+        params: {id: 18535517, include: "participants;scores;events"}
+
+  - name: sportmonks_standings
+    group: sportmonks.football
+    capabilities: [stats.ladder]
+    summary: "League table for a season."
+    base: default
+    path: /football/standings/seasons/{seasonId}
+    auth: default
+    params:
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season id (from a league's currentSeason include)." }
+      - { name: include, in: query, type: string, description: "e.g. 'participant;details'." }
+    response_hint: "{data:[{id, participant_id, position, points, result, sport_id, league_id, season_id, group_id, round_id, standing_rule_id, participant:{…only if included…}}]}  — SHAPE FROM VENDOR DOCS. Without `include=participant` you get team IDS ONLY, which is the most common complaint about this endpoint."
+    examples:
+      - description: "A season's table with team names"
+        params: {seasonId: 19686, include: "participant"}
+
+  - name: sportmonks_teams
+    group: sportmonks.football
+    capabilities: [ref.teams]
+    summary: "Clubs, by search or by season."
+    base: default
+    path: /football/teams
+    auth: default
+    params:
+      - { name: include, in: query, type: string, description: "e.g. 'country;venue;players.player'." }
+      - { name: page, in: query, type: integer, description: "Page number." }
+      - { name: per_page, in: query, type: integer, description: "Page size." }
+    response_hint: "{data:[{id, sport_id, country_id, venue_id, name, short_code, image_path, founded, type}], pagination}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Teams on your plan"
+        params: {}
+
+  - name: sportmonks_players
+    group: sportmonks.football
+    capabilities: [ref.players, stats.player_season]
+    summary: "Players, with season statistics when included."
+    base: default
+    path: /football/players
+    auth: default
+    params:
+      - { name: include, in: query, type: string, description: "e.g. 'statistics.details;nationality;position'." }
+      - { name: page, in: query, type: integer, description: "Page number." }
+      - { name: per_page, in: query, type: integer, description: "Page size." }
+    response_hint: "{data:[{id, sport_id, country_id, nationality_id, position_id, name, common_name, firstname, lastname, display_name, date_of_birth, height, weight}], pagination}  — SHAPE FROM VENDOR DOCS. Statistics arrive only via `include=statistics.details`, and each detail row is keyed by a numeric type_id."
+    examples:
+      - description: "Players on your plan"
+        params: {}
+
+  - name: sportmonks_livescores
+    group: sportmonks.football
+    capabilities: [sport.in_play, sport.match_score]
+    summary: "Fixtures in progress now."
+    base: default
+    path: /football/livescores/inplay
+    auth: default
+    params:
+      - { name: include, in: query, type: string, description: "e.g. 'participants;scores;events'." }
+    response_hint: "{data:[{id, name, starting_at, state_id, participants:[…], scores:[…], periods:[{minutes, seconds, ticking}]}]}  — SHAPE FROM VENDOR DOCS. `periods[].ticking` is how you tell a running clock from a half-time pause."
+    examples:
+      - description: "In-play now"
+        params: {include: "participants;scores"}
+
+  - name: sportmonks_types
+    group: sportmonks.football
+    capabilities: []
+    summary: "The type catalogue — resolves the numeric type_ids that appear all over events, statistics and standings details."
+    base: default
+    path: /core/types
+    auth: default
+    params:
+      - { name: page, in: query, type: integer, description: "Page number." }
+      - { name: per_page, in: query, type: integer, description: "Page size." }
+    response_hint: "{data:[{id, name:'Goal'|'Yellow Card'|'Shots Total'|…, code, developer_name, model_type, stat_group}], pagination}  — SHAPE FROM VENDOR DOCS. Without this, a fixture's `events` and a player's `statistics.details` are unreadable — they are numbers."
+    examples:
+      - description: "The type catalogue"
+        params: {per_page: 50}

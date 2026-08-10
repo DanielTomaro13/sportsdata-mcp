@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~655 tools across 49 providers in Claude Desktop,
+Free & open source (MIT). ~712 tools across 55 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -707,16 +707,22 @@ are out of scope. Flow: `twitter_user_by_username("AFL")` → id →
 
 ## Bring your own key
 
-Six providers need a key you sign up for yourself. They are **excluded from the `free`
+Twelve providers need a key you sign up for yourself. They are **excluded from the `free`
 preset** and from the default group set, so nothing here changes unless you opt in — set
 the environment variable and add the group.
 
 | Provider | Env var | Tools | What it adds that nothing else here has |
 |---|---|---:|---|
-| `theoddsapi` | `THE_ODDS_API_KEY` | 6 | Odds from ~40 **international** books — this catalogue is deep on AU books and blind outside them |
-| `pandascore` | `PANDASCORE_TOKEN` | 8 | Esports beyond Dota 2 — CS2, LoL, Valorant, R6 |
+| `apisports` | `API_SPORTS_KEY` | 18 | **Ten sports on one key** — and the only rugby-union coverage here |
+| `theoddsapi` | `THE_ODDS_API_KEY` | 6 | Odds from ~40 international books, with historical snapshots for CLV work |
+| `oddsapiio` | `ODDS_API_IO_KEY` | 5 | **274 bookmakers** across 34 sports, down to padel, bandy and gaelic football |
+| `sportsgameodds` | `SPORTSGAMEODDS_API_KEY` | 7 | **Player props** with stable market ids you can join across books and time |
+| `sportsdataio` | `SPORTSDATAIO_*_KEY` | 9 | **DFS salaries and projections** (DraftKings/FanDuel), which no official feed publishes |
+| `sportmonks` | `SPORTMONKS_TOKEN` | 8 | Football lineups, events and per-player stats on a **genuinely free** tier |
 | `cfbd` | `CFBD_API_KEY` | 10 | College-football **analytics**: SP+, Elo, advanced box scores, historical lines |
 | `footballdataorg` | `FOOTBALL_DATA_ORG_KEY` | 10 | European competitions with no official feed here — UCL, Eredivisie, Championship |
+| `balldontlie` | `BALLDONTLIE_API_KEY` | 10 | One consistent shape across NBA, NFL, MLB and EPL |
+| `pandascore` | `PANDASCORE_TOKEN` | 8 | Esports beyond Dota 2 — CS2, LoL, Valorant, R6 |
 | `apitennis` | `API_TENNIS_KEY` | 7 | **ATP and ITF** draws, H2H and rankings (`wta` is women's-tour only) |
 | `cricketdata` | `CRICKETDATA_API_KEY` | 8 | International and franchise cricket (`cricketaustralia` is AU-only) |
 
@@ -736,12 +742,19 @@ differ from what the docs implied — so treat this tier as the lower-confidence
 you have run it with your key. If you do, a PR flipping `shapes_verified: true` with the
 corrections is the single most useful contribution available.
 
-**Two of them report failures with HTTP 200.** `apitennis` answers a bad key with
-`200 {"error":"1", …}` and `cricketdata` with `200 {"status":"failure","reason":"Invalid
-API Key"}`. A naive client hands that object to the model, which then reports the
-validation complaint as though it were a tennis draw. Their specs declare `error_signals`
-so the engine raises a real error naming the variable to set. If you consume these APIs
-outside this server, check the body — the status code will lie to you.
+**Three of them report failures with HTTP 200.** `apitennis` answers a bad key with
+`200 {"error":"1", …}`, `cricketdata` with `200 {"status":"failure","reason":"Invalid
+API Key"}`, and `apisports` returns `200` with a populated `errors` object and an
+**empty `response`** when you exhaust the daily quota. That last one is the nastiest: a
+model asking for today's fixtures gets an empty list and reports "no matches today", so
+a blown quota is indistinguishable from a quiet Tuesday. All three specs declare
+`error_signals`, and the engine raises a real error naming the variable to set. If you
+consume these APIs outside this server, check the body — the status code will lie to
+you.
+
+**Odds-API.io is `/v3/`, not `/v2/`.** The vendor's own pages advertise v2 paths; every
+one of them 404s. Caught by probing before the spec was written — otherwise all five
+tools would have shipped broken.
 
 ### Not included
 

@@ -35,7 +35,10 @@ from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
 from sportsdata_mcp.spec_loader import load_all_specs
 
-BYO = ["theoddsapi", "pandascore", "cfbd", "footballdataorg", "apitennis", "cricketdata"]
+BYO = [
+    "theoddsapi", "pandascore", "cfbd", "footballdataorg", "apitennis", "cricketdata",
+    "apisports", "oddsapiio", "balldontlie", "sportsgameodds", "sportmonks", "sportsdataio",
+]
 
 _GROUPS = [f"{p}.*" for p in BYO]
 
@@ -85,14 +88,28 @@ def test_each_declares_the_env_var_it_needs():
 # ─── live: what a keyless call actually does ────────────────────────────
 
 
+def _assert_refused(exc, *expected: str) -> None:
+    """The refusal must be about the KEY, not about the network.
+
+    A live probe that fails because the host blinked is not a finding, and turning one
+    into a red build teaches people to ignore red builds. So an unreachable host skips,
+    while a wrong-shaped refusal — the thing this file exists to catch — still fails.
+    """
+    msg = str(exc)
+    if "did not respond in time" in msg or "unreachable" in msg:
+        pytest.skip(f"environmental, not a contract break: {msg[:120]}")
+    if expected:
+        assert any(e in msg for e in expected), msg
+
+
+
 @pytest.mark.live
 @pytest.mark.skipif(bool(os.environ.get("API_TENNIS_KEY")), reason="a key is set — this probes the keyless path")
 async def test_apitennis_keyless_raises_instead_of_returning_the_error_body(server):
     """VERIFIED live 2026-08-10: HTTP 200 + {"error":"1", …}. Must surface as an error."""
     with pytest.raises(MCPToolError) as e:
         await server.call_tool("apitennis_events", {})
-    msg = str(e.value)
-    assert "API_TENNIS_KEY" in msg or "error body" in msg
+    _assert_refused(e.value, "API_TENNIS_KEY", "error body")
 
 
 @pytest.mark.live
@@ -101,7 +118,7 @@ async def test_cricketdata_keyless_raises_instead_of_returning_the_failure_objec
     """VERIFIED live 2026-08-10: HTTP 200 + {"status":"failure","reason":"Invalid API Key"}."""
     with pytest.raises(MCPToolError) as e:
         await server.call_tool("cricketdata_current_matches", {})
-    assert "CRICKETDATA_API_KEY" in str(e.value) or "Invalid API Key" in str(e.value)
+    _assert_refused(e.value, "CRICKETDATA_API_KEY", "Invalid API Key")
 
 
 @pytest.mark.live
@@ -127,3 +144,59 @@ async def test_footballdataorg_open_endpoints_still_work_without_a_key(server):
     """
     res = await server.call_tool("footballdataorg_competitions", {})
     assert res is not None
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("API_SPORTS_KEY")), reason="a key is set")
+async def test_apisports_keyless_raises(server):
+    """api-sports reports failures inside the body (`errors` populated, `response: []`).
+    Probed keyless it happens to answer 403, but the presence-mode signal is what
+    protects the case that actually bites: a blown daily quota returned as HTTP 200 with
+    an empty `response`, which reads as "no games today"."""
+    with pytest.raises(MCPToolError):
+        await server.call_tool("apisports_status", {})
+
+
+@pytest.mark.live
+async def test_oddsapiio_open_endpoints_work_without_a_key(server):
+    """VERIFIED live: /v3/sports and /v3/bookmakers are open. This also pins the version
+    segment — the vendor's docs advertise /v2/, which 404s on every path."""
+    sports = await server.call_tool("oddsapiio_sports", {})
+    books = await server.call_tool("oddsapiio_bookmakers", {})
+    assert sports is not None and books is not None
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("ODDS_API_IO_KEY")), reason="a key is set")
+async def test_oddsapiio_closed_endpoints_raise(server):
+    with pytest.raises(MCPToolError):
+        await server.call_tool("oddsapiio_leagues", {"sport": "football"})
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("BALLDONTLIE_API_KEY")), reason="a key is set")
+async def test_balldontlie_keyless_raises(server):
+    """Once keyless, now 401 — the reason old tutorials for this API no longer work."""
+    with pytest.raises(MCPToolError):
+        await server.call_tool("balldontlie_nba_teams", {})
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("SPORTMONKS_TOKEN")), reason="a key is set")
+async def test_sportmonks_keyless_raises(server):
+    with pytest.raises(MCPToolError):
+        await server.call_tool("sportmonks_leagues", {})
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("SPORTSGAMEODDS_API_KEY")), reason="a key is set")
+async def test_sportsgameodds_keyless_raises(server):
+    with pytest.raises(MCPToolError):
+        await server.call_tool("sportsgameodds_sports", {})
+
+
+@pytest.mark.live
+@pytest.mark.skipif(bool(os.environ.get("SPORTSDATAIO_NFL_KEY")), reason="a key is set")
+async def test_sportsdataio_keyless_raises(server):
+    with pytest.raises(MCPToolError):
+        await server.call_tool("sportsdataio_nfl_teams", {})

@@ -1,0 +1,377 @@
+spec_version: 1
+
+# API-Sports (api-sports.io) — one key, ten sports. BYO key.
+#
+# This vendor is sold under several names — "API-FOOTBALL", "API-BASKETBALL",
+# "API-NBA" and so on — but they are ONE product on ONE key. Each sport lives on its
+# own hostname (v3.football, v1.basketball, …), which is why this spec declares ten
+# base urls instead of ten providers.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Hosts and refusal behaviour
+# WERE probed live on 2026-08-10: every host below answers
+#   403 {"errors":{"token":"Missing application key…"}}
+# without a key.
+#
+# ⚠⚠ FAILURES ARRIVE INSIDE A 200. This is the single most important thing to know
+# about this API. Every response is
+#     {get, parameters, errors, results, response}
+# and `errors` is [] on success but an OBJECT on failure — including for the failure
+# you will actually hit, the daily request cap:
+#     {"errors":{"requests":"You have reached the request limit for the day"}}
+# …returned with HTTP 200 and `response: []`. Without the `error_signals` block below,
+# a model asking for today's fixtures would be handed an empty list and would report
+# "there are no matches today". Quota exhaustion would look exactly like a quiet day.
+#
+# AUTH: header `x-apisports-key` on the direct api-sports.io hosts. (If you subscribed
+# via RapidAPI instead, your key goes in `x-rapidapi-key` against *.p.rapidapi.com
+# hosts — that is a different deployment and this spec does not target it.)
+#
+# FREE TIER: 100 requests/day, and `season` is capped to a few older seasons. The
+# per-day cap is why the rate limit here is deliberately low.
+
+provider:
+  id: apisports
+  display_name: "API-Sports (10 sports on one key — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/APISports.md"
+  shapes_verified: false
+  base_urls:
+    football: https://v3.football.api-sports.io
+    basketball: https://v1.basketball.api-sports.io
+    baseball: https://v1.baseball.api-sports.io
+    hockey: https://v1.hockey.api-sports.io
+    nfl: https://v1.american-football.api-sports.io
+    rugby: https://v1.rugby.api-sports.io
+    formula1: https://v1.formula-1.api-sports.io
+    handball: https://v1.handball.api-sports.io
+    volleyball: https://v1.volleyball.api-sports.io
+    mma: https://v1.mma.api-sports.io
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  # `errors` is [] on success and an object on failure — presence-mode, no fixed value.
+  # This is what stops a blown quota from looking like an empty fixture list.
+  error_signals:
+    - { field: errors }
+  auth:
+    default:
+      type: static_header
+      header: x-apisports-key
+      env: API_SPORTS_KEY
+      optional: true
+  defaults:
+    # Free tier is 100 requests/DAY. Slow is the correct default here.
+    rate_limit_rps: 1
+    burst: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 1
+    retry_backoff_seconds: 2.0
+
+endpoints:
+  # ─── account ──────────────────────────────────────────────────────────
+  - name: apisports_status
+    group: apisports.account
+    capabilities: []
+    summary: "Your subscription and how much of today's quota is left. Costs no quota — call it first when something returns empty."
+    base: football
+    path: /status
+    auth: default
+    response_hint: "{response:{account:{firstname, lastname, email}, subscription:{plan, end, active}, requests:{current, limit_day}}}  — SHAPE FROM VENDOR DOCS. `requests.current` vs `limit_day` is the check worth making before blaming the data."
+    examples:
+      - description: "Quota check"
+        params: {}
+
+  # ─── football (the flagship) ──────────────────────────────────────────
+  - name: apisports_football_leagues
+    group: apisports.football
+    capabilities: [sport.competitions_list]
+    summary: "Football leagues and cups worldwide, with the seasons available on your plan."
+    base: football
+    path: /leagues
+    auth: default
+    params:
+      - { name: id, in: query, type: integer, description: "One league id." }
+      - { name: country, in: query, type: string, description: "Country name, e.g. England." }
+      - { name: season, in: query, type: integer, description: "Season starting year. FREE PLANS ARE RESTRICTED to a few older seasons." }
+      - { name: current, in: query, type: string, enum: ["true", "false"], description: "Only leagues whose season is running." }
+    response_hint: "{response:[{league:{id, name, type:'League'|'Cup', logo}, country:{name, code, flag}, seasons:[{year, start, end, current, coverage:{fixtures:{events, lineups, statistics_fixtures}, standings, players, odds, predictions}}]}]}  — SHAPE FROM VENDOR DOCS. `coverage` matters: it tells you which of the tools below will actually return anything for that league."
+    examples:
+      - description: "English competitions"
+        params: {country: England}
+
+  - name: apisports_football_fixtures
+    group: apisports.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Football fixtures and results by date, league or team. Give at least one filter."
+    base: football
+    path: /fixtures
+    auth: default
+    params:
+      - { name: id, in: query, type: integer, description: "One fixture id." }
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD (all leagues that day)." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: integer, description: "Season starting year — REQUIRED whenever you pass `league` or `team`." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+      - { name: last, in: query, type: integer, description: "The N most recent finished fixtures." }
+      - { name: next, in: query, type: integer, description: "The N upcoming fixtures." }
+      - { name: status, in: query, type: string, description: "Short status codes, e.g. NS, 1H, FT (comma-separated)." }
+      - { name: timezone, in: query, type: string, description: "IANA zone, e.g. Australia/Melbourne. Default is UTC." }
+    response_hint: "{results, response:[{fixture:{id, date, timestamp, venue:{name, city}, status:{long, short, elapsed}}, league:{id, name, country, season, round}, teams:{home:{id, name, winner}, away:{…}}, goals:{home, away}, score:{halftime, fulltime, extratime, penalty}}]}  — SHAPE FROM VENDOR DOCS. `goals` is the 90-minute score; `score.penalty` decides a shootout, so a cup tie needs both."
+    examples:
+      - description: "A day's fixtures"
+        params: {date: "2024-08-17"}
+
+  - name: apisports_football_standings
+    group: apisports.football
+    capabilities: [stats.ladder]
+    summary: "League table. Both `league` and `season` are required."
+    base: football
+    path: /standings
+    auth: default
+    params:
+      - { name: league, in: query, type: integer, required: true, description: "League id." }
+      - { name: season, in: query, type: integer, required: true, description: "Season starting year." }
+      - { name: team, in: query, type: integer, description: "Only this team's row." }
+    response_hint: "{response:[{league:{id, name, standings:[[{rank, team:{id, name}, points, goalsDiff, group, form, status, description, all:{played, win, draw, lose, goals:{for, against}}, home:{…}, away:{…}}]]}}]}  — SHAPE FROM VENDOR DOCS. NOTE the DOUBLE nesting: `standings` is a list OF TABLES (one per group in a group stage), each a list of rows."
+    examples:
+      - description: "Premier League table"
+        params: {league: 39, season: 2023}
+
+  - name: apisports_football_teams
+    group: apisports.football
+    capabilities: [ref.teams]
+    summary: "Clubs, by league/season, country, or name search."
+    base: football
+    path: /teams
+    auth: default
+    params:
+      - { name: id, in: query, type: integer, description: "One team id." }
+      - { name: league, in: query, type: integer, description: "League id (pair with season)." }
+      - { name: season, in: query, type: integer, description: "Season starting year." }
+      - { name: country, in: query, type: string, description: "Country name." }
+      - { name: search, in: query, type: string, description: "Name search (3+ characters)." }
+    response_hint: "{response:[{team:{id, name, code, country, founded, national, logo}, venue:{id, name, address, city, capacity, surface}}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Search a club"
+        params: {search: "Arsenal"}
+
+  - name: apisports_football_players
+    group: apisports.football
+    capabilities: [ref.players, stats.player_season]
+    summary: "Player season statistics for a team or league. `season` is required."
+    base: football
+    path: /players
+    auth: default
+    params:
+      - { name: id, in: query, type: integer, description: "One player id." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: integer, required: true, description: "Season starting year." }
+      - { name: search, in: query, type: string, description: "Name search (4+ characters); needs `team` or `league`." }
+      - { name: page, in: query, type: integer, description: "Results are paginated at 20 — check `paging.total`." }
+    response_hint: "{paging:{current, total}, response:[{player:{id, name, age, nationality, height, weight, injured, photo}, statistics:[{team, league, games:{appearences, lineups, minutes, position, rating}, goals:{total, assists, conceded, saves}, shots, passes, tackles, duels, dribbles, fouls, cards, penalty}]}]}  — SHAPE FROM VENDOR DOCS. `statistics` is a LIST — one entry per competition — so a player in a league and a cup has two."
+    examples:
+      - description: "A club's squad statistics"
+        params: {team: 42, season: 2023}
+
+  - name: apisports_football_fixture_statistics
+    group: apisports.football
+    capabilities: [sport.match_boxscore, stats.advanced_metrics]
+    summary: "Team match statistics for one fixture — shots, possession, corners, and expected goals where covered."
+    base: football
+    path: /fixtures/statistics
+    auth: default
+    params:
+      - { name: fixture, in: query, type: integer, required: true, description: "Fixture id." }
+      - { name: team, in: query, type: integer, description: "Only this team's column." }
+    response_hint: "{response:[{team:{id, name}, statistics:[{type:'Shots on Goal'|'Ball Possession'|'expected_goals'|…, value}]}]}  — SHAPE FROM VENDOR DOCS. NOTE this is LONG format keyed by a HUMAN-READABLE `type` string, and `value` is sometimes a string with a percent sign ('54%'). Do not assume a numeric type."
+    examples:
+      - description: "One fixture's team stats"
+        params: {fixture: 1035037}
+
+  - name: apisports_football_h2h
+    group: apisports.football
+    capabilities: [stats.head_to_head]
+    summary: "Every past meeting between two clubs."
+    base: football
+    path: /fixtures/headtohead
+    auth: default
+    params:
+      - { name: h2h, in: query, type: string, required: true, description: "Two team ids joined by a dash, e.g. '33-34'." }
+      - { name: last, in: query, type: integer, description: "Only the N most recent meetings." }
+      - { name: league, in: query, type: integer, description: "Restrict to one competition." }
+    response_hint: "{response:[{fixture, league, teams, goals, score}]}  — same fixture shape as apisports_football_fixtures. SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Two clubs' history"
+        params: {h2h: "33-34", last: 10}
+
+  - name: apisports_football_odds
+    group: apisports.football
+    capabilities: [sport.prices, sport.event_markets]
+    summary: "Pre-match odds from many bookmakers for a fixture or league."
+    base: football
+    path: /odds
+    auth: default
+    params:
+      - { name: fixture, in: query, type: integer, description: "One fixture id." }
+      - { name: league, in: query, type: integer, description: "League id (pair with season)." }
+      - { name: season, in: query, type: integer, description: "Season starting year." }
+      - { name: bookmaker, in: query, type: integer, description: "One bookmaker id." }
+      - { name: bet, in: query, type: integer, description: "One bet/market id." }
+      - { name: page, in: query, type: integer, description: "Paginated — check `paging.total`." }
+    response_hint: "{response:[{fixture, league, update, bookmakers:[{id, name, bets:[{id, name:'Match Winner', values:[{value:'Home', odd:'1.85'}]}]}]}]}  — SHAPE FROM VENDOR DOCS. ODDS ARE STRINGS, not numbers. For AU markets the direct providers here (sportsbet, tab, pointsbet) are deeper and live."
+    examples:
+      - description: "One fixture's odds"
+        params: {fixture: 1035037}
+
+  - name: apisports_football_predictions
+    group: apisports.football
+    capabilities: [stats.model_predictions]
+    summary: "The vendor's own model prediction for a fixture, with the comparison data behind it."
+    base: football
+    path: /predictions
+    auth: default
+    params:
+      - { name: fixture, in: query, type: integer, required: true, description: "Fixture id." }
+    response_hint: "{response:[{predictions:{winner:{id, name, comment}, win_or_draw, under_over, goals:{home, away}, advice, percent:{home, draw, away}}, league, teams, comparison:{form, att, def, poisson_distribution, h2h, goals, total}, h2h:[…]}]}  — SHAPE FROM VENDOR DOCS. `percent` values are STRINGS with a % sign. This is a vendor model, not a market price: compare it against `squiggle`-style model output, not against a bookmaker's line."
+    examples:
+      - description: "A fixture's prediction"
+        params: {fixture: 1035037}
+
+  # ─── the other sports (games + standings each) ───────────────────────
+  - name: apisports_basketball_games
+    group: apisports.basketball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Basketball games worldwide (NBA, EuroLeague, NBL and many more) by date or league."
+    base: basketball
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: string, description: "Season as a SPAN for this sport, e.g. '2023-2024' — not a single year like football." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+      - { name: timezone, in: query, type: string, description: "IANA zone." }
+    response_hint: "{response:[{id, date, status:{long, short}, league:{id, name, season}, teams:{home, away}, scores:{home:{quarter_1, quarter_2, quarter_3, quarter_4, over_time, total}, away:{…}}}]}  — SHAPE FROM VENDOR DOCS. Note `season` is a '2023-2024' STRING here; the football host uses an integer year."
+    examples:
+      - description: "A day's games"
+        params: {date: "2024-01-15"}
+
+  - name: apisports_basketball_standings
+    group: apisports.basketball
+    capabilities: [stats.ladder]
+    summary: "Basketball standings for a league and season."
+    base: basketball
+    path: /standings
+    auth: default
+    params:
+      - { name: league, in: query, type: integer, required: true, description: "League id." }
+      - { name: season, in: query, type: string, required: true, description: "Season span, e.g. '2023-2024'." }
+      - { name: team, in: query, type: integer, description: "One team's row." }
+    response_hint: "{response:[[{position, team, league, group:{name}, games:{played, win:{total, percentage}, lose:{…}}, points:{for, against}, form}]]}  — SHAPE FROM VENDOR DOCS. Double-nested like football's."
+    examples:
+      - description: "A league table"
+        params: {league: 12, season: "2023-2024"}
+
+  - name: apisports_baseball_games
+    group: apisports.baseball
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Baseball games (MLB, NPB, KBO and others) by date or league."
+    base: baseball
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+    response_hint: "{response:[{id, date, status, league, teams, scores:{home:{hits, errors, innings:{'1','2',…, extra}, total}, away:{…}}}]}  — SHAPE FROM VENDOR DOCS. Innings are keyed by NUMBER-AS-STRING. For MLB itself, the keyless official `mlb` provider is deeper."
+    examples:
+      - description: "A day's games"
+        params: {date: "2024-07-04"}
+
+  - name: apisports_hockey_games
+    group: apisports.hockey
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Ice-hockey games (NHL, KHL, SHL and others) by date or league."
+    base: hockey
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+    response_hint: "{response:[{id, date, status, league, teams, scores:{home, away}, periods:{first, second, third, overtime, penalties}}]}  — SHAPE FROM VENDOR DOCS. For the NHL itself the keyless official `nhl` provider is deeper and live."
+    examples:
+      - description: "A day's games"
+        params: {date: "2024-01-15"}
+
+  - name: apisports_nfl_games
+    group: apisports.nfl
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "American-football games (NFL, NCAA) by date, season or team."
+    base: nfl
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id (1 = NFL, 2 = NCAA)." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+    response_hint: "{response:[{game:{id, stage, week, date:{date, time, timezone}, status}, league, teams, scores:{home:{quarter_1,…, total}, away:{…}}}]}  — SHAPE FROM VENDOR DOCS. NOTE this host wraps the identity under `game`, unlike the basketball and hockey hosts."
+    examples:
+      - description: "A week of NFL"
+        params: {league: 1, season: 2023}
+
+  - name: apisports_rugby_games
+    group: apisports.rugby
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Rugby games (Six Nations, Super Rugby, NRL, Premiership) by date or league. The catalogue's only rugby-union coverage."
+    base: rugby
+    path: /games
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: league, in: query, type: integer, description: "League id." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: team, in: query, type: integer, description: "Team id." }
+    response_hint: "{response:[{id, date, time, status, league, teams, scores:{home, away}, periods:{first, second, overtime}}]}  — SHAPE FROM VENDOR DOCS. For the NRL specifically, the keyless `nrl` provider is official and deeper."
+    examples:
+      - description: "A day's games"
+        params: {date: "2024-03-09"}
+
+  - name: apisports_formula1_races
+    group: apisports.formula1
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Formula 1 races and sessions for a season."
+    base: formula1
+    path: /races
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: competition, in: query, type: integer, description: "Grand Prix id." }
+      - { name: type, in: query, type: string, description: "Session type, e.g. Race, Qualifying, '1st Practice'." }
+      - { name: next, in: query, type: integer, description: "The N upcoming sessions." }
+    response_hint: "{response:[{id, competition:{id, name, location}, circuit:{id, name}, season, type, laps:{current, total}, distance, timezone, date, status}]}  — SHAPE FROM VENDOR DOCS. `jolpicaf1` (keyless) covers F1 history back to 1950 and `openf1` (keyless) covers live telemetry — prefer those unless you need this one key to span sports."
+    examples:
+      - description: "A season's races"
+        params: {season: 2023}
+
+  - name: apisports_mma_fights
+    group: apisports.mma
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "MMA fights (UFC and others) by date or season."
+    base: mma
+    path: /fights
+    auth: default
+    params:
+      - { name: date, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: season, in: query, type: integer, description: "Season year." }
+      - { name: category, in: query, type: string, description: "Weight class." }
+      - { name: id, in: query, type: integer, description: "One fight id." }
+    response_hint: "{response:[{id, date, slug, category, status, is_main, fighters:{first:{id, name, winner}, second:{…}}}]}  — SHAPE FROM VENDOR DOCS. `winner` is null until the fight is resulted, and BOTH may be false on a draw or no-contest — do not infer the loser from one flag."
+    examples:
+      - description: "A card"
+        params: {date: "2024-03-09"}

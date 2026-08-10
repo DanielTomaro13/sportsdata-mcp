@@ -1,0 +1,214 @@
+spec_version: 1
+
+# BallDontLie (api.balldontlie.io) — NBA, NFL, MLB and EPL. BYO key.
+#
+# ⚠ SHAPES FROM VENDOR DOCS (`shapes_verified: false`). Paths and auth WERE probed live
+# 2026-08-10: all four sport prefixes exist and return a bare `401 Unauthorized`.
+#
+# THIS API USED TO BE KEYLESS AND IS NOT ANY MORE. Older tutorials, blog posts and
+# Stack Overflow answers show anonymous calls to `api.balldontlie.io/v1/...`; those now
+# 401. A free key still exists — the change is that you must register for one.
+#
+# WHY CARRY IT WHEN `nba` AND `mlb` ARE KEYLESS AND OFFICIAL? Convenience, not depth.
+# The official providers are better for their own sport. BallDontLie's value is one
+# small consistent shape across four leagues, which makes cross-sport questions easy to
+# write. If you only care about the NBA, use `nba`.
+#
+# AUTH is a bare `Authorization: <key>` header — NO "Bearer " prefix, unlike almost
+# every other API here. Adding one is the usual mistake.
+#
+# PAGINATION IS CURSOR-BASED: responses carry `meta.next_cursor`, which you pass back as
+# `cursor`. There are no page numbers.
+
+provider:
+  id: balldontlie
+  display_name: "BallDontLie (NBA/NFL/MLB/EPL — BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/BallDontLie.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.balldontlie.io
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: Authorization
+      env: BALLDONTLIE_API_KEY
+      # No value_prefix on purpose: this API wants the RAW key, not "Bearer <key>".
+      optional: true
+  defaults:
+    # Free tier is 5 requests/minute — very tight.
+    rate_limit_rps: 0.08
+    burst: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 1
+    retry_backoff_seconds: 5.0
+
+endpoints:
+  - name: balldontlie_nba_teams
+    group: balldontlie.nba
+    capabilities: [ref.teams]
+    summary: "All 30 NBA franchises with conference and division."
+    base: default
+    path: /nba/v1/teams
+    auth: default
+    response_hint: "{data:[{id, conference, division, city, name, full_name, abbreviation}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Every NBA team"
+        params: {}
+
+  - name: balldontlie_nba_players
+    group: balldontlie.nba
+    capabilities: [ref.players]
+    summary: "NBA players, searchable by name."
+    base: default
+    path: /nba/v1/players
+    auth: default
+    params:
+      - { name: search, in: query, type: string, description: "Partial first or last name." }
+      - { name: team_ids, in: query, type: string_csv, description: "Restrict to team ids." }
+      - { name: per_page, in: query, type: integer, default: 25, description: "Page size (max 100)." }
+      - { name: cursor, in: query, type: integer, description: "From `meta.next_cursor` of the previous page — this API has no page numbers." }
+    response_hint: "{data:[{id, first_name, last_name, position, height, weight, jersey_number, college, country, draft_year, draft_round, draft_number, team:{…}}], meta:{next_cursor, per_page}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Search a player"
+        params: {search: "curry"}
+
+  - name: balldontlie_nba_games
+    group: balldontlie.nba
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "NBA games by date, season or team."
+    base: default
+    path: /nba/v1/games
+    auth: default
+    params:
+      - { name: dates, in: query, type: string_csv, description: "Specific dates, YYYY-MM-DD." }
+      - { name: seasons, in: query, type: string_csv, description: "Season START years — the 2023-24 season is 2023." }
+      - { name: team_ids, in: query, type: string_csv, description: "Team ids." }
+      - { name: postseason, in: query, type: boolean, description: "true = playoffs only." }
+      - { name: per_page, in: query, type: integer, default: 25, description: "Page size (max 100)." }
+      - { name: cursor, in: query, type: integer, description: "Cursor from the previous page." }
+    response_hint: "{data:[{id, date, season, status, period, time, postseason, home_team_score, visitor_team_score, home_team:{…}, visitor_team:{…}}], meta:{next_cursor}}  — SHAPE FROM VENDOR DOCS. Note the away side is `visitor_team`, not `away_team`."
+    examples:
+      - description: "One date's games"
+        params: {dates: ["2024-01-15"]}
+
+  - name: balldontlie_nba_stats
+    group: balldontlie.nba
+    capabilities: [stats.player_match]
+    summary: "Per-player, per-game NBA box-score lines."
+    base: default
+    path: /nba/v1/stats
+    auth: default
+    params:
+      - { name: player_ids, in: query, type: string_csv, description: "Player ids." }
+      - { name: game_ids, in: query, type: string_csv, description: "Game ids." }
+      - { name: dates, in: query, type: string_csv, description: "YYYY-MM-DD." }
+      - { name: seasons, in: query, type: string_csv, description: "Season start years." }
+      - { name: per_page, in: query, type: integer, default: 25, description: "Page size (max 100)." }
+      - { name: cursor, in: query, type: integer, description: "Cursor from the previous page." }
+    response_hint: "{data:[{id, min:'34:12', fgm, fga, fg_pct, fg3m, fg3a, ftm, fta, oreb, dreb, reb, ast, stl, blk, turnover, pf, pts, player:{…}, team:{…}, game:{…}}], meta:{next_cursor}}  — SHAPE FROM VENDOR DOCS. `min` is a 'MM:SS' STRING, not a number."
+    examples:
+      - description: "A player's game lines"
+        params: {player_ids: ["115"], seasons: ["2023"]}
+
+  - name: balldontlie_nba_season_averages
+    group: balldontlie.nba
+    capabilities: [stats.player_season]
+    summary: "Season averages for specific NBA players."
+    base: default
+    path: /nba/v1/season_averages
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, required: true, description: "Season start year." }
+      - { name: player_ids, in: query, type: string_csv, required: true, description: "Player ids — this endpoint will not return a whole league." }
+    response_hint: "{data:[{player_id, season, games_played, min, pts, reb, ast, stl, blk, turnover, fg_pct, fg3_pct, ft_pct}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A player's season"
+        params: {season: 2023, player_ids: ["115"]}
+
+  - name: balldontlie_nba_standings
+    group: balldontlie.nba
+    capabilities: [stats.ladder]
+    summary: "NBA standings for a season."
+    base: default
+    path: /nba/v1/standings
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, required: true, description: "Season start year." }
+    response_hint: "{data:[{team:{…}, conference_record, conference_rank, division_record, division_rank, wins, losses, home_record, road_record, season}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A season's standings"
+        params: {season: 2023}
+
+  - name: balldontlie_nfl_games
+    group: balldontlie.nfl
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "NFL games by season, week or team."
+    base: default
+    path: /nfl/v1/games
+    auth: default
+    params:
+      - { name: seasons, in: query, type: string_csv, description: "Season years." }
+      - { name: weeks, in: query, type: string_csv, description: "Week numbers." }
+      - { name: team_ids, in: query, type: string_csv, description: "Team ids." }
+      - { name: postseason, in: query, type: boolean, description: "true = playoffs only." }
+      - { name: per_page, in: query, type: integer, default: 25, description: "Page size." }
+      - { name: cursor, in: query, type: integer, description: "Cursor from the previous page." }
+    response_hint: "{data:[{id, visitor_team_score, home_team_score, season, postseason, status, date, week, home_team, visitor_team}], meta:{next_cursor}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A season's games"
+        params: {seasons: ["2023"]}
+
+  - name: balldontlie_mlb_games
+    group: balldontlie.mlb
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "MLB games by date, season or team. (For MLB alone, the keyless official `mlb` provider is far deeper.)"
+    base: default
+    path: /mlb/v1/games
+    auth: default
+    params:
+      - { name: dates, in: query, type: string_csv, description: "YYYY-MM-DD." }
+      - { name: seasons, in: query, type: string_csv, description: "Season years." }
+      - { name: team_ids, in: query, type: string_csv, description: "Team ids." }
+      - { name: per_page, in: query, type: integer, default: 25, description: "Page size." }
+      - { name: cursor, in: query, type: integer, description: "Cursor from the previous page." }
+    response_hint: "{data:[{id, date, season, postseason, home_team_score, away_team_score, home_team, away_team, venue, status}], meta:{next_cursor}}  — SHAPE FROM VENDOR DOCS. NOTE: `away_team` here, but `visitor_team` on the NBA and NFL paths. The shape is NOT uniform across sports."
+    examples:
+      - description: "One date's games"
+        params: {dates: ["2024-07-04"]}
+
+  - name: balldontlie_epl_teams
+    group: balldontlie.epl
+    capabilities: [ref.teams]
+    summary: "Premier League clubs for a season."
+    base: default
+    path: /epl/v1/teams
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, description: "Season start year." }
+    response_hint: "{data:[{id, name, short_name, abbr, city, stadium}]}  — SHAPE FROM VENDOR DOCS. The keyless official `premierleague` provider is deeper for the EPL."
+    examples:
+      - description: "EPL clubs"
+        params: {season: 2023}
+
+  - name: balldontlie_epl_games
+    group: balldontlie.epl
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Premier League fixtures and results."
+    base: default
+    path: /epl/v1/games
+    auth: default
+    params:
+      - { name: season, in: query, type: integer, description: "Season start year." }
+      - { name: team_ids, in: query, type: string_csv, description: "Team ids." }
+      - { name: week, in: query, type: integer, description: "Matchweek." }
+      - { name: per_page, in: query, type: integer, default: 25, description: "Page size." }
+      - { name: cursor, in: query, type: integer, description: "Cursor from the previous page." }
+    response_hint: "{data:[{id, week, kickoff, home_team, away_team, home_score, away_score, status, ground}], meta:{next_cursor}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A season's fixtures"
+        params: {season: 2023}
