@@ -31,9 +31,16 @@ def _pyproject_version() -> str:
 
 
 def _counts() -> tuple[int, int, int]:
+    """Providers, TOOLS, keyless providers.
+
+    Tools means `all_tools()` — endpoints plus dispatchers — because that is what the
+    server actually registers and therefore what a user gets. Counting endpoints alone
+    undercounted by 15 and made every public claim quietly wrong in our own favour's
+    opposite direction.
+    """
     specs = load_all_specs()
     free = {g.split(".")[0] for g in expand_wildcard_groups(["free"], specs)}
-    return len(specs), sum(len(s.endpoints) for s in specs), len(free)
+    return len(specs), sum(len(s.all_tools()) for s in specs), len(free)
 
 
 @pytest.mark.parametrize("path,pointer", [
