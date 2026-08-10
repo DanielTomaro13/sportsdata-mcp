@@ -1,0 +1,96 @@
+# Weekly adoption email.
+#
+# Runs `scripts/metrics.py`, which reads PUBLIC data about the package (PyPI download
+# stats) plus this repo's GitHub traffic. Nothing comes from a user's machine — see
+# docs/TELEMETRY.md for the opt-in signal that does.
+#
+# ── THIS REPO IS PUBLIC, WHICH SHAPES THE DESIGN ──────────────────────────────
+# Actions logs and job summaries on a public repo are world-readable. PyPI download
+# counts are already public (pypistats.org serves them to anyone), but GitHub traffic —
+# unique cloners, visitors, referrers — is ADMIN-ONLY data. So the report is written to
+# a file and mailed from that file; the log prints only a byte count. Do not add a step
+# that cats the report or writes it to $GITHUB_STEP_SUMMARY.
+#
+# ── SECRETS IT NEEDS (all set by you; none can be created from here) ──────────
+#   MAIL_USERNAME       the Gmail address that SENDS the mail
+#   MAIL_PASSWORD       a Google APP PASSWORD, not your account password
+#                       (myaccount.google.com → Security → 2-Step Verification → App passwords)
+#   MAIL_TO             where to deliver it; defaults to MAIL_USERNAME if unset
+#   METRICS_GITHUB_TOKEN  OPTIONAL. The built-in GITHUB_TOKEN cannot read the traffic
+#                       API — that needs Administration:read, which GITHUB_TOKEN is not
+#                       allowed to request. Without this secret the email still arrives,
+#                       with the PyPI half and a line saying traffic was unavailable.
+#                       A classic PAT with `repo` scope, or a fine-grained token with
+#                       Administration:read on this repo, unlocks the "People" section.
+#
+# Until MAIL_USERNAME/MAIL_PASSWORD exist the job stops at a clear message rather than
+# failing every week with a red cross.
+
+name: weekly-metrics
+
+on:
+  schedule:
+    # 08:00 Monday AEST (22:00 Sunday UTC) — lands before the week starts.
+    - cron: "0 22 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with: { python-version: "3.12" }
+
+      - name: Check the mail secrets exist
+        id: gate
+        env:
+          USER_SET: ${{ secrets.MAIL_USERNAME != '' }}
+          PASS_SET: ${{ secrets.MAIL_PASSWORD != '' }}
+        run: |
+          if [ "$USER_SET" = "true" ] && [ "$PASS_SET" = "true" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::MAIL_USERNAME / MAIL_PASSWORD are not set — building the report but not sending it. See the header of this workflow file."
+          fi
+
+      - name: Build the report
+        env:
+          # gh reads GH_TOKEN. The PAT unlocks traffic; GITHUB_TOKEN cannot.
+          GH_TOKEN: ${{ secrets.METRICS_GITHUB_TOKEN || github.token }}
+        run: |
+          # --out, never stdout: the report carries admin-only traffic figures and this
+          # repo's logs are public.
+          # Collect ONCE. pypistats rate-limits an unauthenticated caller, and two
+          # collections back to back reliably 429s — which silently drops a row.
+          python scripts/metrics.py --json --out report.json
+          python scripts/metrics.py --html --from-json report.json --out report.html
+          # A one-line, non-sensitive health check so a broken run is visible in the log.
+          python - <<'PY'
+          import json
+          d = json.load(open("report.json"))
+          gh = d.get("github", {})
+          print("report built.",
+                "pypi:", "ok" if d.get("downloads_without_mirrors") else "UNAVAILABLE",
+                "| github traffic:", "UNAVAILABLE — set METRICS_GITHUB_TOKEN" if gh.get("error") else "ok")
+          PY
+
+      - name: Send it
+        if: steps.gate.outputs.ready == 'true'
+        uses: dawidd6/action-send-mail@94de994a9f6fffee200243214e17002e2920bb59 # v18
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: sportsdata-mcp metrics <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_TO || secrets.MAIL_USERNAME }}
+          subject: "sportsdata-mcp — weekly metrics"
+          # file:// keeps the body out of an env var, so it cannot land in the log.
+          html_body: file://report.html

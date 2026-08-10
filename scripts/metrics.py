@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import subprocess
 import sys
 import time
@@ -138,6 +139,7 @@ def collect() -> dict:
         series = _series_by_day(overall["data"])
         data["downloads_without_mirrors"] = {
             "last_7d": _sum_window(series, 7),
+            "prev_7d": _sum_window(series, 7, end=_today() - timedelta(days=7)),
             "last_30d": _sum_window(series, 30),
             "prev_30d": _sum_window(series, 30, end=_today() - timedelta(days=30)),
             "series": dict(sorted(series.items())),
@@ -178,11 +180,11 @@ def collect() -> dict:
 # ─── reporting ──────────────────────────────────────────────────────────
 
 
-def _trend(now: int, before: int) -> str:
+def _trend(now: int, before: int, label: str = "the previous 30 days") -> str:
     if not before:
         return "no prior window"
     pct = (now - before) / before * 100
-    return f"{pct:+.0f}% vs the previous 30 days"
+    return f"{pct:+.0f}% vs {label}"
 
 
 def report(d: dict) -> str:
@@ -197,6 +199,7 @@ def report(d: dict) -> str:
         add(f"  PyPI downloads      {r['last_day']:>6} today  {r['last_week']:>6} this week  {r['last_month']:>6} this month")
     if w := d.get("downloads_without_mirrors"):
         add(f"  …without mirrors    {w['last_7d']:>6} 7d     {w['last_30d']:>6} 30d      ({_trend(w['last_30d'], w['prev_30d'])})")
+        add(f"  week on week        {_trend(w['last_7d'], w.get('prev_7d', 0), 'the previous 7 days')}")
     if p := d.get("pypi"):
         add(f"  Published           v{p['latest']}, {p['releases']} releases")
 
@@ -233,16 +236,107 @@ def report(d: dict) -> str:
     return "\n".join(out)
 
 
+def _row(label: str, value: str, note: str = "") -> str:
+    note_html = f'<span style="color:#8891a8">{note}</span>' if note else ""
+    return (
+        '<tr>'
+        f'<td style="padding:6px 14px 6px 0;color:#8891a8;white-space:nowrap">{label}</td>'
+        f'<td style="padding:6px 14px 6px 0;font-weight:600;white-space:nowrap">{value}</td>'
+        f'<td style="padding:6px 0;font-size:13px">{note_html}</td>'
+        '</tr>'
+    )
+
+
+def html_report(d: dict) -> str:
+    """Email body.
+
+    Deliberately plain: tables and inline styles only, because email clients strip
+    stylesheets, flexbox and grid. No images, so nothing is blocked by default.
+    """
+    rows_reach, rows_people, rows_src = [], [], []
+
+    if r := d.get("downloads_recent"):
+        rows_reach.append(_row("Downloads", f"{r['last_week']} this week", f"{r['last_month']} in the last 30 days"))
+    if w := d.get("downloads_without_mirrors"):
+        rows_reach.append(_row("…without mirrors", str(w["last_7d"]), _trend(w["last_7d"], w.get("prev_7d", 0), "the previous week")))
+        rows_reach.append(_row("30-day trend", str(w["last_30d"]), _trend(w["last_30d"], w["prev_30d"])))
+    if p := d.get("pypi"):
+        rows_reach.append(_row("Published", f"v{p['latest']}", f"{p['releases']} releases"))
+
+    g = d.get("github", {})
+    if g.get("error"):
+        rows_people.append(_row("GitHub", "unavailable", g["error"]))
+    else:
+        if c := g.get("clones"):
+            rows_people.append(_row("Unique cloners", str(c["uniques"]), f"{c['count']} clones · 14-day window"))
+        if v := g.get("views"):
+            rows_people.append(_row("Unique visitors", str(v["uniques"]), f"{v['count']} views · 14-day window"))
+        rows_people.append(_row("Stars / forks", f"{g.get('stars', '?')} / {g.get('forks', '?')}", ""))
+        if g.get("open_issues") is not None:
+            rows_people.append(_row("Open issues", str(g["open_issues"]), "the only unsolicited quality signal"))
+        for ref in g.get("referrers", [])[:6]:
+            rows_src.append(_row(ref["source"], f"{ref['uniques']} unique", f"{ref['views']} views"))
+
+    def section(title: str, subtitle: str, rows: list[str]) -> str:
+        if not rows:
+            return ""
+        return (
+            f'<h2 style="font-size:15px;margin:26px 0 2px">{title}</h2>'
+            f'<div style="color:#8891a8;font-size:13px;margin-bottom:8px">{subtitle}</div>'
+            f'<table style="border-collapse:collapse;font-size:14px">{"".join(rows)}</table>'
+        )
+
+    return (
+        # A COMPLETE document with an explicit charset. This body is full of em dashes and
+        # middle dots, and a client that falls back to latin-1 renders them as "â€" —
+        # which is exactly what a bare fragment did when first previewed.
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'
+        '<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
+        'max-width:640px;color:#1b2030;line-height:1.5">'
+        f'<h1 style="font-size:19px;margin:0">sportsdata-mcp — weekly</h1>'
+        f'<div style="color:#8891a8;font-size:13px">{d["collected_at"][:10]}</div>'
+        + section("Reach", "Upper bound — CI, mirrors and bots all count as downloads.", rows_reach)
+        + section("People", "Closer to a floor — GitHub counts these per actor per day.", rows_people)
+        + section("Where they come from", "Referrers, last 14 days.", rows_src)
+        + '<p style="color:#8891a8;font-size:12px;margin-top:26px;border-top:1px solid #e3e6ee;padding-top:12px">'
+        'Downloads are a loose upper bound: one user with a daily CI job is ~30/month. '
+        'Unique cloners are the nearest thing to a floor on real humans — the truth is '
+        'between them, nearer the floor.<br><br>'
+        'Nothing here comes from a user\'s machine. Sent by the <code>weekly-metrics</code> '
+        'workflow; edit the schedule in <code>.github/workflows/weekly-metrics.yml</code>.'
+        '</p></div></body></html>'
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true", help="emit raw JSON instead of a report")
+    ap.add_argument("--html", action="store_true", help="emit an HTML email body")
+    ap.add_argument("--out", metavar="PATH", help="write to a file instead of stdout")
+    ap.add_argument(
+        "--from-json", metavar="PATH",
+        help="render from a previous --json run instead of re-fetching (pypistats rate-limits "
+             "an unauthenticated caller, and collecting twice in a row trips it)",
+    )
     args = ap.parse_args()
 
-    data = collect()
+    data = json.loads(pathlib.Path(args.from_json).read_text()) if args.from_json else collect()
     if args.json:
-        print(json.dumps(data, indent=2))
+        text = json.dumps(data, indent=2)
+    elif args.html:
+        text = html_report(data)
     else:
-        print(report(data))
+        text = report(data)
+
+    # Writing to a file matters on a PUBLIC repo: GitHub traffic (unique cloners,
+    # visitors, referrers) is admin-only data, and Actions logs are world-readable.
+    # The weekly workflow writes here and mails the file without echoing it.
+    if args.out:
+        pathlib.Path(args.out).write_text(text)
+        print(f"wrote {args.out} ({len(text)} bytes)")
+    else:
+        print(text)
     return 0
 
 
