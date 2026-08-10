@@ -783,6 +783,47 @@ with 5 rows of 20, with nothing marking it as partial. A provider that quietly a
 with a fifth of the table is worse than no provider, so it is excluded rather than
 shipped with a warning.
 
+## Telemetry
+
+**Nothing is transmitted unless you turn it on.** There is no default that sends, no
+first-run prompt that defaults to yes, and consent is readable only from an environment
+variable — never from a config file, because a config file can be committed to a repo or
+baked into someone else's Docker image.
+
+What IS always on is local recording, which is yours:
+
+```bash
+sportsdata-mcp stats
+```
+
+Per-tool call counts, error rates, error codes and empty-result counts, worst first. A
+model can read the same thing mid-session via `sportsdata_session_stats` — usually the
+fastest way to tell a missing key (100% errors, code `AUTH_REQUIRED`) from an upstream
+with no data (no errors, high `empty`).
+
+To share it, two deliberate acts are required, and neither alone transmits:
+
+```bash
+export SPORTSDATA_TELEMETRY=1
+export SPORTSDATA_TELEMETRY_ENDPOINT=https://your/collector
+```
+
+Tool **arguments are never recorded**, and that guarantee is structural rather than a
+filter: `Telemetry.record()` has no parameter that could accept them. This matters here
+more than in most projects — an ESPN Fantasy league id identifies a league and its
+members, and a Sleeper username *is* a username.
+
+```bash
+sportsdata-mcp telemetry --show-payload
+```
+
+prints the exact JSON a transmission would contain, so the claims are checkable rather
+than promised. Full detail, including what the one free-text field does:
+[docs/TELEMETRY.md](docs/TELEMETRY.md).
+
+For adoption numbers that touch no user at all — PyPI downloads, unique cloners,
+referrers — `python scripts/metrics.py` reads public data about the package instead.
+
 ## Cross-provider comparison
 
 Every tool is tagged with provider-agnostic **capability** slugs (e.g.

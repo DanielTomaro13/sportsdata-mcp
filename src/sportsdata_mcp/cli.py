@@ -338,6 +338,103 @@ def version() -> None:
         click.echo(f"spec overlay: {applied} (OTA-applied; `update-specs --clear` reverts)")
 
 
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="Emit raw JSON.")
+def stats(as_json: bool) -> None:
+    """Your own usage: per-tool call counts, error rates and slow providers.
+
+    Read from local files written by past sessions. Nothing here has been transmitted;
+    this works identically whether or not sharing is enabled.
+    """
+    import json as _json
+    from collections import defaultdict
+
+    from . import telemetry
+
+    sessions = telemetry.load_local()
+    if not sessions:
+        click.echo("No recorded sessions yet.")
+        click.echo("Counters are written when a server session ends having made at least one call.")
+        return
+    if as_json:
+        click.echo(_json.dumps(sessions, indent=2))
+        return
+
+    agg: dict[str, dict] = defaultdict(lambda: {"calls": 0, "errors": 0, "empty": 0, "codes": defaultdict(int)})
+    for sess in sessions:
+        for tool, st in sess.get("tools", {}).items():
+            a = agg[tool]
+            a["calls"] += st["calls"]
+            a["errors"] += st["errors"]
+            a["empty"] += st["empty"]
+            for code, n in st.get("codes", {}).items():
+                a["codes"][code] += n
+
+    total = sum(a["calls"] for a in agg.values())
+    errs = sum(a["errors"] for a in agg.values())
+    click.echo(f"{len(sessions)} session(s), {total} call(s), {errs} error(s) "
+               f"({errs / total * 100:.0f}%)" if total else "no calls recorded")
+    click.echo("")
+
+    # Worst first — a healthy tool needs no attention, and a list sorted by call count
+    # buries the one that is broken.
+    rows = sorted(agg.items(), key=lambda kv: (-kv[1]["errors"], -kv[1]["calls"]))
+    width = max((len(t) for t, _ in rows), default=10)
+    click.echo(f"{'tool':<{width}}  {'calls':>6} {'errors':>7} {'empty':>6}  top error")
+    for tool, a in rows[:25]:
+        top = max(a["codes"].items(), key=lambda kv: kv[1])[0] if a["codes"] else ""
+        line = f"{tool:<{width}}  {a['calls']:>6} {a['errors']:>7} {a['empty']:>6}  {top}"
+        click.echo(click.style(line, fg="red") if a["errors"] else line)
+
+    # Feedback is the only signal here that somebody chose to send rather than one we
+    # inferred, so it goes last where it is read, not first where it scrolls away.
+    notes = [f for sess in sessions for f in sess.get("feedback", [])]
+    if notes:
+        click.echo("")
+        click.echo(f"Feedback ({sum(1 for f in notes if not f['helpful'])} negative of {len(notes)}):")
+        for f in notes[-10:]:
+            mark = "✓" if f["helpful"] else "✗"
+            click.echo(f"  {mark} {f['at'][:10]}  {f.get('tool') or '(general)'}  {f.get('note') or ''}")
+
+    click.echo("")
+    click.echo("A high `empty` count on a tool with no errors usually means the upstream")
+    click.echo("has no data for what was asked — not that the call is malformed.")
+    if not telemetry.is_enabled():
+        click.echo("")
+        click.echo("Sharing is OFF. `sportsdata-mcp telemetry` explains what turning it on would send.")
+
+
+@cli.command()
+@click.option("--show-payload", is_flag=True, help="Print exactly what a flush would transmit.")
+def telemetry(show_payload: bool) -> None:
+    """Show telemetry status, and exactly what sharing would send.
+
+    Sharing requires TWO explicit acts and has no transmitting default:
+      SPORTSDATA_TELEMETRY=1                 — consent, env var only
+      SPORTSDATA_TELEMETRY_ENDPOINT=<url>    — where to
+    With either unset, nothing leaves the machine.
+    """
+    import json as _json
+
+    from . import telemetry as tel
+
+    enabled, url = tel.is_enabled(), tel.endpoint()
+    click.echo(f"consent  (SPORTSDATA_TELEMETRY)          {'ON' if enabled else 'off'}")
+    click.echo(f"endpoint (SPORTSDATA_TELEMETRY_ENDPOINT) {url or 'not set'}")
+    if enabled and url:
+        click.echo(click.style("\nSharing is ON — session summaries will be POSTed to the endpoint above.", fg="yellow"))
+    else:
+        click.echo(click.style("\nSharing is OFF. Nothing is transmitted.", fg="green"))
+    click.echo(f"install id: {tel.install_id()}  (random; delete ~/.sportsdata-mcp/install-id to reset)")
+
+    if show_payload:
+        click.echo("\nA flush would send exactly this shape — note there is no field for")
+        click.echo("tool arguments, response data, keys, paths, hostnames or IPs:")
+        click.echo(_json.dumps(tel.get().payload(), indent=2))
+    else:
+        click.echo("\nRun with --show-payload to see the exact JSON. Details: docs/TELEMETRY.md")
+
+
 def main() -> None:
     cli(obj={})
 

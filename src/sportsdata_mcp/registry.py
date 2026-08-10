@@ -11,12 +11,14 @@ import functools
 import inspect
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
 from mcp.types import ToolAnnotations
 
+from . import telemetry
 from .classify import apply_classify
 from .config import Config
 from .dispatchers.graphql_persisted import make_graphql_dispatcher
@@ -215,6 +217,23 @@ def make_dispatcher_handler(disp: Dispatcher, spec: Spec, http: HTTPClient) -> C
 # ─── Transport-error guard ─────────────────────────────────────────────
 
 
+def _looks_empty(result) -> bool:
+    """Did this call succeed but say nothing?
+
+    Providers signal "no data" in several shapes — a bare [], an envelope whose only
+    payload key is empty, a `results: 0`. Catching the common ones is enough for a
+    signal; being exhaustive would mean knowing every provider's envelope, which is the
+    kind of coupling that rots.
+    """
+    if result is None or result == [] or result == {}:
+        return True
+    if isinstance(result, dict):
+        for key in ("data", "response", "results", "items", "games", "events", "matches"):
+            if key in result and not result[key]:
+                return True
+    return False
+
+
 def _guard(handler: Callable, tool_name: str, group: str) -> Callable:
     """Catch-all for transport-level failures, wrapped around every tool handler.
 
@@ -238,11 +257,22 @@ def _guard(handler: Callable, tool_name: str, group: str) -> Callable:
                 recoverable=False,
                 code="NOT_LICENSED",
             )
+        # Telemetry rides on this wrapper because it is the ONE place every tool call
+        # passes through. Note what is available here and deliberately not recorded:
+        # `kwargs` is right there, and never touched. `telemetry.record` has no parameter
+        # that could accept it.
+        started = time.perf_counter()
         try:
-            return await handler(**kwargs)
-        except ToolError:
+            result = await handler(**kwargs)
+        except ToolError as e:
+            telemetry.get().record(
+                tool_name, ok=False, seconds=time.perf_counter() - started, code=e.code
+            )
             raise
         except httpx.TimeoutException as e:
+            telemetry.get().record(
+                tool_name, ok=False, seconds=time.perf_counter() - started, code="UPSTREAM_TIMEOUT"
+            )
             raise ToolError(
                 f"{tool_name}: the provider did not respond in time ({type(e).__name__}). "
                 f"It may be slow or unreachable — retry shortly.",
@@ -250,12 +280,25 @@ def _guard(handler: Callable, tool_name: str, group: str) -> Callable:
                 code="UPSTREAM_TIMEOUT",
             ) from e
         except httpx.HTTPError as e:
+            telemetry.get().record(
+                tool_name, ok=False, seconds=time.perf_counter() - started, code="TRANSPORT_ERROR"
+            )
             raise ToolError(
                 f"{tool_name}: could not reach the provider ({type(e).__name__}: {e}). "
                 f"Check network connectivity and retry.",
                 recoverable=True,
                 code="TRANSPORT_ERROR",
             ) from e
+        # "Empty" is a QUALITY signal, not a size measurement: a tool that succeeds and
+        # returns nothing, call after call, is usually broken in a way no error rate
+        # shows. Only the boolean is kept.
+        telemetry.get().record(
+            tool_name,
+            ok=True,
+            seconds=time.perf_counter() - started,
+            empty=_looks_empty(result),
+        )
+        return result
 
     # FastMCP/pydantic derive the JSON-schema from these, so mirror them onto the wrapper.
     wrapped.__signature__ = inspect.signature(handler)  # type: ignore[attr-defined]

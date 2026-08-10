@@ -18,8 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
-from . import __version__
+from . import __version__, telemetry
 from .config import Config, load_config
 from .licence import resolve_licensed_groups, revalidation_loop, set_live_groups
 from .prompts import register_prompts
@@ -171,6 +172,14 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
                 with contextlib.suppress(asyncio.CancelledError):
                     await revalidator
             reg = holder.get("registered")
+            # Persist counters, then flush IF the operator opted in. Order matters: the
+            # local record is the one the user owns, so it must survive a failed or
+            # disabled flush. Neither step may raise — a shutdown that errors because of
+            # telemetry would be an outstandingly bad trade.
+            with contextlib.suppress(Exception):
+                telemetry.save_local(telemetry.get())
+            with contextlib.suppress(Exception):
+                await telemetry.flush(telemetry.get(), enabled_providers=len({g.split(".")[0] for g in enabled}))
             if reg is not None:
                 await reg.aclose()
                 log.info("closed %d provider HTTP client(s) on shutdown", len(reg.http_clients))
@@ -236,6 +245,52 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
         return {
             "resources": ["sportsdata://capabilities", *registered.resources],
             "hint": "Read a resource to browse operations/lookups without spending a tool call.",
+        }
+
+    @mcp.tool(annotations=_READ_ONLY)
+    def sportsdata_session_stats() -> dict:
+        """How this server has performed for you THIS session: per-tool call counts,
+        error rates, error codes, latency buckets, and how often a tool succeeded but
+        returned nothing.
+
+        Useful when a tool seems to be misbehaving — a 100% error rate with code
+        AUTH_REQUIRED means a missing key, while a high `empty` count on a working tool
+        usually means the upstream has no data for what was asked, not that the call is
+        wrong.
+
+        This is read from local counters. Nothing here has been sent anywhere.
+        """
+        snap = telemetry.get().snapshot()
+        return {
+            **snap,
+            "telemetry_sharing": "on" if telemetry.is_enabled() else "off (local only)",
+            "hint": "See docs/TELEMETRY.md for exactly what sharing would send.",
+        }
+
+    @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, openWorldHint=False)
+    )
+    def sportsdata_feedback(helpful: bool, tool: str | None = None, note: str | None = None) -> dict:
+        """Report whether an answer from this server was useful.
+
+        Call this when a tool gave a wrong, empty or misleading answer — especially if
+        the response shape did not match its description, which is the failure mode the
+        maintainers most need to hear about.
+
+        Recorded locally. It is only ever transmitted if the operator has explicitly
+        enabled sharing (SPORTSDATA_TELEMETRY=1 plus a configured endpoint), and `note`
+        is sent verbatim, so do not put anything private in it.
+        """
+        telemetry.get().record_feedback(tool, helpful, note)
+        shared = telemetry.is_enabled() and telemetry.endpoint() is not None
+        return {
+            "recorded": True,
+            "will_be_shared": shared,
+            "detail": (
+                "Sharing is on: this will be included in the next flush."
+                if shared
+                else "Sharing is off — this stays on this machine. `sportsdata-mcp stats` shows it."
+            ),
         }
 
     # ── Always-on capability catalogue resource ──
