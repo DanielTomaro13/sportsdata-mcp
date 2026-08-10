@@ -75,7 +75,6 @@ def test_every_manifest_key_maps_to_a_real_env_var():
     """A key prompt that writes an env var nothing reads is worse than no prompt: the
     user pastes a credential, sees no error, and gets no data."""
     manifest = json.loads((ROOT / "manifest.json").read_text())
-    envs = set(manifest["server"]["mcp_config"]["env"].values())
     declared = {
         env
         for spec in load_all_specs()
@@ -83,8 +82,7 @@ def test_every_manifest_key_maps_to_a_real_env_var():
         for attr in ("env", "username_env", "password_env")
         if (env := getattr(auth, attr, None))
     }
-    for template in envs:
-        name = [k for k, v in manifest["server"]["mcp_config"]["env"].items() if v == template][0]
+    for name in manifest["server"]["mcp_config"]["env"]:
         assert name in declared, f"manifest sets {name}, but no spec reads it"
 
 
