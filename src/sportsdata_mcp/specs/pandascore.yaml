@@ -1,0 +1,177 @@
+spec_version: 1
+
+# PandaScore (api.pandascore.co) — esports, BYO key. 13 titles: LoL, CS2, Dota 2,
+# Valorant, Overwatch, Rainbow 6, Rocket League, StarCraft, CoD, KoG, Fifa, Hearthstone.
+#
+# ⚠ SHAPES BELOW COME FROM THE VENDOR'S DOCUMENTATION, not a live probe — we hold no
+# key (`shapes_verified: false`, and every tool description carries the caveat).
+# Verified keylessly 2026-08-10: the host and paths exist and return
+# 403 {"error":"Token is missing"}.
+#
+# WHY IT IS WORTH THE SIGNUP. `opendota` gives you Dota 2 only, and no odds. PandaScore
+# is the broad esports source — matches, tournaments, standings AND betting markets
+# across 13 titles — with a genuinely usable free tier (1000 req/hr). The AU books
+# price esports, so a PandaScore match lines up against a `sportsbet`/`pinnacle`
+# market the same way a football fixture does.
+#
+# AUTH: `Authorization: Bearer <token>`.
+#
+# THE VIDEOGAME SLUG IS THE ROOT. Most paths take a title slug — csgo (CS2 is still
+# `csgo` in the API), dota2, lol, valorant, ow, r6siege, rl, starcraft-2, cod-mw, fifa,
+# hearthstone, kog, pubg. Call pandascore_videogames for the live list rather than
+# guessing; a wrong slug is a 404.
+#
+# PAGINATION is `page` + `per_page` (max 100), with totals in response HEADERS
+# (X-Total, X-Page) rather than the body — the body is a bare array.
+
+provider:
+  id: pandascore
+  display_name: "PandaScore (esports across 13 titles — BYO key)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/PandaScore.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.pandascore.co
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: Authorization
+      env: PANDASCORE_TOKEN
+      value_prefix: "Bearer "
+      optional: true
+  defaults:
+    rate_limit_rps: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: pandascore_videogames
+    group: pandascore.esports
+    capabilities: [sport.competitions_list]
+    summary: "The titles PandaScore covers, with the slug every other tool needs. Call this first rather than guessing a slug."
+    base: default
+    path: /videogames
+    auth: default
+    response_hint: "[{id, name:'Counter-Strike', slug:'cs-go', current_version}]  (top-level array) — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "All titles"
+        params: {}
+
+  - name: pandascore_matches
+    group: pandascore.esports
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Matches across every title, or one — upcoming, running or past."
+    base: default
+    path: /matches
+    auth: default
+    params:
+      - { name: filter_videogame, in: query, type: string, api_name: "filter[videogame]", description: "Title slug, e.g. csgo, dota2, lol." }
+      - { name: filter_status, in: query, type: string, api_name: "filter[status]", enum: [not_started, running, finished, canceled, postponed], description: "Match state." }
+      - { name: range_begin_at, in: query, type: string, api_name: "range[begin_at]", description: "ISO date range as 'from,to'." }
+      - { name: sort, in: query, type: string, description: "Sort field; prefix with '-' to reverse, e.g. -begin_at." }
+      - { name: page, in: query, type: integer, default: 1, description: "Page number." }
+      - { name: per_page, in: query, type: integer, default: 50, description: "Page size (max 100)." }
+    response_hint: "[{id, name, slug, status, begin_at, end_at, number_of_games, opponents:[{type, opponent:{id, name, acronym, image_url}}], results:[{team_id, score}], league:{id, name}, serie, tournament, videogame, winner_id, live:{supported, url}}]  (top-level array; totals in X-Total header) — SHAPE FROM VENDOR DOCS. Note `opponents` wraps each team under an `opponent` key."
+    examples:
+      - description: "Upcoming CS2 matches"
+        params: {filter_videogame: csgo, filter_status: not_started}
+
+  - name: pandascore_match_odds
+    group: pandascore.esports
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Betting markets and prices for one esports match — the part `opendota` cannot give you."
+    base: default
+    path: /matches/{matchId}/odds
+    auth: default
+    params:
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id from pandascore_matches." }
+    response_hint: "{match_id, markets:[{name, bookmakers:[{name, odds:[{name, value, ...}]}]}]}  — SHAPE FROM VENDOR DOCS AND LIKELY APPROXIMATE; odds access is a paid add-on on some plans, so a free key may 403 here."
+    examples:
+      - description: "Odds for one match"
+        params: {matchId: 1}
+
+  - name: pandascore_tournaments
+    group: pandascore.esports
+    capabilities: [sport.competitions_list]
+    summary: "Tournaments — upcoming, running or past — optionally for one title."
+    base: default
+    path: /tournaments
+    auth: default
+    params:
+      - { name: filter_videogame, in: query, type: string, api_name: "filter[videogame]", description: "Title slug." }
+      - { name: page, in: query, type: integer, default: 1, description: "Page number." }
+      - { name: per_page, in: query, type: integer, default: 50, description: "Page size (max 100)." }
+    response_hint: "[{id, name, slug, begin_at, end_at, prizepool, tier, league:{id, name}, serie:{id, full_name}, videogame, teams:[…]}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "LoL tournaments"
+        params: {filter_videogame: lol}
+
+  - name: pandascore_leagues
+    group: pandascore.esports
+    capabilities: [sport.competitions_list]
+    summary: "Leagues (the recurring competitions tournaments belong to)."
+    base: default
+    path: /leagues
+    auth: default
+    params:
+      - { name: filter_videogame, in: query, type: string, api_name: "filter[videogame]", description: "Title slug." }
+      - { name: page, in: query, type: integer, default: 1, description: "Page number." }
+      - { name: per_page, in: query, type: integer, default: 50, description: "Page size (max 100)." }
+    response_hint: "[{id, name, slug, image_url, url, videogame:{id, name, slug}, series:[…]}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "All leagues"
+        params: {}
+
+  - name: pandascore_teams
+    group: pandascore.esports
+    capabilities: [ref.teams]
+    summary: "Esports teams with their current rosters."
+    base: default
+    path: /teams
+    auth: default
+    params:
+      - { name: filter_videogame, in: query, type: string, api_name: "filter[videogame]", description: "Title slug." }
+      - { name: search_name, in: query, type: string, api_name: "search[name]", description: "Partial team-name match." }
+      - { name: page, in: query, type: integer, default: 1, description: "Page number." }
+      - { name: per_page, in: query, type: integer, default: 50, description: "Page size (max 100)." }
+    response_hint: "[{id, name, acronym, slug, image_url, location, current_videogame, players:[{id, name, first_name, last_name, role, nationality}]}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "CS2 teams"
+        params: {filter_videogame: csgo}
+
+  - name: pandascore_players
+    group: pandascore.esports
+    capabilities: [ref.players]
+    summary: "Esports players with role, nationality and current team."
+    base: default
+    path: /players
+    auth: default
+    params:
+      - { name: filter_videogame, in: query, type: string, api_name: "filter[videogame]", description: "Title slug." }
+      - { name: search_name, in: query, type: string, api_name: "search[name]", description: "Partial name match." }
+      - { name: page, in: query, type: integer, default: 1, description: "Page number." }
+      - { name: per_page, in: query, type: integer, default: 50, description: "Page size (max 100)." }
+    response_hint: "[{id, name, first_name, last_name, role, nationality, image_url, current_team:{id, name, acronym}, current_videogame}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Dota 2 players"
+        params: {filter_videogame: dota2}
+
+  - name: pandascore_series
+    group: pandascore.esports
+    capabilities: [sport.competitions_list]
+    summary: "Series — a league's seasonal editions (e.g. 'LEC Summer 2025')."
+    base: default
+    path: /series
+    auth: default
+    params:
+      - { name: filter_videogame, in: query, type: string, api_name: "filter[videogame]", description: "Title slug." }
+      - { name: page, in: query, type: integer, default: 1, description: "Page number." }
+      - { name: per_page, in: query, type: integer, default: 50, description: "Page size (max 100)." }
+    response_hint: "[{id, name, full_name, slug, season, year, begin_at, end_at, league:{id, name}, videogame, winner_id}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "LoL series"
+        params: {filter_videogame: lol}

@@ -230,7 +230,7 @@ PRESETS: dict[str, list[str]] = {
     # Books + exchange + prediction markets — everything you'd need to price a market.
     "odds": [
         "sportsbet", "tab", "betr", "pointsbet", "unibet", "entain", "dabble",
-        "betfair", "pinnacle", "fanduel", "kalshi", "polymarket",
+        "betfair", "pinnacle", "fanduel", "kalshi", "polymarket", "theoddsapi",
     ],
     # Thoroughbred / greyhound / harness across every book that prices it, plus form.
     "racing": [
@@ -241,9 +241,9 @@ PRESETS: dict[str, list[str]] = {
     "arb": ["betfair", "pinnacle", "kalshi", "polymarket"],
     "fantasy": ["espnfantasy", "supercoach", "sleeper"],
     "chess": ["lichess", "chesscom"],
-    "esports": ["opendota"],
+    "esports": ["opendota", "pandascore"],
     # Historical closing odds — the backtesting half of the odds story.
-    "backtest": ["footballdatauk"],
+    "backtest": ["footballdatauk", "cfbd"],
     # Official league / governing-body feeds only — no bookmakers.
     "official-stats": [
         "afl.public.*", "nrl", "nba", "nbl", "mlb", "premierleague", "laliga",

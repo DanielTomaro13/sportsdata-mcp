@@ -1,0 +1,205 @@
+spec_version: 1
+
+# football-data.org — European football, BYO key (free tier: 12 competitions,
+# 10 requests/minute).
+#
+# ⚠ MIXED VERIFICATION. `shapes_verified: false` applies to the provider, but three
+# endpoints ARE reachable and were probed live (2026-08-10):
+#     footballdataorg_competitions  → 189 competitions
+#     footballdataorg_matches       → today's matches across accessible competitions
+#     footballdataorg_areas         → 272 areas
+# Everything else (standings, teams, scorers, a single competition) returns
+# 403 {"errorCode":403,"message":"The resource you are looking for is restricted..."}
+# without a key, so those shapes come from the vendor's documentation. Each tool below
+# says which it is.
+#
+# WHY CARRY IT WHEN premierleague / laliga / seriea ARE ALREADY OFFICIAL AND KEYLESS?
+# For breadth, not depth. Those three are the best source for their own competitions.
+# This adds the ones the catalogue has no official feed for — Champions League,
+# Eredivisie, Primeira Liga, Championship, Brazilian Série A — behind one key and one
+# consistent shape. If the question is about the EPL, La Liga or Serie A, prefer the
+# official provider.
+#
+# AUTH IS A HEADER, not a query param: `X-Auth-Token: <key>`.
+#
+# RATE LIMIT: 10 requests/minute on the free tier, and it is enforced strictly — the
+# provider is capped well under it. Responses carry X-Requests-Available-Minute.
+
+provider:
+  id: footballdataorg
+  display_name: "football-data.org (European football — BYO key)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FootballDataOrg.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.football-data.org/v4
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: X-Auth-Token
+      env: FOOTBALL_DATA_ORG_KEY
+      # Three endpoints work without it; the rest 403. Optional so the server starts
+      # either way and the upstream's own 403 explains the restriction.
+      optional: true
+  defaults:
+    # Free tier is 10/min and enforced hard.
+    rate_limit_rps: 0.15
+    burst: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 2.0
+
+endpoints:
+  - name: footballdataorg_competitions
+    group: footballdataorg.football
+    capabilities: [sport.competitions_list]
+    summary: "Every competition the API covers, with its code and current season. VERIFIED live — works without a key."
+    base: default
+    path: /competitions
+    auth: default
+    params:
+      - { name: areas, in: query, type: string_csv, description: "Filter to area ids (from footballdataorg_areas)." }
+    response_hint: "{count, filters, competitions:[{id, name, code:'PL', type:'LEAGUE'|'CUP', emblem, plan:'TIER_ONE'…, area:{id, name, code, flag}, currentSeason:{id, startDate, endDate, currentMatchday}, numberOfAvailableSeasons, lastUpdated}]}  — VERIFIED (189 competitions). `plan` tells you which tier a competition needs; the free key covers TIER_ONE only."
+    examples:
+      - description: "All competitions"
+        params: {}
+
+  - name: footballdataorg_areas
+    group: footballdataorg.football
+    capabilities: []
+    summary: "Countries and regions, used to filter competitions. VERIFIED live — works without a key."
+    base: default
+    path: /areas
+    auth: default
+    response_hint: "{count, filters, areas:[{id, name, countryCode, flag, parentAreaId, parentArea}]}  — VERIFIED (272 areas)"
+    examples:
+      - description: "All areas"
+        params: {}
+
+  - name: footballdataorg_matches
+    group: footballdataorg.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Matches across every competition your key can see, for a date range. VERIFIED live — the envelope works without a key (though a keyless call sees no competitions)."
+    base: default
+    path: /matches
+    auth: default
+    params:
+      - { name: competitions, in: query, type: string_csv, description: "Competition ids to include." }
+      - { name: dateFrom, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: dateTo, in: query, type: string, description: "YYYY-MM-DD (max 10 days from dateFrom on the free tier)." }
+      - { name: status, in: query, type: string, enum: [SCHEDULED, LIVE, IN_PLAY, PAUSED, FINISHED, POSTPONED, SUSPENDED, CANCELLED], description: "Match state filter." }
+    response_hint: "{filters, resultSet:{count, first, last, played}, matches:[{id, utcDate, status, matchday, stage, competition:{id, name, code}, homeTeam:{id, name, shortName, tla, crest}, awayTeam:{…}, score:{winner, duration, fullTime:{home, away}, halfTime:{…}}}]}  — envelope VERIFIED; the match object shape is from the vendor's docs. Note the score lives in score.fullTime, not on the match."
+    examples:
+      - description: "Matches in a date window"
+        params: {dateFrom: "2025-08-16", dateTo: "2025-08-18"}
+
+  - name: footballdataorg_competition
+    group: footballdataorg.football
+    capabilities: [sport.competition_screen]
+    summary: "One competition with its current season and available seasons. NEEDS A KEY (403 without)."
+    base: default
+    path: /competitions/{competition}
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, required: true, description: "Competition code (PL, CL, BL1, SA, PD, FL1, DED, PPL, BSA) or numeric id." }
+    response_hint: "{id, name, code, type, emblem, area, currentSeason:{id, startDate, endDate, currentMatchday, winner}, seasons:[…]}  — SHAPE FROM VENDOR DOCS, not probed."
+    examples:
+      - description: "Premier League"
+        params: {competition: PL}
+
+  - name: footballdataorg_standings
+    group: footballdataorg.football
+    capabilities: [stats.ladder]
+    summary: "League table for a competition. NEEDS A KEY (403 without)."
+    base: default
+    path: /competitions/{competition}/standings
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, required: true, description: "Competition code or id." }
+      - { name: season, in: query, type: integer, description: "Season starting year, e.g. 2024." }
+      - { name: matchday, in: query, type: integer, description: "Table as at this matchday." }
+    response_hint: "{filters, competition, season, standings:[{stage, type:'TOTAL'|'HOME'|'AWAY', group, table:[{position, team:{id, name, crest}, playedGames, won, draw, lost, points, goalsFor, goalsAgainst, goalDifference, form}]}]}  — SHAPE FROM VENDOR DOCS. Note `standings` is a LIST of tables (TOTAL/HOME/AWAY); pick type == 'TOTAL' for the normal ladder."
+    examples:
+      - description: "Premier League table"
+        params: {competition: PL}
+
+  - name: footballdataorg_competition_matches
+    group: footballdataorg.football
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "All matches in one competition. NEEDS A KEY (403 without)."
+    base: default
+    path: /competitions/{competition}/matches
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, required: true, description: "Competition code or id." }
+      - { name: season, in: query, type: integer, description: "Season starting year." }
+      - { name: matchday, in: query, type: integer, description: "Restrict to one matchday." }
+      - { name: status, in: query, type: string, enum: [SCHEDULED, LIVE, IN_PLAY, PAUSED, FINISHED, POSTPONED, SUSPENDED, CANCELLED], description: "Match state." }
+      - { name: dateFrom, in: query, type: string, description: "YYYY-MM-DD." }
+      - { name: dateTo, in: query, type: string, description: "YYYY-MM-DD." }
+    response_hint: "{filters, resultSet, competition, matches:[{id, utcDate, status, matchday, homeTeam, awayTeam, score:{winner, fullTime:{home, away}, halfTime}}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A Premier League matchday"
+        params: {competition: PL, matchday: 1}
+
+  - name: footballdataorg_teams
+    group: footballdataorg.football
+    capabilities: [ref.teams]
+    summary: "The clubs in a competition. NEEDS A KEY (403 without)."
+    base: default
+    path: /competitions/{competition}/teams
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, required: true, description: "Competition code or id." }
+      - { name: season, in: query, type: integer, description: "Season starting year." }
+    response_hint: "{count, filters, competition, season, teams:[{id, name, shortName, tla, crest, address, website, founded, clubColors, venue, coach, squad:[…]}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Premier League clubs"
+        params: {competition: PL}
+
+  - name: footballdataorg_scorers
+    group: footballdataorg.football
+    capabilities: [stats.leaders_season]
+    summary: "Top scorers in a competition. NEEDS A KEY (403 without)."
+    base: default
+    path: /competitions/{competition}/scorers
+    auth: default
+    params:
+      - { name: competition, in: path, type: string, required: true, description: "Competition code or id." }
+      - { name: season, in: query, type: integer, description: "Season starting year." }
+      - { name: limit, in: query, type: integer, default: 10, description: "How many scorers." }
+    response_hint: "{count, filters, competition, season, scorers:[{player:{id, name, nationality, position}, team:{id, name}, goals, assists, penalties, playedMatches}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Premier League top scorers"
+        params: {competition: PL, limit: 10}
+
+  - name: footballdataorg_team
+    group: footballdataorg.football
+    capabilities: [ref.teams, ref.players]
+    summary: "One club with its squad and running competitions. NEEDS A KEY (403 without)."
+    base: default
+    path: /teams/{teamId}
+    auth: default
+    params:
+      - { name: teamId, in: path, type: integer, required: true, description: "Team id (from footballdataorg_teams)." }
+    response_hint: "{id, name, shortName, tla, crest, address, website, founded, clubColors, venue, runningCompetitions:[…], coach:{id, name, nationality, contract}, squad:[{id, name, position, dateOfBirth, nationality}]}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "One club"
+        params: {teamId: 57}
+
+  - name: footballdataorg_match
+    group: footballdataorg.football
+    capabilities: [sport.match_detail]
+    summary: "One match with lineups, goals, bookings and head-to-head. NEEDS A KEY (403 without)."
+    base: default
+    path: /matches/{matchId}
+    auth: default
+    params:
+      - { name: matchId, in: path, type: integer, required: true, description: "Match id." }
+    response_hint: "{id, utcDate, status, competition, homeTeam:{id, name, lineup:[…], bench:[…]}, awayTeam:{…}, score, goals:[{minute, scorer, assist}], bookings:[…], substitutions:[…], referees:[…], head2head:{…}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "One match"
+        params: {matchId: 419516}

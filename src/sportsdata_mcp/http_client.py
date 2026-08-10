@@ -340,6 +340,21 @@ class HTTPClient:
         # Trailing blank lines produce rows whose every value is None/''.
         return [row for row in rows if any((v or "").strip() for v in row.values())]
 
+    def _unset_key_envs(self) -> set[str]:
+        """Env vars this provider's auth reads that are NOT set.
+
+        Used to turn a bare 401/403 into an actionable message. Only reports vars that
+        are genuinely absent — a provider whose key IS configured and still 401s has a
+        different problem (revoked key, wrong tier), and shouldn't be told to set what
+        it already has.
+        """
+        missing: set[str] = set()
+        for spec in self._provider.auth.values():
+            env = getattr(spec, "env", None)
+            if env and not (os.environ.get(env) or (self._secrets or {}).get(env)):
+                missing.add(env)
+        return missing
+
     def _guard_status_and_size(self, r: httpx.Response) -> None:
         """Status + size checks shared by the JSON and CSV decoders."""
         if r.status_code == 429:
@@ -378,14 +393,29 @@ class HTTPClient:
                 recoverable=True,
                 code="RATE_LIMITED",
             )
-        if r.status_code == 403:
-            log.warning("blocked (provider=%s, HTTP 403): %s", self._provider.id, _snippet(r, 120))
-            raise ToolError(
-                f"{self._provider.id} blocked the request (HTTP 403) — likely bot detection or geo-block. "
-                f"Body starts: {_snippet(r)}",
-                recoverable=False,
-                code="BLOCKED",
-            )
+        if r.status_code in (401, 403):
+            # A BYO-key provider with no key configured is the OVERWHELMINGLY likely
+            # cause here, and it has a specific fix. Saying "likely bot detection" to
+            # someone who simply hasn't set PANDASCORE_TOKEN sends them hunting for a
+            # geo-block that doesn't exist.
+            missing = self._unset_key_envs()
+            if missing:
+                names = " or ".join(sorted(missing))
+                log.warning("auth required (provider=%s, HTTP %d)", self._provider.id, r.status_code)
+                raise ToolError(
+                    f"{self._provider.id} needs an API key: set {names} in your environment "
+                    f"and restart. (HTTP {r.status_code}.) Upstream said: {_snippet(r, 160)}",
+                    recoverable=False,
+                    code="AUTH_REQUIRED",
+                )
+            if r.status_code == 403:
+                log.warning("blocked (provider=%s, HTTP 403): %s", self._provider.id, _snippet(r, 120))
+                raise ToolError(
+                    f"{self._provider.id} blocked the request (HTTP 403) — likely bot detection or geo-block. "
+                    f"Body starts: {_snippet(r)}",
+                    recoverable=False,
+                    code="BLOCKED",
+                )
         if r.status_code >= 400:
             log_at = log.error if r.status_code >= 500 else log.warning
             log_at("HTTP %d (provider=%s): %s", r.status_code, self._provider.id, _snippet(r, 120))

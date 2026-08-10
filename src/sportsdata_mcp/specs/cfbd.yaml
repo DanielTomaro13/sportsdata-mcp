@@ -1,0 +1,207 @@
+spec_version: 1
+
+# College Football Data (api.collegefootballdata.com) — NCAA football, BYO key.
+#
+# ⚠ SHAPES FROM THE VENDOR'S DOCUMENTATION, not a live probe (`shapes_verified: false`;
+# every tool description carries the caveat). Verified keylessly 2026-08-10: paths exist
+# and return 401 with a message that names the exact mistake people make —
+# "Did you forget to add \"Bearer \" before your key?".
+#
+# AUTH: `Authorization: Bearer <key>` — the Bearer prefix is required and is the single
+# most common failure. It is set via `value_prefix` here so the env var holds the BARE
+# key, not the header syntax.
+#
+# WHAT IT ADDS OVER `ncaa` AND `espn`. Those give you college scores, polls and
+# standings. CFBD is the ANALYTICS layer: SP+ and Elo ratings, advanced box scores,
+# win probability, recruiting, transfer portal, betting lines. It is the only source in
+# this catalogue for college-football advanced metrics, and it carries historical
+# betting lines — which pairs with `footballdatauk` as a second backtesting dataset,
+# for a different sport.
+#
+# YEAR IS ALWAYS REQUIRED on the game/stat endpoints, and `seasonType` matters:
+# `regular` (default) vs `postseason` — bowl games are invisible without it.
+
+provider:
+  id: cfbd
+  display_name: "College Football Data (NCAA football analytics — BYO key)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/CFBD.md"
+  shapes_verified: false
+  base_urls:
+    default: https://api.collegefootballdata.com
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: Authorization
+      env: CFBD_API_KEY
+      # The API's own 401 tells you this is required; env holds the bare key.
+      value_prefix: "Bearer "
+      optional: true
+  defaults:
+    rate_limit_rps: 3
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  - name: cfbd_teams
+    group: cfbd.college
+    capabilities: [ref.teams]
+    summary: "FBS/FCS programmes with conference, venue and colours."
+    base: default
+    path: /teams
+    auth: default
+    params:
+      - { name: conference, in: query, type: string, description: "Conference abbreviation, e.g. SEC, B1G, ACC." }
+      - { name: year, in: query, type: integer, description: "Season — conference membership changes year to year." }
+    response_hint: "[{id, school, mascot, abbreviation, conference, division, color, alt_color, logos:[url], location:{venue_id, name, city, state, capacity, grass, dome}}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "SEC programmes"
+        params: {conference: SEC}
+
+  - name: cfbd_games
+    group: cfbd.college
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Games for a season with scores, venue and attendance. `year` is required."
+    base: default
+    path: /games
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, required: true, description: "Season year." }
+      - { name: week, in: query, type: integer, description: "Week number." }
+      - { name: seasonType, in: query, type: string, default: regular, enum: [regular, postseason, both], description: "Bowl games need 'postseason' — they are INVISIBLE under the default." }
+      - { name: team, in: query, type: string, description: "One school's games." }
+      - { name: conference, in: query, type: string, description: "Conference abbreviation." }
+    response_hint: "[{id, season, week, season_type, start_date, neutral_site, conference_game, venue, home_team, home_points, home_line_scores:[…], away_team, away_points, excitement_index, home_post_win_prob}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "2024 week 1"
+        params: {year: 2024, week: 1}
+
+  - name: cfbd_rankings
+    group: cfbd.college
+    capabilities: [sport.rankings]
+    summary: "Weekly poll rankings (AP, Coaches, Playoff Committee)."
+    base: default
+    path: /rankings
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, required: true, description: "Season year." }
+      - { name: week, in: query, type: integer, description: "Week number." }
+      - { name: seasonType, in: query, type: string, default: regular, enum: [regular, postseason], description: "Season type." }
+    response_hint: "[{season, seasonType, week, polls:[{poll:'AP Top 25', ranks:[{rank, school, conference, firstPlaceVotes, points}]}]}]  — SHAPE FROM VENDOR DOCS. Note polls are NESTED inside each week entry."
+    examples:
+      - description: "2024 week 10 polls"
+        params: {year: 2024, week: 10}
+
+  - name: cfbd_ratings_sp
+    group: cfbd.college
+    capabilities: [stats.advanced_metrics]
+    summary: "SP+ ratings — the headline predictive rating for college football, split by offence and defence."
+    base: default
+    path: /ratings/sp
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Season year." }
+      - { name: team, in: query, type: string, description: "One school." }
+    response_hint: "[{year, team, conference, rating, ranking, offense:{ranking, rating, success, explosiveness}, defense:{…}, specialTeams:{rating}}]  — SHAPE FROM VENDOR DOCS. Defensive ratings are better when LOWER."
+    examples:
+      - description: "2024 SP+"
+        params: {year: 2024}
+
+  - name: cfbd_ratings_elo
+    group: cfbd.college
+    capabilities: [stats.advanced_metrics]
+    summary: "Elo ratings by team and week."
+    base: default
+    path: /ratings/elo
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Season year." }
+      - { name: week, in: query, type: integer, description: "Week number." }
+      - { name: team, in: query, type: string, description: "One school." }
+      - { name: conference, in: query, type: string, description: "Conference abbreviation." }
+    response_hint: "[{year, team, conference, elo}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "2024 Elo"
+        params: {year: 2024}
+
+  - name: cfbd_betting_lines
+    group: cfbd.college
+    capabilities: [stats.closing_odds, sport.prices]
+    summary: "Historical betting lines per game from multiple books — spread, over/under and moneyline. The college-football backtesting dataset."
+    base: default
+    path: /lines
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Season year." }
+      - { name: week, in: query, type: integer, description: "Week number." }
+      - { name: seasonType, in: query, type: string, default: regular, enum: [regular, postseason], description: "Season type." }
+      - { name: team, in: query, type: string, description: "One school." }
+    response_hint: "[{id, season, week, homeTeam, homeScore, awayTeam, awayScore, lines:[{provider:'consensus'|'Bovada'|…, spread, formattedSpread, spreadOpen, overUnder, overUnderOpen, homeMoneyline, awayMoneyline}]}]  — SHAPE FROM VENDOR DOCS. `lines` is per BOOK; `*Open` vs the closing value is what a CLV comparison uses."
+    examples:
+      - description: "2024 week 1 lines"
+        params: {year: 2024, week: 1}
+
+  - name: cfbd_team_season_stats
+    group: cfbd.college
+    capabilities: [stats.team_season]
+    summary: "Season totals per team across every tracked stat category."
+    base: default
+    path: /stats/season
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, required: true, description: "Season year." }
+      - { name: team, in: query, type: string, description: "One school." }
+      - { name: conference, in: query, type: string, description: "Conference abbreviation." }
+    response_hint: "[{season, team, conference, statName, statValue}]  — SHAPE FROM VENDOR DOCS. NOTE this is LONG format: one row PER STAT per team, not one row per team."
+    examples:
+      - description: "2024 team stats"
+        params: {year: 2024}
+
+  - name: cfbd_advanced_box_score
+    group: cfbd.college
+    capabilities: [sport.match_boxscore, stats.advanced_metrics]
+    summary: "Advanced box score for one game: success rate, explosiveness, PPA and field position."
+    base: default
+    path: /game/box/advanced
+    auth: default
+    params:
+      - { name: id, in: query, type: integer, required: true, description: "Game id (from cfbd_games). Passed as a QUERY param, not in the path." }
+    response_hint: "{gameId, teams:{ppa:[…], cumulativePpa:[…], successRates:[…], explosiveness:[…], rushing:[…], havoc:[…], scoringOpportunities:[…], fieldPosition:[…]}}  — SHAPE FROM VENDOR DOCS. PPA is CFBD's expected-points-added metric."
+    examples:
+      - description: "One game's advanced box"
+        params: {id: 401520165}
+
+  - name: cfbd_recruiting
+    group: cfbd.college
+    capabilities: [sport.draft]
+    summary: "Recruiting classes: individual commits with stars, ratings and positions."
+    base: default
+    path: /recruiting/players
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, description: "Recruiting class year." }
+      - { name: team, in: query, type: string, description: "Committed school." }
+      - { name: position, in: query, type: string, description: "Position abbreviation." }
+      - { name: state, in: query, type: string, description: "Home state (two letters)." }
+    response_hint: "[{id, athleteId, recruitType, year, ranking, name, school, committedTo, position, height, weight, stars, rating, city, stateProvince, hometownInfo}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "2024 recruits"
+        params: {year: 2024}
+
+  - name: cfbd_portal
+    group: cfbd.college
+    capabilities: [sport.transactions]
+    summary: "Transfer-portal moves for a season — origin, destination and rating."
+    base: default
+    path: /player/portal
+    auth: default
+    params:
+      - { name: year, in: query, type: integer, required: true, description: "Season year." }
+    response_hint: "[{season, firstName, lastName, position, origin, destination, transferDate, rating, stars, eligibility}]  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "2024 portal"
+        params: {year: 2024}
