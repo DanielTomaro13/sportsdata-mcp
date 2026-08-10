@@ -24,6 +24,7 @@ spec_version: 1
 provider:
   id: cfbd
   display_name: "College Football Data (NCAA football analytics — BYO key)"
+  requires_user_key: true
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/CFBD.md"
   shapes_verified: false
   base_urls:

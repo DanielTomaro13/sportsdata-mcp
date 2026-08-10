@@ -13,6 +13,7 @@ spec_version: 1
 provider:
   id: datagolf
   display_name: "Data Golf"
+  requires_user_key: true
   # Runs on OUR paid key — a licensed build routes it through the entitlement proxy
   # (the key never ships). If the customer sets DATAGOLF_KEY, they go direct.
   proxied: true

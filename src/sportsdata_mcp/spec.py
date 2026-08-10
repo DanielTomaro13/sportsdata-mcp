@@ -170,6 +170,18 @@ class Provider(BaseModel):
     # every affected tool's description so the model treats the shape as approximate
     # and reads what it actually got.
     shapes_verified: bool = True
+    # True = this provider returns NOTHING USEFUL without a key the user must obtain.
+    #
+    # This is deliberately not inferred from `auth`, because the auth shape doesn't
+    # answer the question. ESPN Fantasy reads an env var (the espn_s2 cookie) and is
+    # `optional`, yet public leagues work perfectly without it — it is an upgrade, not
+    # a requirement. The Odds API is also `optional` (so a missing key never breaks
+    # startup) but returns 401 for everything. Only a human who has tried it knows
+    # which is which, so it is stated rather than guessed.
+    #
+    # The `free` preset is computed from this flag, so a new BYO provider cannot
+    # silently make "works with no setup" a lie.
+    requires_user_key: bool = False
 
 
 # ─── Endpoint params ───────────────────────────────────────────────────

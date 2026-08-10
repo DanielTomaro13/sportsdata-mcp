@@ -28,6 +28,7 @@ spec_version: 1
 provider:
   id: footballdataorg
   display_name: "football-data.org (European football — BYO key)"
+  requires_user_key: true
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FootballDataOrg.md"
   shapes_verified: false
   base_urls:

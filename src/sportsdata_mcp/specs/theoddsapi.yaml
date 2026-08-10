@@ -29,6 +29,7 @@ spec_version: 1
 provider:
   id: theoddsapi
   display_name: "The Odds API (international odds aggregator — BYO key)"
+  requires_user_key: true
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/TheOddsAPI.md"
   shapes_verified: false
   base_urls:

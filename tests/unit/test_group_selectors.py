@@ -83,13 +83,36 @@ def test_every_preset_resolves_to_something():
 
 
 def test_free_preset_needs_no_user_supplied_key():
-    """`free` is the zero-setup promise: every provider in it must work with an empty
-    environment. datagolf and twitter are the only two that genuinely don't — laliga
-    ships a public key and afl.premium mints its token from a public endpoint."""
+    """`free` is the zero-setup promise, so it is DERIVED here rather than trusted: any
+    provider whose auth reads an env var with no working fallback must be excluded.
+
+    This is not hypothetical — the assertion caught `free` becoming a lie the moment
+    the BYO-key tier landed, because new providers join `*` automatically.
+    """
     specs = load_all_specs()
-    provs = {g.split(".")[0] for g in expand_wildcard_groups(["free"], specs)}
-    assert "datagolf" not in provs and "twitter" not in provs
-    assert {"laliga", "afl", "espn", "sportsbet"} <= provs
+    free_provs = {g.split(".")[0] for g in expand_wildcard_groups(["free"], specs)}
+
+    needs_user_key = {s.provider.id for s in specs if s.provider.requires_user_key}
+    assert needs_user_key, "expected some BYO-key providers to exist"
+    leaked = free_provs & needs_user_key
+    assert not leaked, f"`free` promises zero setup but includes key-required providers: {sorted(leaked)}"
+
+    # ...and it must still contain everything that DOES work keylessly.
+    assert {"laliga", "afl", "espn", "sportsbet", "nhl", "squiggle"} <= free_provs
+
+
+def test_free_keeps_providers_whose_key_is_only_an_upgrade():
+    """The distinction `requires_user_key` exists to capture: ESPN Fantasy reads an env
+    var (the espn_s2 cookie) and is `optional`, yet PUBLIC leagues work perfectly
+    without it — the key is an upgrade, not a requirement. Inferring "needs a key" from
+    the auth block alone would wrongly drop 27 working tools from `free`."""
+    specs = load_all_specs()
+    free_provs = {g.split(".")[0] for g in expand_wildcard_groups(["free"], specs)}
+    assert "espnfantasy" in free_provs
+    espnfantasy = next(s for s in specs if s.provider.id == "espnfantasy")
+    assert espnfantasy.provider.requires_user_key is False
+    # It genuinely does read an env var — that's the point of the distinction.
+    assert any(getattr(a, "env", None) for a in espnfantasy.provider.auth.values())
 
 
 def test_free_is_a_strict_subset_of_all():

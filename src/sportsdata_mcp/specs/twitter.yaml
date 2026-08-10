@@ -24,6 +24,7 @@ spec_version: 1
 provider:
   id: twitter
   display_name: "X (Twitter)"
+  requires_user_key: true
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Twitter.md"
   base_urls:
     default: https://api.x.com

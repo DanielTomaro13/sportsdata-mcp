@@ -218,12 +218,20 @@ def lint(specs_dir: Path | None = None) -> tuple[list[str], list[str]]:
 # Keep these honest: a preset promises a coherent job ("compare prices across AU
 # books"), not a marketing bundle. `free` is the one people will actually start with.
 PRESETS: dict[str, list[str]] = {
-    # Everything that works with NO user setup. Only datagolf and twitter genuinely
-    # need a key the user must go and get: laliga ships a public subscription key as a
-    # literal fallback, and afl.premium mints its token from a public endpoint — both
-    # verified live returning 200 with an empty environment, so excluding them would
-    # hide 20 working tools for no reason.
-    "free": ["*", "-datagolf", "-twitter"],
+    # Everything that works with NO user setup. A provider belongs here iff it needs
+    # no key the user must go and get: laliga ships a public subscription key as a
+    # literal fallback and afl.premium mints its token from a public endpoint (both
+    # verified live with an empty environment), so they stay IN.
+    #
+    # The exclusions are exactly the providers whose auth reads an env var with no
+    # working fallback. `test_free_preset_needs_no_user_supplied_key` derives that set
+    # from the specs and fails if this list drifts — which it already caught once, when
+    # the BYO-key tier landed and silently made `free` a lie.
+    # NOTE: `free` is COMPUTED from provider.requires_user_key (see _match_token), not
+    # from this list — a hardcoded list silently became a lie the moment the BYO-key
+    # tier landed, because new providers join `*` automatically. The entry stays so the
+    # preset appears in listings.
+    "free": ["*"],
     "all": ["*"],
     # The pitch: cross-book price disagreement on AU markets.
     "au-books": ["sportsbet", "tab", "betr", "pointsbet", "unibet", "entain", "dabble", "betfair"],
@@ -263,7 +271,19 @@ def _all_groups(specs: list[Spec]) -> list[str]:
     return sorted({t.group for s in specs for t in s.all_tools()})
 
 
-def _match_token(token: str, groups: list[str]) -> list[str]:
+def _keyless_groups(groups: list[str], specs: list[Spec] | None) -> list[str]:
+    """Groups whose provider works with NO user-supplied key.
+
+    Derived from `provider.requires_user_key` rather than a maintained list, so a new
+    BYO-key provider cannot silently make the `free` preset's promise false.
+    """
+    if not specs:
+        return list(groups)
+    needs_key = {s.provider.id for s in specs if s.provider.requires_user_key}
+    return [g for g in groups if g.split(".", 1)[0] not in needs_key]
+
+
+def _match_token(token: str, groups: list[str], specs: list[Spec] | None = None) -> list[str]:
     """Groups selected by one (already sign-stripped) token.
 
     Accepts, in order: ``*`` (everything), a preset name, ``provider.*`` or any other
@@ -271,8 +291,10 @@ def _match_token(token: str, groups: list[str]) -> list[str]:
     """
     if token == "*":
         return list(groups)
+    if token == "free":
+        return _keyless_groups(groups, specs)
     if token in PRESETS:
-        return resolve_groups(PRESETS[token], groups)
+        return resolve_groups(PRESETS[token], groups, specs)
     if any(ch in token for ch in "*?["):
         # `espn.*` reads as "every espn group" to anyone who has used a shell — and
         # silently matching NOTHING (the old behaviour) is the worst possible answer,
@@ -283,7 +305,7 @@ def _match_token(token: str, groups: list[str]) -> list[str]:
     return [token]
 
 
-def resolve_groups(tokens: list[str], groups: list[str]) -> list[str]:
+def resolve_groups(tokens: list[str], groups: list[str], specs: list[Spec] | None = None) -> list[str]:
     """Resolve group selectors to concrete group names.
 
     Additions are applied first, then exclusions (``-token``), so the natural
@@ -297,9 +319,9 @@ def resolve_groups(tokens: list[str], groups: list[str]) -> list[str]:
         if not token:
             continue
         if token.startswith("-"):
-            exclude.update(_match_token(token[1:], groups))
+            exclude.update(_match_token(token[1:], groups, specs))
         else:
-            include.update(_match_token(token, groups))
+            include.update(_match_token(token, groups, specs))
     return sorted(include - exclude)
 
 
@@ -313,7 +335,7 @@ def expand_wildcard_groups(enabled_groups: list[str], specs: list[Spec]) -> list
     """
     if not enabled_groups:
         return []
-    return resolve_groups(enabled_groups, _all_groups(specs))
+    return resolve_groups(enabled_groups, _all_groups(specs), specs)
 
 
 def build_provider_index(specs: list[Spec], enabled_groups: set[str]) -> dict[str, list[tuple[str, str]]]:
