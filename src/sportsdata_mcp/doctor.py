@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from . import dates
 from .auth.none import NullAuthProvider
 from .config import Config
 from .errors import PersistedQueryNotFoundError, ToolError
@@ -63,7 +64,10 @@ def _pick_endpoint_probe(endpoints: list[Endpoint]) -> tuple[Endpoint | None, di
     in_group = endpoints
     for ep in in_group:
         if ep.examples:
-            return ep, {**_default_args(ep), **ep.examples[0].params}
+            # Render {{today}} so a probe asks for a window the provider still serves.
+            # Sportsbet 400s on a racing date five weeks old, which is how a healthy
+            # provider spent a night reported as drift.
+            return ep, dates.render_params({**_default_args(ep), **ep.examples[0].params})
     for ep in in_group:
         if not any(p.required for p in ep.params):
             return ep, _default_args(ep)
@@ -77,6 +81,21 @@ def _zero_variable_op(spec: Spec):
         if op.verified and not op.variables.strip():
             return op
     return None
+
+
+def _key_is_missing(http: HTTPClient, provider, auth_key: str) -> bool:
+    """Does this provider need a user-supplied key that is not configured here?
+
+    Both halves matter. `requires_user_key` alone is not enough — a developer WITH a key
+    should still see a real failure. And an unconfigured optional-auth provider that works
+    anonymously (ESPN Fantasy) must not be excused, because for it a 401 IS drift.
+    """
+    if not provider.requires_user_key:
+        return False
+    try:
+        return isinstance(http._auth_provider(auth_key), NullAuthProvider)
+    except Exception:  # noqa: BLE001 - a mint failure means unconfigured for our purposes
+        return True
 
 
 async def _probe_endpoint(http: HTTPClient, provider, ep: Endpoint, args: dict, echo: Echo) -> str:
@@ -97,12 +116,45 @@ async def _probe_endpoint(http: HTTPClient, provider, ep: Endpoint, args: dict, 
         return "fail"
     except ToolError as e:
         # e.g. AuthMissingError when a required secret isn't set — report, don't crash.
+        if provider.requires_user_key:
+            echo(f"  {_DIM}→ SKIP: no key configured for this provider{_RESET}")
+            return "skip"
         echo(f"  {_RED}→ FAIL: {e.message}{_RESET}")
         return "fail"
     size = len(r.content)
+    no_key = _key_is_missing(http, provider, ep.auth)
     if r.status_code >= 400:
+        # A BYO-key provider refusing an unauthenticated probe is CORRECT behaviour, not
+        # drift. Scheduled drift runs hold no keys, so failing here just trains everyone
+        # to ignore a red drift check. Any OTHER status is still a genuine signal —
+        # a 404 means the path moved whether or not we hold a key.
+        if no_key and 400 <= r.status_code < 500:
+            # ANY 4xx, not just 401/403. Providers spell "you did not authenticate"
+            # differently — Entity Sport returns 400 "Invalid request" when the token
+            # param is absent entirely — and for a provider we hold no key for, a 404 is
+            # genuinely indistinguishable from an auth refusal anyway. Pretending we can
+            # tell them apart would produce confident wrong verdicts; real coverage for
+            # these providers requires a key, i.e. the operator's local run.
+            echo(f"  {_DIM}→ SKIP: HTTP {r.status_code} — no key configured; "
+                 f"cannot distinguish refusal from drift without one{_RESET}")
+            return "skip"
         echo(f"  {_RED}→ FAIL: HTTP {r.status_code} ({size} bytes){_RESET}")
         return "fail"
+
+    # CSV is a first-class response format (football-data.co.uk publishes only CSV), so
+    # text/csv here is success, not the bot challenge it looks like to a JSON-only probe.
+    if ep.response_format == "csv":
+        ctype = r.headers.get("content-type", "")
+        if "csv" not in ctype and "text" not in ctype:
+            echo(f"  {_RED}→ FAIL: expected CSV, got {ctype or 'unknown'}{_RESET}")
+            return "fail"
+        rows = r.text.count("\n")
+        if rows < 2:
+            echo(f"  {_RED}→ FAIL: CSV had {rows} line(s) — expected a dataset{_RESET}")
+            return "fail"
+        echo(f"  {_GREEN}→ {r.status_code} OK (csv, ~{rows} rows, {size // 1024 or 1} KB){_RESET}")
+        return "ok"
+
     # Parse regardless of content-type (some APIs serve JSON as text/plain); a parse
     # failure on a non-JSON type is the real bot-challenge signal.
     try:
@@ -114,6 +166,20 @@ async def _probe_endpoint(http: HTTPClient, provider, ep: Endpoint, args: dict, 
         else:
             echo(f"  {_RED}→ FAIL: JSON content-type but body did not parse{_RESET}")
         return "fail"
+
+    # Four providers report failures INSIDE a 200. Without this, doctor reported
+    # "✓ passed" for api-tennis, cricketdata and iSportsAPI while every one of them was
+    # returning an auth-error body — a false PASS, which is worse than a false failure
+    # because it hides real breakage behind a green check.
+    try:
+        http._raise_on_error_signal(body)
+    except ToolError as e:
+        if no_key:
+            echo(f"  {_DIM}→ SKIP: 200 carrying an auth error — expected, no key configured{_RESET}")
+            return "skip"
+        echo(f"  {_RED}→ FAIL: {e.message}{_RESET}")
+        return "fail"
+
     echo(f"  {_GREEN}→ {r.status_code} OK ({_payload_shape(body)}, {size // 1024 or 1} KB){_RESET}")
     return "ok"
 
@@ -173,8 +239,17 @@ async def _run_provider(spec: Spec, enabled: set[str], cfg: Config, echo: Echo, 
                 echo(f"  {_GREEN}→ token acquired ({name}){_RESET}")
                 res.ok += 1
             except Exception as e:  # noqa: BLE001 — doctor reports any mint failure
-                echo(f"  {_RED}→ FAIL: {e}{_RESET}")
-                res.failed += 1
+                # A BYO-key provider with REQUIRED auth (DataGolf, X) raises here rather
+                # than collapsing to the null provider. Not holding a key is not drift,
+                # and reporting it as such is why both sat on the known-blocked list —
+                # which permanently blinds the check to their REAL drift. Skipping here
+                # instead keeps that list for genuinely blocked providers.
+                if provider.requires_user_key:
+                    echo(f"  {_DIM}→ SKIP: no key configured for this provider{_RESET}")
+                    res.skipped += 1
+                else:
+                    echo(f"  {_RED}→ FAIL: {e}{_RESET}")
+                    res.failed += 1
 
         # 2. One representative probe per enabled group.
         for group in sorted(prov_groups):

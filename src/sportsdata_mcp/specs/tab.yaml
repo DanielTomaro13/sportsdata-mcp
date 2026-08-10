@@ -88,7 +88,7 @@ endpoints:
     response_hint: "{meetings:[{meetingName, location, raceType, venueMnemonic, trackCondition, races:[{raceNumber, raceName, raceStartTime}], _links:{races}}]}"
     examples:
       - description: "All meetings for a day"
-        params: {date: "2026-06-04"}
+        params: {date: "{{today}}"}
 
   - name: tab_racing_meeting_races
     group: tab.racing
@@ -104,7 +104,7 @@ endpoints:
     response_hint: "{races:[{raceNumber, raceName, raceStartTime, raceStatus, hasFixedOdds, _links:{self, form}}]}"
     examples:
       - description: "Races at the Hawkesbury thoroughbred meeting"
-        params: {date: "2026-06-04", raceType: "R", venueMnemonic: "HAW"}
+        params: {date: "{{today}}", raceType: "R", venueMnemonic: "HAW"}
 
   - name: tab_racing_race
     group: tab.racing

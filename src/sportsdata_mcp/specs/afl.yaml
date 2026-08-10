@@ -261,7 +261,7 @@ endpoints:
     response_hint: "{meta:{pagination}, matches:[{id, providerId, round, home, away, venue, utcStartTime, status}]}"
     examples:
       - description: "Live + upcoming AFL matches from a date"
-        params: {status: "L,U", startDate: "2026-05-25", competitionId: "1"}
+        params: {status: "L,U", startDate: "{{today}}", competitionId: "1"}
 
   - name: afl_match_get
     group: afl.public.core

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 import httpx
 from mcp.types import ToolAnnotations
 
-from . import telemetry
+from . import dates, telemetry
 from .classify import apply_classify
 from .config import Config
 from .dispatchers.graphql_persisted import make_graphql_dispatcher
@@ -158,7 +158,14 @@ def _describe(tool: Endpoint | Dispatcher, *, shapes_verified: bool = True) -> s
         )
     examples = getattr(tool, "examples", None) or []
     if examples:
-        lines.append(f"\nExample: {examples[0].description}")
+        ex = examples[0]
+        lines.append(f"\nExample: {ex.description}")
+        # Render {{today}} tokens so the model sees a CURRENT date. A literal date baked
+        # into a spec months ago actively teaches it to ask for a window the provider
+        # will reject.
+        if ex.params:
+            rendered = dates.render_params(ex.params)
+            lines.append(f"  {json.dumps(rendered, default=str)}")
     return "\n".join(lines)
 
 

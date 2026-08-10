@@ -28,7 +28,7 @@ endpoints:
     response_hint: "{meetings:[{competitionId, name, raceType, events:[{eventId, raceNumber, advertisedStartTime}]}]}"
     examples:
       - description: "All racing for a given day"
-        params: {eventDate: "2026-07-02"}
+        params: {eventDate: "{{today}}"}
 
   - name: sportsbet_racing_event_meeting
     group: sportsbet.racing
@@ -202,7 +202,7 @@ endpoints:
     response_hint: "{classList:[{classId, className, classDisplayOrder}]}"
     examples:
       - description: "Sports with events in the next 24 hours"
-        params: {fromDate: "2026-07-02T10:00:00", toDate: "2026-07-03T10:00:59"}
+        params: {fromDate: "{{today}}T10:00:00", toDate: "{{today+1}}T10:00:59"}
 
   - name: sportsbet_nav_hierarchy
     group: sportsbet.sports

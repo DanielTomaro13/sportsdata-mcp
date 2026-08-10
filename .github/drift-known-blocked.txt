@@ -4,10 +4,15 @@
 # (a stale entry here silently masks real drift for that provider). Full
 # unblocked coverage stays the operator machine's job (local doctor / ops plane).
 #
-# Calibrated 2026-07-02 (run 28560807151):
-# — no API key available on CI (auth-required, not drift):
-datagolf
-twitter
+# Calibrated 2026-07-02 (run 28560807151); revised 2026-08-11.
+#
+# REMOVED 2026-08-11: datagolf, twitter. They were listed under "no API key on CI",
+# but that is now handled properly in the engine — doctor SKIPs any provider with
+# `requires_user_key: true` whose key is absent, and still FAILs it the moment a key
+# IS configured (verified: a bogus DATAGOLF_KEY produces FAIL: HTTP 403, not a skip).
+# Leaving them here would have permanently blinded this check to their real drift,
+# which is the exact failure the note above warns about.
+#
 # — geo/bot-blocked from cloud IPs (403 / bot challenge / edge 503):
 betfair
 betr

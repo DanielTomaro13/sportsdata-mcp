@@ -156,7 +156,7 @@ endpoints:
     response_hint: "[{groupLabel, meetings:[{meetingId, venue, racingType, races:[{raceId, raceNumber, advertisedStartTimeUtc}]}]}]"
     examples:
       - description: "All meetings for one day"
-        params: {startDate: "2026-06-04T00:00:00.000Z", endDate: "2026-06-04T23:59:59.000Z"}
+        params: {startDate: "{{today}}T00:00:00.000Z", endDate: "{{today}}T23:59:59.000Z"}
 
   - name: pointsbet_racing_featured
     group: pointsbet.racing
@@ -268,7 +268,7 @@ endpoints:
     response_hint: "{RaceId, RaceNumber, RaceName, RacePreview:{PredictedOrder:[]}, RaceTips:[{Comment}]}"
     examples:
       - description: "Form for Sandown race 1"
-        params: {country: "aus", venue: "sandown", meetingNumber: 1, date: "2026-06-03-am", raceNumber: "01"}
+        params: {country: "aus", venue: "sandown", meetingNumber: 1, date: "{{today}}-am", raceNumber: "01"}
 
   # ─── pointsbet.content — promotions + static CMS assets ────────────────
   - name: pointsbet_promotions

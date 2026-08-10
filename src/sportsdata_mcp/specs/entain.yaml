@@ -62,7 +62,7 @@ endpoints:
     response_hint: "{compounds, domestic_countries, meetings:{}, races:{}, venues:{}}"
     examples:
       - description: "Melbourne card for a given day"
-        params: {date: "2026-05-25", timezone: "Australia/Melbourne"}
+        params: {date: "{{today}}", timezone: "Australia/Melbourne"}
 
   - name: entain_racing_next_races
     group: entain.rest

@@ -95,7 +95,7 @@ endpoints:
     response_hint: "{filters, resultSet:{count, first, last, played}, matches:[{id, utcDate, status, matchday, stage, competition:{id, name, code}, homeTeam:{id, name, shortName, tla, crest}, awayTeam:{…}, score:{winner, duration, fullTime:{home, away}, halfTime:{…}}}]}  — envelope VERIFIED; the match object shape is from the vendor's docs. Note the score lives in score.fullTime, not on the match."
     examples:
       - description: "Matches in a date window"
-        params: {dateFrom: "2025-08-16", dateTo: "2025-08-18"}
+        params: {dateFrom: "{{today}}", dateTo: "{{today+2}}"}
 
   - name: footballdataorg_competition
     group: footballdataorg.football

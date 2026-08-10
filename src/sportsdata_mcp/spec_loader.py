@@ -10,7 +10,9 @@ from __future__ import annotations
 import fnmatch
 import json
 import logging
+import re
 from collections import defaultdict
+from datetime import UTC, date, datetime
 from importlib import resources
 from pathlib import Path
 
@@ -196,6 +198,27 @@ def lint(specs_dir: Path | None = None) -> tuple[list[str], list[str]]:
                     )
                 else:
                     provider_index[cap_id].append((spec.provider.id, tool.name))
+
+    # A hardcoded recent date in an example rots on a clock: providers reject a window
+    # weeks in the past (Sportsbet 400s), so the nightly drift check goes red for a
+    # perfectly healthy provider — and the model, which is shown the example, is taught
+    # to ask for a date that will be refused. Use a {{today}} token instead.
+    today = datetime.now(tz=UTC).date()
+    for spec in specs:
+        for ep in spec.endpoints:
+            for ex in ep.examples:
+                for key, value in (ex.params or {}).items():
+                    for item in value if isinstance(value, list) else [value]:
+                        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str(item))
+                        if not m:
+                            continue
+                        age = (today - date(*map(int, m.groups()))).days
+                        if 0 < age < 400:
+                            errors.append(
+                                f"{spec.provider.id}/{ep.name}: example param `{key}` uses the literal "
+                                f"date {item} ({age} days old). Use a token — {{{{today}}}}, "
+                                f"{{{{today+1}}}}, {{{{today-1}}}} — so it cannot rot."
+                            )
 
     # Single-provider warning
     for cap in catalogue.capabilities:
