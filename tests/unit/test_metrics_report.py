@@ -1,12 +1,12 @@
-"""The weekly metrics email must render from whatever the collectors managed to fetch.
+"""`metrics.py --html` must render from whatever the collectors managed to fetch.
 
 Every upstream here is best-effort: pypistats rate-limits unauthenticated callers, and
 the GitHub traffic API is unavailable unless the token has admin read. A report that
-raises on a missing section would turn "one API was slow" into "no email this week",
-which is the opposite of useful.
+raised on a missing section would turn "one API was slow" into "no report", which is the
+opposite of useful.
 
-There is no network in these tests — they feed `html_report` fixed dicts, which is the
-only part that has to be right for the email to arrive.
+No network in these tests — they feed `html_report` fixed dicts, which is the only part
+that has to be right.
 """
 
 from __future__ import annotations
@@ -90,19 +90,3 @@ def test_an_empty_report_still_renders():
 def test_trend_arithmetic(now, before, expect):
     assert expect in metrics._trend(now, before)
 
-
-def test_the_workflow_and_the_script_agree_on_flags():
-    """A rename here would break the weekly email silently — the workflow is not covered
-    by any other test."""
-    wf = (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/weekly-metrics.yml").read_text()
-    assert "--json --out report.json" in wf
-    assert "--html --from-json report.json --out report.html" in wf
-    # The report carries admin-only traffic data and this repo is public: it must be
-    # mailed from a file, never echoed into a world-readable log or job summary.
-    assert "html_body: file://report.html" in wf
-    # Check the RUNNABLE lines only — the file's header comment names
-    # $GITHUB_STEP_SUMMARY precisely to warn the next person off it, and a naive
-    # substring search flags that warning as the violation it exists to prevent.
-    runnable = "\n".join(ln for ln in wf.splitlines() if not ln.lstrip().startswith("#"))
-    assert "GITHUB_STEP_SUMMARY" not in runnable
-    assert "cat report" not in runnable

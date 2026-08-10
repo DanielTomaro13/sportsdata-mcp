@@ -248,10 +248,12 @@ def _row(label: str, value: str, note: str = "") -> str:
 
 
 def html_report(d: dict) -> str:
-    """Email body.
+    """The same report as `report()`, formatted for a browser.
 
-    Deliberately plain: tables and inline styles only, because email clients strip
-    stylesheets, flexbox and grid. No images, so nothing is blocked by default.
+        python scripts/metrics.py --html --out report.html && open report.html
+
+    Deliberately plain — tables and inline styles only, no images or scripts — so it
+    survives being pasted into anything that renders HTML, not just a browser.
     """
     rows_reach, rows_people, rows_src = [], [], []
 
@@ -303,8 +305,8 @@ def html_report(d: dict) -> str:
         'Downloads are a loose upper bound: one user with a daily CI job is ~30/month. '
         'Unique cloners are the nearest thing to a floor on real humans — the truth is '
         'between them, nearer the floor.<br><br>'
-        'Nothing here comes from a user\'s machine. Sent by the <code>weekly-metrics</code> '
-        'workflow; edit the schedule in <code>.github/workflows/weekly-metrics.yml</code>.'
+        'Nothing here comes from a user\'s machine — see docs/TELEMETRY.md for the opt-in '
+        'signal that does, and what it deliberately does not collect.'
         '</p></div></body></html>'
     )
 
