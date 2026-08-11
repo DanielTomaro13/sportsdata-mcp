@@ -1,0 +1,204 @@
+spec_version: 1
+
+# UFC — the official ufc.com JSON:API. No key.
+#
+# WHY THIS AND NOT ufcstats.com. ufcstats.com is the obvious place to look, and it is a
+# dead end: it serves a JavaScript proof-of-work bot challenge ("Checking your browser…")
+# with `<meta name="robots" content="noindex">` and ZERO data rows in the HTML. Getting
+# at it would mean solving that challenge in a JS runtime — building bot-detection
+# evasion, which this project will not do.
+#
+# ufc.com turns out to be the better source anyway. It runs Drupal with the JSON:API
+# module publicly exposed at /jsonapi (290 resource types), and `athlete_stat` carries
+# THE SAME FightMetric dataset ufcstats publishes — right down to the same
+# `fightmetric_id` identifier space. Official, JSON, keyless, and robots-permitted.
+#
+# ROBOTS: ufc.com/robots.txt allows these paths (only /admin, /user, /search and the
+# faceted-filter URLs are disallowed) and asks for `crawl-delay: 15`. That directive
+# targets crawlers walking a site, not a client making occasional API calls, but the
+# rate limit below is deliberately low out of respect for it. Do not raise it to "make
+# things faster" — a provider that gets this server blocked helps nobody.
+#
+# THIS IS A CMS FEATURE, NOT A PRODUCT API. Drupal's JSON:API is undocumented as a UFC
+# product and could change or close without notice. That is normal for this catalogue,
+# and the nightly drift check is what will notice.
+#
+# JSON:API CONVENTIONS, which are unlike every other provider here:
+#   * Every response is {data: [...], links: {next, self}} and `data[].attributes` holds
+#     the fields — NOT the top level.
+#   * Related records are NOT inlined. `include=athlete_stat` adds them to a SEPARATE
+#     top-level `included` array; you match them by `data[].relationships.<name>.data.id`.
+#     This is the single biggest gotcha: without `include`, a fighter has no statistics.
+#   * Filters use bracketed params: `filter[title]=Exact`, or
+#     `filter[title][value]=X` + `filter[title][operator]=CONTAINS` for a search.
+#   * Sorting takes a field name, `-` prefixed for descending.
+
+provider:
+  id: ufc
+  display_name: "UFC (official ufc.com JSON:API — no key)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/UFC.md"
+  base_urls:
+    default: https://www.ufc.com/jsonapi
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/vnd.api+json"
+  auth:
+    default:
+      type: none
+  defaults:
+    # robots.txt asks for crawl-delay: 15. See the header note before changing this.
+    rate_limit_rps: 0.5
+    burst: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 2.0
+
+endpoints:
+  # ─── Events ───────────────────────────────────────────────────────────
+  - name: ufc_events
+    group: ufc.events
+    capabilities: [sport.fixtures_by_date, sport.competitions_list]
+    summary: "UFC events — past and upcoming — with per-segment card times, venue and location."
+    base: default
+    path: /node/event
+    auth: default
+    params:
+      - { name: sort, in: query, type: string, default: "-fight_card_time_main", description: "Field to sort by; '-' prefix descends. '-fight_card_time_main' is newest-first by main-card time, which is what you almost always want." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 20, description: "Rows per page (max 50)." }
+      - { name: offset, in: query, api_name: "page[offset]", type: integer, description: "Rows to skip, for paging." }
+      - { name: title, in: query, api_name: "filter[title]", type: string, description: "Exact event title, e.g. 'UFC 330'. For a partial match use ufc_search." }
+      - { name: include, in: query, type: string, description: "Related resources to attach, e.g. 'fights,venue'. They arrive in a SEPARATE top-level `included` array, not inline." }
+    response_hint: "{data:[{type:'node--event', id, attributes:{title:'UFC 330', number:330, subtitle, main_fight_name, fight_card_time_early, fight_card_time_prelims, fight_card_time_main, event_card_location:'Xfinity Mobile Arena, Philadelphia United States', main_card_time_localized, fightmetric_id, path:{alias:'/event/ufc-330'}}, relationships:{fights, venue, event_status, title_fight}}], links:{next, self}}  — the three card times are the early prelims, prelims and main card, each with a timezone offset."
+    examples:
+      - description: "The most recent events"
+        params: {sort: "-fight_card_time_main", limit: 10}
+
+  - name: ufc_event_card
+    group: ufc.events
+    capabilities: [sport.match_detail, sport.competition_screen]
+    summary: "One event WITH its full fight card attached. Use this rather than ufc_events when you want the bouts."
+    base: default
+    path: /node/event
+    auth: default
+    params:
+      - { name: title, in: query, api_name: "filter[title]", type: string, required: true, description: "Exact event title, e.g. 'UFC 330'." }
+      - { name: include, in: query, type: string, default: "fights,fights.red_corner,fights.blue_corner,venue", description: "Leave as-is to get the bouts with both fighters resolved." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 1, description: "Rows per page." }
+    response_hint: "{data:[{attributes:{title, fight_card_time_main, event_card_location}, relationships:{fights:{data:[{type:'node--fight', id}]}}}], included:[{type:'node--fight', id, attributes:{title:'Fighter A vs Fighter B'}, relationships:{red_corner, blue_corner, fight_final_winner}}, {type:'node--athlete', …}]}  — the CARD IS IN `included`, matched to `data[0].relationships.fights.data[].id`. Nothing useful is inline."
+    examples:
+      - description: "A numbered event's full card"
+        params: {title: "UFC 330"}
+
+  - name: ufc_fights
+    group: ufc.events
+    capabilities: [sport.match_score, sport.match_detail]
+    summary: "Individual bouts — both corners and the winner — back to UFC 1."
+    base: default
+    path: /node/fight
+    auth: default
+    params:
+      - { name: sort, in: query, type: string, default: "-changed", description: "Sort field; '-' descends." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 20, description: "Rows per page (max 50)." }
+      - { name: offset, in: query, api_name: "page[offset]", type: integer, description: "Rows to skip." }
+      - { name: title, in: query, api_name: "filter[title]", type: string, description: "Exact bout title, e.g. 'Royce Gracie vs Ken Shamrock'." }
+      - { name: include, in: query, type: string, default: "red_corner,blue_corner,fight_final_winner", description: "Resolve the fighters rather than returning bare ids." }
+    response_hint: "{data:[{attributes:{title:'Royce Gracie vs Ken Shamrock', created, changed}, relationships:{red_corner:{data:{type:'node--athlete', id}}, blue_corner:{…}, fight_final_winner:{…}, fight_status}}], included:[…athletes…]}  — `fight_final_winner` is null for an upcoming or drawn bout, so do not infer a loser from its absence."
+    examples:
+      - description: "Recent bouts with fighters resolved"
+        params: {limit: 10}
+
+  # ─── Athletes ─────────────────────────────────────────────────────────
+  - name: ufc_search_athletes
+    group: ufc.athletes
+    capabilities: [ref.players]
+    summary: "Find fighters by partial name. Start here — every other athlete tool needs an exact title or an id."
+    base: default
+    path: /node/athlete
+    auth: default
+    params:
+      - { name: name, in: query, api_name: "filter[title][value]", type: string, required: true, description: "Part of the fighter's name, e.g. 'Adesanya'." }
+      - { name: operator, in: query, api_name: "filter[title][operator]", type: string, default: CONTAINS, enum: [CONTAINS, STARTS_WITH, ENDS_WITH, "="], description: "Match mode. CONTAINS is the useful default." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 10, description: "Rows per page." }
+    response_hint: "{data:[{type:'node--athlete', id:'<uuid>', attributes:{title:'Israel Adesanya', nickname, fightmetric_id, path:{alias:'/athlete/israel-adesanya'}}}]}  — keep BOTH the uuid `id` (for JSON:API lookups) and `fightmetric_id` (for joining to stats and round records)."
+    examples:
+      - description: "Search by surname"
+        params: {name: "Adesanya"}
+
+  - name: ufc_athlete
+    group: ufc.athletes
+    capabilities: [ref.players, stats.player_profile, stats.player_career]
+    summary: "One fighter with FULL career statistics and current ranking attached. The main athlete tool."
+    base: default
+    path: /node/athlete
+    auth: default
+    params:
+      - { name: title, in: query, api_name: "filter[title]", type: string, required: true, description: "Exact fighter name, e.g. 'Ilia Topuria' (from ufc_search_athletes)." }
+      - { name: include, in: query, type: string, default: "athlete_stat,athlete_ranking,stats_weight_class,fighting_style,gym,athlete_status", description: "Leave as-is. WITHOUT `athlete_stat` there are NO statistics in the response at all." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 1, description: "Rows per page." }
+    response_hint: "{data:[{attributes:{title, nickname, age, dob, octagon_debut, stats_height, stats_weight, stats_reach_arm, stats_reach_leg, strengths, origin:{country_code}, residence, fightmetric_id, short_description}}], included:[{type:'athlete_stat--athlete_stat', attributes:{…see ufc_athlete_stats for the full field list…}}, {type:'athlete_ranking--athlete_ranking', attributes:{weight_class_rank, weight_class_rank_previous, is_interim}}]}  — heights, weights and reaches are INCHES/POUNDS as decimal strings. The statistics live in `included`, NOT on the athlete."
+    examples:
+      - description: "A champion with stats and ranking"
+        params: {title: "Ilia Topuria"}
+
+  # ─── Statistics ───────────────────────────────────────────────────────
+  - name: ufc_athlete_stats
+    group: ufc.stats
+    capabilities: [stats.player_career, stats.advanced_metrics]
+    summary: "League-wide FightMetric statistics, sortable — the all-time leaderboards. For ONE fighter's stats use ufc_athlete instead; this collection cannot be filtered."
+    base: default
+    path: /athlete_stat/athlete_stat
+    auth: default
+    params:
+      - { name: sort, in: query, type: string, default: "-sig_strikes_landed", description: "Sort field, '-' descends. This is how you build a leaderboard: '-sig_strikes_landed', '-takedowns_landed', '-career_wins', '-win_ko', '-title_def'. VERIFIED to sort correctly." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 10, description: "Rows per page (max 50)." }
+      - { name: offset, in: query, api_name: "page[offset]", type: integer, description: "Rows to skip." }
+    response_hint: "{data:[{attributes:{drupal_internal__fightmetric_id, career_fights, career_wins, career_losses, career_draws, career_no_contest, win_ko, win_sub, win_dec, first_rd_fin, title_def, win_streak, former_champion, avg_fight_time (SECONDS), total_bonuses, total_performance_night, total_fight_night, sig_strikes_landed, sig_strikes_attempted, sig_strikes_accuracy, stand_str_land, stand_str_att, clinch_str_land, clinch_str_att, ground_str_land, ground_str_att, head_str_land, head_str_att, body_str_land, body_str_att, leg_str_land, leg_str_att, takedowns_landed, takedowns_attempted, takedown_acuracy, takedown_defense, takedown_average, submission_average, knockdown_average, sig_str_land_min, sig_str_abs_min, sig_str_def}}]}  — NOTE `takedown_acuracy` is spelled that way UPSTREAM (one 'c'); percentages and per-minute rates are STRINGS; `avg_fight_time` is seconds; the *_average fields are per-15-minutes, which is the standard MMA convention.\n\nWARNING: this collection CANNOT be filtered — `filter[fightmetric_id]` returns 0 rows rather than an error, even for an id present on page 1 (verified). To get one fighter, call ufc_athlete, which resolves the same record through `include` and DOES work. Sorting works fine, which is what makes this the leaderboard tool."
+    examples:
+      - description: "All-time significant-strike leaders"
+        params: {sort: "-sig_strikes_landed", limit: 10}
+
+  - name: ufc_rankings
+    group: ufc.stats
+    capabilities: [sport.rankings]
+    summary: "Divisional rankings, including pound-for-pound, with each fighter's previous position."
+    base: default
+    path: /athlete_ranking/athlete_ranking
+    auth: default
+    params:
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 50, description: "Rows per page (max 50) — a full division is ~16 rows." }
+      - { name: offset, in: query, api_name: "page[offset]", type: integer, description: "Rows to skip." }
+      - { name: fightmetric_id, in: query, api_name: "filter[fightmetric_id]", type: integer, description: "One fighter's ranking rows." }
+      - { name: sort, in: query, type: string, default: "weight_class_rank", description: "Sort field; 'weight_class_rank' ascends from the champion." }
+    response_hint: "[{attributes:{fightmetric_id, weight_class_rank, weight_class_rank_previous, meta_weight_class_rank, meta_weight_class_rank_previous, is_interim, category}}]  — `category` distinguishes the division (0 appears to be pound-for-pound); compare `weight_class_rank` with `weight_class_rank_previous` for movement. Resolve `fightmetric_id` to a name via ufc_athlete_stats or ufc_search_athletes."
+    examples:
+      - description: "Rankings from the top"
+        params: {limit: 50}
+
+  - name: ufc_round_records
+    group: ufc.records
+    capabilities: [stats.leaders_season, stats.advanced_metrics]
+    summary: "The single-round record book: most significant strikes, total strikes, takedowns and submission attempts in one round, ranked."
+    base: default
+    path: /fight_roundboard/fight_roundboard
+    auth: default
+    params:
+      - { name: sort, in: query, type: string, default: "rank", description: "Sort field; 'rank' ascends from the record holder. Sorting works; filtering does not — see the note in Returns." }
+      - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 50, description: "Rows per page (max 50). Ask for a full page and narrow by `round`/`statname` yourself — the collection cannot be filtered server-side." }
+      - { name: offset, in: query, api_name: "page[offset]", type: integer, description: "Rows to skip." }
+    response_hint: "[{attributes:{fightmetric_id, rank, round, statname, value (a STRING), combined}}]  — `combined: true` means BOTH fighters' totals in that round; `false` is one fighter's. Mixing the two produces a nonsense leaderboard, so filter on it if you care. Resolve `fightmetric_id` to a name via ufc_search_athletes.\n\nWARNING: `filter[round]` and `filter[statname]` return 0 rows rather than an error (verified) — filter the rows yourself. `statname` is one of: Significant Strikes Landed/Attempted, Total Strikes Landed/Attempted, Takedowns Landed/Attempted, Submission Attempts; `round` is 1-5."
+    examples:
+      - description: "The round record book"
+        params: {limit: 50}
+
+  - name: ufc_jsonapi_index
+    group: ufc.records
+    capabilities: []
+    summary: "The JSON:API resource index — all 290 resource types ufc.com exposes, for discovering surfaces this spec does not wrap yet."
+    base: default
+    path: /
+    auth: default
+    response_hint: "{jsonapi:{version}, links:{'node--event':{href}, 'node--athlete':{href}, 'athlete_stat--athlete_stat':{href}, …290 entries…}}  — each key is a resource type and its href is the collection URL. Useful when you need something this provider does not expose; most of the 290 are CMS plumbing (paragraphs, media, config) rather than sport data."
+    examples:
+      - description: "Every exposed resource type"
+        params: {}

@@ -6,6 +6,32 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## Unreleased
+
+### Added
+
+- **`ufc` — the official ufc.com JSON:API, keyless, 9 tools.** Events with per-segment
+  card times and venue, full fight cards, bouts back to UFC 1, fighter profiles,
+  divisional rankings, the single-round record book, and — the reason it exists — the
+  **complete FightMetric career statistics table**: significant strikes split by
+  position (standing/clinch/ground) *and* target (head/body/leg), takedowns landed,
+  attempted, accuracy and defence, submission and knockdown averages, strikes landed and
+  absorbed per minute, and career records by finish method.
+
+  This is the same dataset ufcstats.com publishes, with the same `fightmetric_id`
+  identifiers — obtained officially rather than by scraping. **ufcstats.com itself was
+  ruled out**: it serves a JavaScript proof-of-work bot challenge with `noindex` and zero
+  data rows in the HTML, so reading it would mean building bot-detection evasion.
+
+  Two traps documented and designed around. Filtering works on `node/*` resources but
+  **silently returns 0 rows** on the stat collections — even for an id on page 1 — so
+  those parameters are not exposed at all, and a test forbids re-adding them; use
+  `ufc_athlete` for one fighter and sorting for leaderboards. And `takedown_acuracy` is
+  misspelled upstream, so spelling it correctly returns nothing.
+
+  Rate-limited to 0.5 rps because `robots.txt` asks for `crawl-delay: 15` — a courtesy,
+  pinned by a test.
+
 ## 0.24.1 — 2026-08-11
 
 Quality of the tool definitions themselves, prompted by an external MCP directory
