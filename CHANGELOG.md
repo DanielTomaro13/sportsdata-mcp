@@ -6,6 +6,32 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.24.1 — 2026-08-11
+
+Quality of the tool definitions themselves, prompted by an external MCP directory
+scoring the server and reporting "0% schema parameter coverage".
+
+### Fixed
+
+- **Every parameter description was being dropped from the JSON schema.** FastMCP
+  derives each tool's schema from Python annotations, so a bare `int` produced
+  `{"type": "integer"}` and the `description:` written in every spec never reached the
+  model — the documentation this project maintains most carefully was invisible to its
+  only real reader. Parameters now carry `Annotated[T, Field(description=...)]`, so
+  descriptions **and** enums land in the schema. Coverage went **0% → 100%** (1,878 of
+  1,878), which also required documenting 64 AFL parameters that genuinely had none and
+  the dispatcher/meta tools whose parameters are defined in Python rather than YAML.
+
+### Added
+
+- **Tools state their auth requirement**: `Auth: none needed.` /
+  `Auth: needs your own key in API_TENNIS_KEY.` An agent that knows a call needs a key
+  can say so instead of retrying.
+- **Server `instructions`** explaining how to choose between overlapping providers, said
+  once rather than repeated on 758 tool descriptions — inlining it cost ~12k tokens a
+  session to say the same thing 758 times. Specific alternatives are still named on the
+  45 tools where the list is short enough to be the answer.
+
 ## 0.24.0 — 2026-08-11
 
 **32 new providers (28 → 60) and 753 tools.** The largest release so far: a complete
