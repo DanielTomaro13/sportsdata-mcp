@@ -188,7 +188,25 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
 
     # version is reported in the MCP `initialize` handshake so a client (the agents
     # platform) can detect a too-old data plane and warn on a contract mismatch.
-    mcp = FastMCP("sportsdata-mcp", version=__version__, lifespan=lifespan)
+    # Said once here rather than repeated on every tool description: with 60 providers
+    # there is heavy overlap, and the guidance a model needs about CHOOSING between them
+    # is the same for all of them. Inlining it per tool cost ~12k tokens a session.
+    instructions = (
+        "Live sports data and cross-book betting odds across many providers.\n\n"
+        "Choosing a tool: several providers often answer the same question. Every tool is "
+        "tagged with provider-agnostic capability slugs (e.g. `sport.fixtures_by_date`, "
+        "`stats.ladder`), and `list_tools_by_capability` lists the alternatives for one — "
+        "use it when you need to compare providers or when the obvious tool returns "
+        "nothing. `list_available_groups` shows what is enabled and what each provider "
+        "needs.\n\n"
+        "Prefer an official league feed (mlb, nhl, nba, premierleague, afl, nrl) for that "
+        "league's own data, and a bookmaker or aggregator for prices. A tool whose "
+        "description says its shape is unverified was documented from the vendor's docs "
+        "rather than a live response — read the payload you actually receive.\n\n"
+        "All tools are read-only GETs against third-party APIs. Some need a key you supply "
+        "yourself; each such tool names the environment variable in its description."
+    )
+    mcp = FastMCP("sportsdata-mcp", version=__version__, lifespan=lifespan, instructions=instructions)
 
     groups = group_index
     provider_auth = _provider_auth(specs)

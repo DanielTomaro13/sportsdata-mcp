@@ -12,6 +12,7 @@ import inspect
 import json
 import logging
 import time
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Annotated
@@ -179,7 +180,64 @@ def _build_body(ep: Endpoint, kwargs: dict) -> dict | list | None:
 # ─── Descriptions ──────────────────────────────────────────────────────
 
 
-def _describe(tool: Endpoint | Dispatcher, *, shapes_verified: bool = True) -> str:
+def _auth_line(provider) -> str:
+    """One line telling the model what this tool needs before it will work.
+
+    An agent that knows a call needs API_TENNIS_KEY can say so instead of retrying, and
+    one that knows a provider is keyless will not ask the user for a key it does not
+    need. Both are questions a tool description should answer without a round trip.
+    """
+    if provider is None:
+        return ""
+    envs = sorted({
+        env
+        for auth in provider.auth.values()
+        for attr in ("env", "username_env")
+        if (env := getattr(auth, attr, None))
+    })
+    if provider.requires_user_key and envs:
+        return f"\nAuth: needs your own key in {' or '.join(envs)}."
+    if envs:
+        return f"\nAuth: works without a key; {' or '.join(envs)} unlocks more if set."
+    return "\nAuth: none needed."
+
+
+def _alternatives_line(tool, provider, cap_index) -> str:
+    """Which OTHER tools answer the same question.
+
+    This catalogue has 60 providers and heavy overlap — several answer "fixtures for a
+    date". Without this a model picks whichever it saw first, which is often not the best
+    one for that sport. The capability tags already encode the equivalence; this just
+    surfaces it where the choice is actually made.
+    """
+    if not cap_index or provider is None:
+        return ""
+    peers: list[str] = []
+    for cap in getattr(tool, "capabilities", []) or []:
+        for other_provider, other_tool in cap_index.get(cap, []):
+            if other_provider != provider.id and other_tool not in peers:
+                peers.append(other_tool)
+    if not peers:
+        return ""
+    # Naming three of sixty-eight is worse than naming none: the three are whichever
+    # sorted first, so the "suggestion" is really alphabetical bias dressed up as advice.
+    # Name them only when the list is short enough to BE the answer; otherwise give the
+    # count and point at the tool that can actually rank them.
+    if len(peers) > 3:
+        # Repeating "68 other tools answer this, go compare them" on 758 tools costs
+        # ~12k tokens per session to say the same thing 758 times. It belongs ONCE, in
+        # the server instructions, which is where it now lives.
+        return ""
+    return f"\nAlso answers this: {', '.join(peers)}."
+
+
+def _describe(
+    tool: Endpoint | Dispatcher,
+    *,
+    shapes_verified: bool = True,
+    provider=None,
+    cap_index: dict | None = None,
+) -> str:
     lines = [tool.summary.strip()]
     hint = getattr(tool, "response_hint", None)
     lines.append(f"\nReturns: {hint or '(JSON object)'}")
@@ -203,6 +261,10 @@ def _describe(tool: Endpoint | Dispatcher, *, shapes_verified: bool = True) -> s
         if ex.params:
             shown = dates.render_for_display(ex.params)
             lines.append(f"  {json.dumps(shown, default=str)}")
+    if auth := _auth_line(provider):
+        lines.append(auth)
+    if alts := _alternatives_line(tool, provider, cap_index):
+        lines.append(alts)
     return "\n".join(lines)
 
 
@@ -376,6 +438,16 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
     registered = Registered()
     enabled = set(cfg.enabled_groups)
 
+    # Which other tools answer the same question. Built from the ENABLED set only — a
+    # description pointing at a tool this server did not register sends the model hunting
+    # for something that does not exist, which is worse than offering no alternative.
+    cap_index: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for spec in specs:
+        for tool in spec.all_tools():
+            if tool.group in enabled:
+                for cap in tool.capabilities or []:
+                    cap_index[cap].append((spec.provider.id, tool.name))
+
     for spec in specs:
         provider = spec.provider
         # Only build a client for a provider that has at least one enabled group.
@@ -392,7 +464,10 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             handler = _guard(make_endpoint_handler(endpoint, http), endpoint.name, endpoint.group)
             mcp.tool(
                 name=endpoint.name,
-                description=_describe(endpoint, shapes_verified=provider.shapes_verified),
+                description=_describe(
+                    endpoint, shapes_verified=provider.shapes_verified,
+                    provider=provider, cap_index=cap_index,
+                ),
                 annotations=_READ_ONLY,
             )(handler)
             registered.tools.append(endpoint.name)
@@ -405,7 +480,10 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             )
             mcp.tool(
                 name=dispatcher.name,
-                description=_describe(dispatcher, shapes_verified=provider.shapes_verified),
+                description=_describe(
+                    dispatcher, shapes_verified=provider.shapes_verified,
+                    provider=provider, cap_index=cap_index,
+                ),
                 annotations=_READ_ONLY,
             )(handler)
             registered.tools.append(dispatcher.name)

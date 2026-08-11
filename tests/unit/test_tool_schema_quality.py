@@ -101,3 +101,72 @@ async def test_required_parameters_are_marked_required(all_tools):
                 f"{ep.name}: {sorted(required - schema_required)} required in the spec but "
                 f"optional in the schema"
             )
+
+
+# ─── what the description tells a model beyond the shape ────────────────
+
+
+async def test_every_tool_states_its_auth_requirement(all_tools):
+    """An agent that knows a call needs API_TENNIS_KEY can say so instead of retrying,
+    and one that knows a provider is keyless will not ask the user for a key it does not
+    need. Both are answerable without a round trip."""
+    silent = [t.name for t in all_tools if "Auth:" not in (t.description or "")]
+    # Meta-tools touch no provider, so they have nothing to declare.
+    silent = [n for n in silent if not n.startswith(("list_", "sportsdata_"))]
+    assert not silent, f"tools that do not state their auth requirement: {silent[:10]}"
+
+
+async def test_byo_tools_name_the_env_var_in_their_description(all_tools):
+    from sportsdata_mcp.spec_loader import load_all_specs
+
+    byo = {s.provider.id: s for s in load_all_specs() if s.provider.requires_user_key}
+    for t in all_tools:
+        spec = byo.get(t.name.split("_")[0])
+        if spec is None:
+            continue
+        envs = [
+            env for a in spec.provider.auth.values()
+            for attr in ("env", "username_env")
+            if (env := getattr(a, attr, None))
+        ]
+        assert any(e in (t.description or "") for e in envs), f"{t.name} names no env var"
+
+
+async def test_alternatives_are_only_listed_when_they_are_actionable(all_tools):
+    """Naming three of sixty-eight is alphabetical bias dressed as advice, and repeating
+    "go compare" on every tool cost ~12k tokens a session to say one thing 758 times.
+    Specific names appear only for a short list; the general guidance lives once, in the
+    server instructions."""
+    for t in all_tools:
+        line = next((ln for ln in (t.description or "").splitlines() if ln.startswith("Also answers this:")), None)
+        if line:
+            assert line.count(",") <= 2, f"{t.name} lists too many alternatives to be useful: {line}"
+        assert "list_tools_by_capability` compares them" not in (t.description or "")
+
+
+async def test_the_server_carries_instructions():
+    """The place to say "several providers answer the same question" once."""
+    mcp, reg = build_server(Config(enabled_groups=["nhl.*"]))
+    try:
+        text = mcp.instructions or ""
+        assert "list_tools_by_capability" in text
+        assert "capability" in text
+        assert 200 < len(text) < 2000, f"instructions are {len(text)} chars"
+    finally:
+        await reg.aclose()
+
+
+async def test_alternatives_never_point_at_an_unregistered_tool():
+    """A suggestion the server did not register sends the model hunting for something
+    that does not exist — worse than offering no alternative at all."""
+    mcp, reg = build_server(Config(enabled_groups=["nhl.*", "mlb.*"]))
+    try:
+        tools = await mcp.list_tools()
+        names = {t.name for t in tools}
+        for t in tools:
+            for ln in (t.description or "").splitlines():
+                if ln.startswith("Also answers this:"):
+                    for ref in ln.split(":", 1)[1].strip().rstrip(".").split(", "):
+                        assert ref in names, f"{t.name} points at unregistered {ref}"
+    finally:
+        await reg.aclose()
