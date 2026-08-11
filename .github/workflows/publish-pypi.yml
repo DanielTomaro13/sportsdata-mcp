@@ -38,7 +38,13 @@ jobs:
           python -m pip install --upgrade build
           python -m build
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        # Bumped from v1.12.4 after v0.24.1 failed with
+        #   InvalidDistribution: '2.5' is not a valid metadata version
+        # Nothing was wrong with the wheel: hatchling now emits Metadata-Version 2.5
+        # and the twine inside the older action predates it. Build deps are not
+        # pinned, so the runner picked up a newer hatchling and the stale validator
+        # rejected a perfectly good artifact.
         with:
           # tag-push + release + dispatch can overlap for one version; a
           # re-upload of an already-published version is then a clean no-op
