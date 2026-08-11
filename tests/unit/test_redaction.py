@@ -113,3 +113,62 @@ def test_install_is_idempotent(monkeypatch):
         assert count == 1
     finally:
         root.removeHandler(handler)
+
+
+def test_secrets_from_a_config_file_are_redacted_too(monkeypatch, tmp_path, caplog):
+    """A key kept OUT of the environment must still be scrubbed from logs.
+
+    The logger is configured before any config file is read, so config secrets
+    can only arrive on a later install() call. That call used to be skipped
+    whenever a filter was already attached — which meant the safest place to
+    put a key was the one place it would not be redacted.
+    """
+    import logging
+
+    from sportsdata_mcp import redact
+
+    monkeypatch.delenv("DATAGOLF_KEY", raising=False)
+
+    root = logging.getLogger()
+    handler = logging.StreamHandler()
+    root.addHandler(handler)
+    try:
+        # installed first, knowing nothing (as at start-up)
+        monkeypatch.setenv("SPORTSDATA_LICENSE", "licence-value-1234")
+        redact.install()
+
+        secret = "datagolf-secret-key-987654"
+        filt = redact.install(extra_secrets={"DATAGOLF_KEY": secret})
+        assert filt is not None
+
+        scrubbed = filt._scrub(f"GET https://feeds.datagolf.com/preds?key={secret}")
+        assert secret not in scrubbed
+        assert "***REDACTED***" in scrubbed
+        # the earlier secret must survive the extension, not be replaced by it
+        assert "***REDACTED***" in filt._scrub("licence licence-value-1234")
+    finally:
+        root.removeHandler(handler)
+
+
+def test_loading_a_config_registers_its_secrets(monkeypatch, tmp_path):
+    """load_config wires its own secrets in, so no call site has to remember."""
+    import logging
+
+    from sportsdata_mcp import redact
+    from sportsdata_mcp.config import load_config
+
+    secret = "config-file-key-abcdef123456"
+    path = tmp_path / "sportsdata-mcp.yaml"
+    path.write_text(f'secrets:\n  DATAGOLF_KEY: "{secret}"\n')
+
+    root = logging.getLogger()
+    handler = logging.StreamHandler()
+    root.addHandler(handler)
+    try:
+        redact.install()
+        load_config(explicit_path=path)
+        filters = [f for h in root.handlers for f in h.filters if isinstance(f, redact.RedactingFilter)]
+        assert filters, "loading a config with secrets must install a redactor"
+        assert secret not in filters[0]._scrub(f"?key={secret}")
+    finally:
+        root.removeHandler(handler)

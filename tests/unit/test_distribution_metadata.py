@@ -109,3 +109,25 @@ def test_free_is_the_advertised_default_everywhere():
     manifest = json.loads((ROOT / "manifest.json").read_text())
     assert manifest["user_config"]["groups"]["default"] == "free"
     assert 'default: "free"' in (ROOT / "smithery.yaml").read_text()
+
+
+def test_server_json_description_fits_the_registry_limit():
+    """The MCP registry rejects a description over 100 characters with a 422, and it does
+    so at publish time — after PyPI has already gone out, which is the worst moment to
+    discover it. v0.24.1's first registry publish failed exactly this way at 143 chars.
+    """
+    description = json.loads((ROOT / "server.json").read_text())["description"]
+    assert len(description) <= 100, f"{len(description)} chars: {description}"
+
+
+def test_server_json_matches_the_registry_schema_shape():
+    """Cheap structural check on the fields the registry validates, so a malformed entry
+    fails here rather than after a release is already public."""
+    d = json.loads((ROOT / "server.json").read_text())
+    assert d["name"].startswith("io.github."), d["name"]
+    assert d["repository"]["url"].startswith("https://github.com/")
+    assert d["packages"], "no package declared — the registry entry would be uninstallable"
+    for pkg in d["packages"]:
+        assert pkg["registryType"] == "pypi"
+        assert pkg["identifier"] == "sportsdata-mcp"
+        assert pkg["transport"]["type"] in {"stdio", "http", "sse", "streamable-http"}

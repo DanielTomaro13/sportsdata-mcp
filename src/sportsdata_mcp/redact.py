@@ -53,7 +53,7 @@ def secret_values(specs=None, extra: dict[str, str] | None = None) -> set[str]:
     for spec in specs:
         for auth in spec.provider.auth.values():
             for attr in ("env", "username_env", "password_env", "client_id_env", "client_secret_env"):
-                if (name := getattr(auth, attr, None)):
+                if name := getattr(auth, attr, None):
                     names.add(name)
 
     values = {v for name in names if (v := os.environ.get(name))}
@@ -77,6 +77,16 @@ class RedactingFilter(logging.Filter):
         # Longest first: if one secret contains another, redacting the short one first
         # would leave a recognisable fragment of the long one behind.
         self._values = sorted(values, key=len, reverse=True)
+
+    def extend(self, values: set[str]) -> None:
+        """Add secrets discovered after the filter was installed.
+
+        Config-file secrets are not visible at install time — the logger is set
+        up before any config is read — so without this a key kept OUT of the
+        environment (the safer place for it) would be the one thing not
+        redacted.
+        """
+        self._values = sorted(set(self._values) | values, key=len, reverse=True)
 
     def _scrub(self, text: str) -> str:
         for value in self._values:
@@ -114,14 +124,23 @@ class RedactingFilter(logging.Filter):
 
 
 def install(extra_secrets: dict[str, str] | None = None) -> RedactingFilter | None:
-    """Attach the filter to the root logger's handlers. Safe to call more than once."""
+    """Attach the filter to the root logger's handlers. Safe to call more than once.
+
+    A second call with NEW secrets extends the filter already installed rather
+    than being skipped. That matters: the logger is configured before any config
+    file is read, so config-file secrets can only ever arrive on a later call,
+    and silently ignoring them would leave exactly those unredacted.
+    """
     values = secret_values(extra=extra_secrets)
     if not values:
         return None
-    filt = RedactingFilter(values)
     root = logging.getLogger()
+    existing = [f for handler in root.handlers for f in handler.filters if isinstance(f, RedactingFilter)]
+    if existing:
+        for filt in existing:
+            filt.extend(values)
+        return existing[0]
+    filt = RedactingFilter(values)
     for handler in root.handlers:
-        # Don't stack duplicates if a caller re-installs after adding a handler.
-        if not any(isinstance(f, RedactingFilter) for f in handler.filters):
-            handler.addFilter(filt)
+        handler.addFilter(filt)
     return filt

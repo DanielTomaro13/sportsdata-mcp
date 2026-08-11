@@ -119,6 +119,15 @@ def load_config(explicit_path: Path | None = None, specs_dir: Path | None = None
     if not cfg.enabled_groups:
         cfg.enabled_groups = ["*"]
 
+    # Secrets kept in the config file rather than the environment are invisible to
+    # the redaction filter installed at start-up, because the logger is configured
+    # before any config is read. Register them here rather than at each call site:
+    # the whole point of that module is not depending on someone remembering.
+    if cfg.secrets:
+        from . import redact
+
+        redact.install(extra_secrets=cfg.secrets)
+
     # SPORTSDATA_MCP_MAX_BYTES sets the global response-size cap; 0 disables it.
     env_max = os.environ.get("SPORTSDATA_MCP_MAX_BYTES")
     if env_max:
