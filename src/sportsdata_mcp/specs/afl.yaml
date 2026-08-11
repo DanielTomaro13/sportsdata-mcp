@@ -65,8 +65,8 @@ endpoints:
     path: /afl/v2/compseasons
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 150 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 150, description: "Rows per page." }
     response_hint: "{meta:{pagination}, compSeasons:[{id, providerId, name, competition, season}]}"
 
   - name: afl_competition_compseasons
@@ -77,8 +77,8 @@ endpoints:
     path: /afl/v2/competitions/{competitionId}/compseasons
     auth: public
     params:
-      - { name: competitionId, in: path, type: integer }
-      - { name: pageSize, in: query, type: integer, default: 20 }
+      - { name: competitionId, in: path, type: integer, description: "Competition id (from afl_competitions_list)." }
+      - { name: pageSize, in: query, type: integer, default: 20, description: "Rows per page." }
     response_hint: "{meta, compSeasons:[...]}"
 
   - name: afl_compseason_get
@@ -99,9 +99,9 @@ endpoints:
     path: /afl/v2/compseasons/{compSeasonId}/rounds
     auth: public
     params:
-      - { name: compSeasonId, in: path, type: integer }
+      - { name: compSeasonId, in: path, type: integer, description: "Competition-season id (from afl_compseasons_list) — a season WITHIN a competition, not a calendar year." }
       - { name: roundNumber, in: query, type: integer, description: "Filter to a single round" }
-      - { name: pageSize, in: query, type: integer, default: 50 }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
     response_hint: "{rounds:[{id, providerId, roundNumber, abbreviation, byes, utcStartTime, utcEndTime}]}"
 
   - name: afl_ladders_get
@@ -112,7 +112,7 @@ endpoints:
     path: /afl/v2/compseasons/{compSeasonId}/ladders
     auth: public
     params:
-      - { name: compSeasonId, in: path, type: integer }
+      - { name: compSeasonId, in: path, type: integer, description: "Competition-season id (from afl_compseasons_list) — a season WITHIN a competition, not a calendar year." }
     response_hint: "{compSeason, round, ladders:[{entries:[{position, team, played, thisSeasonRecord}]}]}"
     examples:
       - description: "2026 AFL ladder"
@@ -126,8 +126,8 @@ endpoints:
     path: /afl/v2/seasons
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 20 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 20, description: "Rows per page." }
     response_hint: "{meta, seasons:[{id, year}]}"
 
   - name: afl_season_get
@@ -138,7 +138,7 @@ endpoints:
     path: /afl/v2/seasons/{seasonId}
     auth: public
     params:
-      - { name: seasonId, in: path, type: integer }
+      - { name: seasonId, in: path, type: integer, description: "Season id (from afl_seasons_list)." }
     response_hint: "{meta, seasons:[{id, year}]}"
 
   - name: afl_clubs_list
@@ -148,8 +148,8 @@ endpoints:
     path: /afl/v2/clubs
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 50 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
     response_hint: "{clubs:[{id, providerId, name, abbreviation, nickname}]}"
 
   - name: afl_club_get
@@ -159,7 +159,7 @@ endpoints:
     path: /afl/v2/clubs/{clubId}
     auth: public
     params:
-      - { name: clubId, in: path, type: integer }
+      - { name: clubId, in: path, type: integer, description: "Club id (from afl_clubs_list)." }
     response_hint: "{clubs:[{id, providerId, name}]}"
 
   - name: afl_teams_list
@@ -170,8 +170,8 @@ endpoints:
     path: /afl/v2/teams
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 50 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
     response_hint: "{teams:[{id, providerId, name, abbreviation, nickname, club, teamType, metadata}]}"
 
   - name: afl_team_get
@@ -202,8 +202,8 @@ endpoints:
     path: /afl/v2/venues
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 50 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
     response_hint: "{venues:[{id, providerId, name, location, state, timezone, landOwner}]}"
 
   - name: afl_venue_get
@@ -214,7 +214,7 @@ endpoints:
     path: /afl/v2/venues/{venueId}
     auth: public
     params:
-      - { name: venueId, in: path, type: integer }
+      - { name: venueId, in: path, type: integer, description: "Venue id (from afl_venues_list)." }
     response_hint: "{venues:[{id, providerId, name, location, state, timezone}]}"
 
   - name: afl_players_list
@@ -225,8 +225,8 @@ endpoints:
     path: /afl/v2/players
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 50 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
     response_hint: "{players:[{id, providerId, firstName, surname, dateOfBirth, draftYear, heightInCm}]}"
 
   - name: afl_player_get
@@ -237,7 +237,7 @@ endpoints:
     path: /afl/v2/players/{playerId}
     auth: public
     params:
-      - { name: playerId, in: path, type: integer }
+      - { name: playerId, in: path, type: integer, description: "Player id (from afl_players_list)." }
     response_hint: "{players:[{id, providerId, firstName, surname, draftYear, debutYear, recruitedFrom}]}"
 
   - name: afl_matches_list
@@ -250,13 +250,13 @@ endpoints:
     params:
       - { name: competitionId, in: query, type: string_csv, description: "Competition id(s), comma-list ok" }
       - { name: compSeasonId, in: query, type: integer, description: "Comp season id" }
-      - { name: roundNumber, in: query, type: integer }
+      - { name: roundNumber, in: query, type: integer, description: "Round number within the competition season." }
       - { name: teamId, in: query, type: string_csv, description: "Team id(s), e.g. 11,9" }
       - { name: status, in: query, type: string_csv, description: "Status CSV: U,L,C,P,B,S" }
       - { name: startDate, in: query, type: string, description: "Lower bound YYYY-MM-DD" }
       - { name: endDate, in: query, type: string, description: "Upper bound YYYY-MM-DD" }
-      - { name: sort, in: query, type: string, enum: [asc, desc] }
-      - { name: page, in: query, type: integer, default: 0 }
+      - { name: sort, in: query, type: string, enum: [asc, desc], description: "Sort direction." }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
       - { name: pageSize, in: query, type: integer, default: 50, description: "Up to 300" }
     response_hint: "{meta:{pagination}, matches:[{id, providerId, round, home, away, venue, utcStartTime, status}]}"
     examples:
@@ -298,8 +298,8 @@ endpoints:
     path: /broadcasting/regions
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 100 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 100, description: "Rows per page." }
     response_hint: "{pageInfo, content:[{id, name, timezone}]}"
 
   - name: afl_broadcast_region_get
@@ -309,7 +309,7 @@ endpoints:
     path: /broadcasting/regions/{regionId}
     auth: public
     params:
-      - { name: regionId, in: path, type: integer }
+      - { name: regionId, in: path, type: integer, description: "Broadcast region id (from the broadcasting region list)." }
     response_hint: "{id, name, timezone}"
 
   - name: afl_broadcasters_list
@@ -320,7 +320,7 @@ endpoints:
     path: /broadcasting/broadcasters
     auth: public
     params:
-      - { name: pageSize, in: query, type: integer, default: 100 }
+      - { name: pageSize, in: query, type: integer, default: 100, description: "Rows per page." }
     response_hint: "{pageInfo, content:[{id, name, abbreviation, logo, restrictedCountries}]}"
 
   - name: afl_broadcast_channels
@@ -331,8 +331,8 @@ endpoints:
     path: /broadcasting/channels
     auth: public
     params:
-      - { name: page, in: query, type: integer, default: 0 }
-      - { name: pageSize, in: query, type: integer, default: 100 }
+      - { name: page, in: query, type: integer, default: 0, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, default: 100, description: "Rows per page." }
     response_hint: "{pageInfo, content:[{id, name, abbreviation, broadcaster, channelTypes:[{name, mediaType}]}]}"
 
   - name: afl_broadcast_events
@@ -345,9 +345,9 @@ endpoints:
     params:
       - { name: fromDate, in: query, type: string, description: "ISO 8601 lower bound, e.g. 2026-05-25T07:00:00Z" }
       - { name: toDate, in: query, type: string, description: "ISO 8601 upper bound" }
-      - { name: compseason, in: query, type: integer }
-      - { name: round, in: query, type: integer }
-      - { name: pageSize, in: query, type: integer, default: 100 }
+      - { name: compseason, in: query, type: integer, description: "Competition-season id (from afl_compseasons_list)." }
+      - { name: round, in: query, type: integer, description: "Round number within the competition season." }
+      - { name: pageSize, in: query, type: integer, default: 100, description: "Rows per page." }
     response_hint: "{pageInfo, content:[{id, name, startDateTime, channels:[...], contentReference:{id, type}}]}"
 
   - name: afl_broadcast_event_get
@@ -358,7 +358,7 @@ endpoints:
     path: /broadcasting/events/{eventId}
     auth: public
     params:
-      - { name: eventId, in: path, type: integer }
+      - { name: eventId, in: path, type: integer, description: "Broadcast event id." }
     response_hint: "{id, name, startDateTime, channels:[...], contentReference}"
 
   - name: afl_broadcast_match_events
@@ -369,9 +369,9 @@ endpoints:
     path: /broadcasting/match-events
     auth: public
     params:
-      - { name: compseason, in: query, type: integer, required: true }
-      - { name: round, in: query, type: integer, required: true }
-      - { name: pageSize, in: query, type: integer, default: 50 }
+      - { name: compseason, in: query, type: integer, required: true, description: "Competition-season id (from afl_compseasons_list)." }
+      - { name: round, in: query, type: integer, required: true, description: "Round number within the competition season." }
+      - { name: pageSize, in: query, type: integer, default: 50, description: "Rows per page." }
     response_hint: "{pageInfo, content:[{id, name, startDateTime, channels}]}"
 
   - name: afl_live_video
@@ -382,9 +382,9 @@ endpoints:
     path: /broadcasting/afl/live/video
     auth: public
     params:
-      - { name: pageSize, in: query, type: integer, default: 25 }
-      - { name: compseason, in: query, type: integer }
-      - { name: round, in: query, type: integer }
+      - { name: pageSize, in: query, type: integer, default: 25, description: "Rows per page." }
+      - { name: compseason, in: query, type: integer, description: "Competition-season id (from afl_compseasons_list)." }
+      - { name: round, in: query, type: integer, description: "Round number within the competition season." }
     response_hint: "{pageInfo, content:[{id, name, channels:[{streamUrl, type:'LIVE'}]}]}"
 
   - name: afl_live_audio
@@ -395,9 +395,9 @@ endpoints:
     path: /broadcasting/afl/live/audio
     auth: public
     params:
-      - { name: pageSize, in: query, type: integer, default: 25 }
-      - { name: compseason, in: query, type: integer }
-      - { name: round, in: query, type: integer }
+      - { name: pageSize, in: query, type: integer, default: 25, description: "Rows per page." }
+      - { name: compseason, in: query, type: integer, description: "Competition-season id (from afl_compseasons_list)." }
+      - { name: round, in: query, type: integer, description: "Round number within the competition season." }
     response_hint: "{pageInfo, content:[{id, name, channels:[...]}]}"
 
   # ─── afl.public.content (8) ────────────────────────────────────────
@@ -413,11 +413,11 @@ endpoints:
       - { name: tagExpression, in: query, type: string, description: 'Tag expr, e.g. ("News")' }
       - { name: tagNames, in: query, type: string_csv, description: "Tag labels CSV" }
       - { name: references, in: query, type: string_csv, description: "TYPE:id shorthand CSV, e.g. AFL_MATCH:8130" }
-      - { name: offset, in: query, type: integer, default: 0 }
-      - { name: limit, in: query, type: integer, default: 10 }
-      - { name: page, in: query, type: integer }
-      - { name: pageSize, in: query, type: integer }
-      - { name: sort, in: query, type: string }
+      - { name: offset, in: query, type: integer, default: 0, description: "Rows to skip — this CMS surface pages with offset/limit, not page/pageSize." }
+      - { name: limit, in: query, type: integer, default: 10, description: "Maximum rows to return." }
+      - { name: page, in: query, type: integer, description: "Zero-based page number." }
+      - { name: pageSize, in: query, type: integer, description: "Rows per page." }
+      - { name: sort, in: query, type: string, description: "Sort direction." }
     response_hint: "{pageInfo, content:[{id, type:'text', title, date, tags, references, body, author}]}"
     examples:
       - description: "AFL+AFLW news index"
@@ -431,7 +431,7 @@ endpoints:
     path: /content/afl/text/EN/{id}
     auth: public
     params:
-      - { name: id, in: path, type: integer }
+      - { name: id, in: path, type: integer, description: "Content item id." }
     response_hint: "{id, type:'text', title, body, author, references, tags}"
 
   - name: afl_content_video_list
@@ -442,12 +442,12 @@ endpoints:
     path: /content/afl/video/EN
     auth: public
     params:
-      - { name: referenceExpression, in: query, type: string }
-      - { name: tagExpression, in: query, type: string }
+      - { name: referenceExpression, in: query, type: string, description: "Pulse reference filter, e.g. 'AFL_CLUB:Carlton' — restricts content to a linked entity." }
+      - { name: tagExpression, in: query, type: string, description: "Pulse tag filter expression, e.g. 'AFL_MATCH:1234'." }
       - { name: tagNames, in: query, type: string_csv, description: 'e.g. ProgramCategory:Match Replays' }
       - { name: references, in: query, type: string_csv, description: "e.g. AFL_MATCH:8130" }
-      - { name: offset, in: query, type: integer, default: 0 }
-      - { name: limit, in: query, type: integer, default: 10 }
+      - { name: offset, in: query, type: integer, default: 0, description: "Rows to skip — this CMS surface pages with offset/limit, not page/pageSize." }
+      - { name: limit, in: query, type: integer, default: 10, description: "Maximum rows to return." }
     response_hint: "{pageInfo, content:[{id, type:'video', title, duration, onDemandUrl, additionalInfo}]}"
 
   - name: afl_content_video_get
@@ -458,7 +458,7 @@ endpoints:
     path: /content/afl/video/EN/{id}
     auth: public
     params:
-      - { name: id, in: path, type: integer }
+      - { name: id, in: path, type: integer, description: "Content item id." }
     response_hint: "{id, type:'video', title, duration, onDemandUrl}"
 
   - name: afl_content_photo_list
@@ -468,11 +468,11 @@ endpoints:
     path: /content/afl/photo/EN
     auth: public
     params:
-      - { name: referenceExpression, in: query, type: string }
-      - { name: tagExpression, in: query, type: string }
-      - { name: tagNames, in: query, type: string_csv }
-      - { name: offset, in: query, type: integer, default: 0 }
-      - { name: limit, in: query, type: integer, default: 10 }
+      - { name: referenceExpression, in: query, type: string, description: "Pulse reference filter, e.g. 'AFL_CLUB:Carlton' — restricts content to a linked entity." }
+      - { name: tagExpression, in: query, type: string, description: "Pulse tag filter expression, e.g. 'AFL_MATCH:1234'." }
+      - { name: tagNames, in: query, type: string_csv, description: "Tag names to match (comma-separated)." }
+      - { name: offset, in: query, type: integer, default: 0, description: "Rows to skip — this CMS surface pages with offset/limit, not page/pageSize." }
+      - { name: limit, in: query, type: integer, default: 10, description: "Maximum rows to return." }
     response_hint: "{pageInfo, content:[{id, type:'photo', title, leadMedia}]}"
 
   - name: afl_content_photo_get
@@ -482,7 +482,7 @@ endpoints:
     path: /content/afl/photo/EN/{id}
     auth: public
     params:
-      - { name: id, in: path, type: integer }
+      - { name: id, in: path, type: integer, description: "Content item id." }
     response_hint: "{id, type:'photo', title}"
 
   - name: afl_content_promo_list
@@ -493,9 +493,9 @@ endpoints:
     path: /content/afl/promo/EN
     auth: public
     params:
-      - { name: referenceExpression, in: query, type: string }
+      - { name: referenceExpression, in: query, type: string, description: "Pulse reference filter, e.g. 'AFL_CLUB:Carlton' — restricts content to a linked entity." }
       - { name: tagNames, in: query, type: string_csv, description: "e.g. lineups-sponsor" }
-      - { name: limit, in: query, type: integer, default: 10 }
+      - { name: limit, in: query, type: integer, default: 10, description: "Maximum rows to return." }
     response_hint: "{pageInfo, content:[{id, type:'promo', title, links:[{promoUrl, linkText}]}]}"
 
   - name: afl_content_promo_get
@@ -506,8 +506,8 @@ endpoints:
     path: /content/afl/promo/EN/{id}
     auth: public
     params:
-      - { name: id, in: path, type: integer }
-      - { name: limit, in: query, type: integer, default: 1 }
+      - { name: id, in: path, type: integer, description: "Content item id." }
+      - { name: limit, in: query, type: integer, default: 1, description: "Maximum rows to return." }
     response_hint: "{id, type:'promo', title, links:[...]}"
 
   # ─── afl.premium.keyserver (1) — HLS video URL signing ─────────────────

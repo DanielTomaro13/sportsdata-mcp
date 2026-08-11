@@ -16,9 +16,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Annotated
 
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import __version__, telemetry
 from .config import Config, load_config
@@ -209,7 +211,13 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
         }
 
     @mcp.tool(annotations=_READ_ONLY)
-    def list_tools_by_capability(capability: str | None = None) -> dict:
+    def list_tools_by_capability(
+        capability: Annotated[
+            str | None,
+            Field(description="A capability slug, e.g. `sport.fixtures_by_date` or `stats.ladder`. "
+                              "Omit to list every capability with the tools that expose it."),
+        ] = None,
+    ) -> dict:
         """Discover tools by capability — the unit of cross-provider comparison.
 
         Given a slug like 'sport.event_markets', returns every enabled tool exposing
@@ -270,7 +278,11 @@ def build_server(cfg: Config | None = None, specs_dir: Path | None = None) -> tu
     @mcp.tool(
         annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, openWorldHint=False)
     )
-    def sportsdata_feedback(helpful: bool, tool: str | None = None, note: str | None = None) -> dict:
+    def sportsdata_feedback(
+        helpful: Annotated[bool, Field(description="False if the answer was wrong, empty or misleading; True if it was useful.")],
+        tool: Annotated[str | None, Field(description="The tool the feedback is about, e.g. `nhl_schedule`. Omit for general feedback.")] = None,
+        note: Annotated[str | None, Field(description="What went wrong, in a sentence. Free text, truncated to 500 characters, and sent VERBATIM if sharing is enabled — do not include anything private.")] = None,
+    ) -> dict:
         """Report whether an answer from this server was useful.
 
         Call this when a tool gave a wrong, empty or misleading answer — especially if

@@ -19,11 +19,28 @@ import inspect
 import json
 import logging
 from collections.abc import Callable
+from typing import Annotated
+
+from pydantic import Field
 
 from ..errors import PersistedQueryNotFoundError, ToolError
 from ..http_client import HTTPClient
 from ..spec import Dispatcher, Spec
 from ..spec_loader import load_operation_documents
+
+# Dispatcher parameters are defined here in Python rather than in a spec's `params:`
+# block, so they were the last tools whose schema carried no description — an agent saw
+# `operation: string` with no hint that the valid values live in a catalogue resource.
+OPERATION_HELP = (
+    "The operation to run. Valid names come from this provider's catalogue resource "
+    "(see `list_resources`) — guessing one returns an error listing the alternatives."
+)
+
+VARIABLES_HELP = (
+    "Variables for the operation, as an object. Which keys are required depends on the "
+    "operation; the catalogue resource documents each one."
+)
+
 
 log = logging.getLogger("sportsdata_mcp.graphql")
 
@@ -52,7 +69,11 @@ def make_graphql_dispatcher(disp: Dispatcher, spec: Spec, http: HTTPClient) -> C
     ops_by_name = {op.name: op for op in (spec.graphql.operations if spec.graphql else [])}
     documents: dict[str, str] | None = None  # sidecar loaded lazily, on first not-found
 
-    async def handler(*, operation: str, variables: dict | None = None):
+    async def handler(
+        *,
+        operation: Annotated[str, Field(description=OPERATION_HELP)],
+        variables: Annotated[dict | None, Field(description=VARIABLES_HELP)] = None,
+    ):
         nonlocal documents
         op = ops_by_name.get(operation)
         if not op:

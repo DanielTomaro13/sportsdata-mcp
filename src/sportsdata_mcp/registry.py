@@ -14,9 +14,11 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Annotated
 
 import httpx
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import dates, telemetry
 from .classify import apply_classify
@@ -66,6 +68,41 @@ _PY_TYPES: dict[str, type] = {
 
 def _python_type(p: Param) -> type:
     return _PY_TYPES.get(p.type, str)
+
+
+def _annotated_type(p: Param):
+    """The parameter's type CARRYING its description, enum and constraints.
+
+    FastMCP derives each tool's JSON schema from `__annotations__` via pydantic, so a
+    bare `int` produces `{"type": "integer"}` and nothing else — every `description:` we
+    write in the spec was being dropped on the floor. The model then sees a parameter
+    named `tags` with no hint about what a tag looks like, and the docs we maintain most
+    carefully never reach the one reader that matters.
+
+    `Annotated[T, Field(description=...)]` is what pydantic reads, so the schema gains
+    `description` (and `enum`) for free.
+    """
+    base = _python_type(p)
+    bits: list[str] = []
+    if p.description:
+        bits.append(p.description.strip())
+    # The enum belongs in the schema proper, but repeating it in prose helps a model that
+    # only reads descriptions — and costs a handful of tokens.
+    if p.enum:
+        allowed = ", ".join(str(v) for v in p.enum)
+        if not p.description or not any(str(v) in p.description for v in p.enum):
+            bits.append(f"One of: {allowed}.")
+    if p.in_ == "path" and p.required:
+        bits.append("Required — part of the URL path.")
+    description = " ".join(bits).strip()
+    if not description and not p.enum:
+        return base
+    field_kwargs: dict = {}
+    if description:
+        field_kwargs["description"] = description
+    if p.enum:
+        field_kwargs["json_schema_extra"] = {"enum": list(p.enum)}
+    return Annotated[base, Field(**field_kwargs)]
 
 
 # ─── Request building ──────────────────────────────────────────────────
@@ -178,7 +215,7 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             p.name,
             kind=inspect.Parameter.KEYWORD_ONLY,
             default=(inspect.Parameter.empty if p.required else p.default),
-            annotation=_python_type(p),
+            annotation=_annotated_type(p),
         )
         for p in ep.params
     ]
@@ -205,7 +242,7 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
     handler.__signature__ = sig  # type: ignore[attr-defined]
     # FastMCP/pydantic derive the JSON-schema from __annotations__, not __signature__,
     # so the per-param types must be mirrored here too.
-    handler.__annotations__ = {p.name: _python_type(p) for p in ep.params} | {"return": dict}
+    handler.__annotations__ = {p.name: _annotated_type(p) for p in ep.params} | {"return": dict}
     handler.__name__ = ep.name
     handler.__doc__ = _describe(ep)
     return handler
