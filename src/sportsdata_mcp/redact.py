@@ -136,11 +136,13 @@ def install(extra_secrets: dict[str, str] | None = None) -> RedactingFilter | No
         return None
     root = logging.getLogger()
     existing = [f for handler in root.handlers for f in handler.filters if isinstance(f, RedactingFilter)]
-    if existing:
-        for filt in existing:
-            filt.extend(values)
-        return existing[0]
-    filt = RedactingFilter(values)
+    for filt in existing:
+        filt.extend(values)
+    # Reuse the installed filter object so every handler shares one value set;
+    # a handler added since the last call still needs covering, which is why
+    # this cannot simply return early when `existing` is non-empty.
+    shared = existing[0] if existing else RedactingFilter(values)
     for handler in root.handlers:
-        handler.addFilter(filt)
-    return filt
+        if not any(isinstance(f, RedactingFilter) for f in handler.filters):
+            handler.addFilter(shared)
+    return shared

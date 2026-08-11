@@ -172,3 +172,34 @@ def test_loading_a_config_registers_its_secrets(monkeypatch, tmp_path):
         assert secret not in filters[0]._scrub(f"?key={secret}")
     finally:
         root.removeHandler(handler)
+
+
+def test_a_handler_added_after_install_still_gets_covered(monkeypatch):
+    """Reinstalling must cover NEW handlers, not just extend the old filter.
+
+    The first attempt at config-secret support returned early whenever any
+    filter already existed, which quietly left a handler added later — the
+    normal case when a host application configures logging in stages —
+    completely unredacted.
+    """
+    monkeypatch.setenv("THE_ODDS_API_KEY", "a-real-looking-secret")
+    root = logging.getLogger()
+    first = logging.StreamHandler()
+    root.addHandler(first)
+    second = None
+    try:
+        redact.install()
+        second = logging.StreamHandler()
+        root.addHandler(second)
+        redact.install(extra_secrets={"DATAGOLF_KEY": "second-secret-value-1234"})
+
+        for handler in (first, second):
+            filters = [f for f in handler.filters if isinstance(f, redact.RedactingFilter)]
+            assert len(filters) == 1, "every handler needs exactly one redactor"
+            scrubbed = filters[0]._scrub("a-real-looking-secret second-secret-value-1234")
+            assert "a-real-looking-secret" not in scrubbed
+            assert "second-secret-value-1234" not in scrubbed
+    finally:
+        root.removeHandler(first)
+        if second is not None:
+            root.removeHandler(second)
