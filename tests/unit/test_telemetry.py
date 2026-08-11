@@ -204,3 +204,18 @@ def test_looks_empty(value, expected):
     from sportsdata_mcp.registry import _looks_empty
 
     assert _looks_empty(value) is expected
+
+
+def test_feedback_is_bounded():
+    """Per-tool counters are bounded by the tool count, but feedback is free text a
+    caller can send any number of times. Unbounded, a long-running HTTP deployment grows
+    forever and eventually POSTs a multi-megabyte payload — 5,000 notes measured at
+    2.96 MB before this cap."""
+    tel = telemetry.Telemetry()
+    for i in range(5000):
+        tel.record_feedback("t", helpful=False, note=f"note {i}")
+    feedback = tel.snapshot()["feedback"]
+    assert len(feedback) == 200
+    # The most RECENT notes are the ones worth keeping.
+    assert feedback[-1]["note"] == "note 4999"
+    assert len(str(tel.payload())) < 500_000

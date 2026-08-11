@@ -357,6 +357,22 @@ class HTTPClient:
         # Trailing blank lines produce rows whose every value is None/''.
         return [row for row in rows if any((v or "").strip() for v in row.values())]
 
+    @staticmethod
+    def _is_error_marker(value: object) -> bool:
+        """Does this presence-mode field value mean "error"?
+
+        Truthiness alone is not enough. iSportsAPI signals success with `code: 0`, and
+        JSON APIs flip between `0` and `"0"` without warning — but Python calls the
+        STRING "0" truthy, so a provider that started quoting its status code would have
+        every SUCCESSFUL call raised as an error. That fails loudly rather than lying,
+        which is the safer direction, but it is still wrong and baffling to debug.
+        """
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped in ("", "0", "0.0", "false", "False", "null", "none", "None"):
+                return False
+        return bool(value)
+
     def _raise_on_error_signal(self, body: object) -> None:
         """Turn a 200-with-an-error-body into a real error.
 
@@ -374,8 +390,8 @@ class HTTPClient:
             if sig.equals is not None:
                 if str(value) != sig.equals:
                     continue
-            elif not value:
-                # presence-mode: `errors: []` / `""` / null is the SUCCESS case
+            elif not self._is_error_marker(value):
+                # presence-mode: `errors: []` / `""` / null / 0 is the SUCCESS case
                 continue
             detail = (
                 body.get("reason")

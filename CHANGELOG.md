@@ -6,7 +6,7 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
-## Unreleased
+## 0.25.0 — 2026-08-11
 
 ### Added
 
@@ -31,6 +31,18 @@ Full history is in `git log`; this file covers what a user would notice.
 
   Rate-limited to 0.5 rps because `robots.txt` asks for `crawl-delay: 15` — a courtesy,
   pinned by a test.
+
+### Fixed
+
+- **Presence-mode error signals raised on a successful call when a provider quoted its
+  status code.** iSportsAPI signals success with `code: 0`, and Python calls the STRING
+  `"0"` truthy — so a provider switching from `0` to `"0"` would have had every good call
+  reported as an error. Numeric-zero strings now read as success; a non-zero code still
+  raises whether it arrives as a number or a string.
+- **Telemetry's feedback list was unbounded.** Per-tool counters are capped by the tool
+  count, but `sportsdata_feedback` is free text a caller can send any number of times: a
+  long-running HTTP deployment would grow forever and eventually POST a multi-megabyte
+  payload (5,000 notes measured at 2.96 MB). Capped at the most recent 200.
 
 ## 0.24.1 — 2026-08-11
 

@@ -116,3 +116,28 @@ def test_every_declared_signal_belongs_to_a_byo_provider():
     for spec in load_all_specs():
         if spec.provider.error_signals:
             assert spec.provider.requires_user_key, spec.provider.id
+
+
+# ─── presence mode and the string-zero trap ─────────────────────────────
+
+
+@pytest.mark.parametrize("value", [0, "0", "", "0.0", "false", None, [], {}])
+@pytest.mark.anyio
+async def test_presence_mode_treats_these_as_success(monkeypatch, value):
+    """iSportsAPI signals success with `code: 0`, and JSON APIs flip between `0` and
+    `"0"` without warning — but Python calls the STRING "0" truthy. Before this, a
+    provider that started quoting its status code would have had every SUCCESSFUL call
+    raised as an error."""
+    c = _client(_provider("isportsapi"), monkeypatch, {"code": value, "data": [{"id": 1}]})
+    got = await c.request_json(method="GET", base="default", url="/x", auth_key="default")
+    assert got["data"] == [{"id": 1}]
+
+
+@pytest.mark.parametrize("value", [2, "2", 1, "failure", ["something"]])
+@pytest.mark.anyio
+async def test_presence_mode_still_catches_real_failures(monkeypatch, value):
+    """The loosening must not blunt the guard — a non-zero code is still an error
+    whether it arrives as a number or a string."""
+    c = _client(_provider("isportsapi"), monkeypatch, {"code": value, "message": "Invalid [api_key]"})
+    with pytest.raises(ToolError):
+        await c.request_json(method="GET", base="default", url="/x", auth_key="default")

@@ -69,6 +69,12 @@ log = logging.getLogger("sportsdata_mcp.telemetry")
 # provider get slow.
 _LATENCY_BUCKETS = ((0.25, "<250ms"), (1.0, "<1s"), (3.0, "<3s"), (10.0, "<10s"))
 
+# Per-tool counters are bounded by the tool count (762), but feedback is free text a
+# caller can send any number of times. An HTTP deployment running for weeks with a model
+# that likes calling `sportsdata_feedback` would grow without limit and eventually POST a
+# multi-megabyte payload; 5,000 notes measured at 2.96 MB. Keep the most recent.
+_MAX_FEEDBACK = 200
+
 
 def _bucket(seconds: float) -> str:
     for threshold, label in _LATENCY_BUCKETS:
@@ -153,6 +159,8 @@ class Telemetry:
                     "at": datetime.now(tz=UTC).isoformat(timespec="seconds"),
                 }
             )
+            if len(self._feedback) > _MAX_FEEDBACK:
+                del self._feedback[:-_MAX_FEEDBACK]
 
     # ─── reading ────────────────────────────────────────────────────────
 

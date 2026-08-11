@@ -440,6 +440,32 @@ ESPN already gives you college scores; this adds the NCAA's own **polls and conf
 standings** in a normalised shape. A third-party mirror of NCAA.com rather than an
 official feed. See [documentation/NCAA.md](documentation/NCAA.md).
 
+### UFC — `ufc.com` JSON:API (official, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `ufc.events` | 3 | Events with per-segment card times and venue, full fight cards, bouts back to UFC 1 |
+| `ufc.athletes` | 2 | Fighter search and profiles with statistics attached |
+| `ufc.stats` | 2 | The **FightMetric career statistics table** and divisional rankings |
+| `ufc.records` | 2 | Single-round record book, plus the JSON:API resource index |
+
+The obvious source, **ufcstats.com, is a dead end** — it serves a JavaScript
+proof-of-work bot challenge with `noindex` and zero data rows in the HTML, so reading it
+would mean building bot-detection evasion. ufc.com turns out to be better anyway: it runs
+Drupal with JSON:API exposed, and `athlete_stat` carries **the same FightMetric dataset**,
+down to the same `fightmetric_id` identifiers.
+
+48 statistics per fighter — significant strikes split by position (standing/clinch/ground)
+*and* target (head/body/leg), takedowns landed/attempted/accuracy/defence, submission and
+knockdown averages, strikes landed and absorbed per minute, career records by finish
+method.
+
+Two traps worth knowing: **related records never inline** (without `include=athlete_stat`
+a fighter has no statistics at all), and **filters silently return 0 rows** on the stat
+collections rather than erroring — so those parameters are not exposed, and sorting is the
+leaderboard mechanism instead. Rate-limited to 0.5 rps because `robots.txt` asks for
+`crawl-delay: 15`. See [documentation/UFC.md](documentation/UFC.md).
+
 ### Football-Data.co.uk — historical results **with closing odds** (no key)
 
 | Group | Tools | Notes |
