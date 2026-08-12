@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "sportsdata-mcp",
   "display_name": "SportsData",
-  "version": "0.25.0",
+  "version": "0.25.1",
   "description": "Live sports data and cross-book betting odds from 61 providers.",
   "long_description": "762 tools across 61 providers: AFL, NRL, NBA, MLB, NHL, EPL, LaLiga, Serie A, F1, tennis, cricket, golf, chess and esports, alongside live prices from Sportsbet, TAB, PointsBet, BetR, Unibet, Entain, Dabble, Betfair and Pinnacle.\n\n42 of those providers need no key, no signup and no configuration \u2014 install it and everything works. The remaining providers are optional and unlock by pasting a key you get yourself; leave them blank and they simply stay hidden.",
   "author": {

@@ -57,22 +57,26 @@ def test_rate_limit_respects_the_crawl_delay():
     assert spec.provider.defaults.rate_limit_rps <= 0.5
 
 
-def test_no_tool_exposes_a_filter_that_silently_returns_nothing():
-    """`filter[fightmetric_id]` on athlete_stat and `filter[round]`/`filter[statname]` on
-    fight_roundboard return 0 rows rather than an error — verified live. A parameter that
-    quietly yields an empty list is worse than no parameter: a model reports "no
-    statistics" for a fighter who has plenty. They are not exposed, and must not be
-    re-added without re-probing."""
+def test_no_custom_entity_tool_exposes_a_filter():
+    """Filtering works on `node/*` resources and SILENTLY RETURNS 0 ROWS on every custom
+    entity collection here — verified with ids present on page 1 of each. A parameter
+    that quietly yields an empty list is worse than no parameter: a model reports "no
+    ranking" for a ranked fighter.
+
+    Derived from the path rather than listed per tool. The first version of this test
+    named athlete_stat and fight_roundboard explicitly — and missed athlete_ranking,
+    which shipped in v0.25.0 with exactly the broken parameter this was meant to prevent.
+    A rule that has to be remembered for each new endpoint is not a rule.
+    """
     spec = next(s for s in load_all_specs() if s.provider.id == "ufc")
-    banned = {
-        "ufc_athlete_stats": {"filter[fightmetric_id]", "filter[drupal_internal__fightmetric_id]"},
-        "ufc_round_records": {"filter[round]", "filter[statname]"},
-    }
     for ep in spec.endpoints:
-        for param in ep.params:
-            assert param.wire_name not in banned.get(ep.name, set()), (
-                f"{ep.name} exposes {param.wire_name}, which silently returns 0 rows"
-            )
+        if ep.path.startswith("/node/") or ep.path == "/":
+            continue  # node resources DO support filtering; /  is the index
+        offenders = [p.wire_name for p in ep.params if p.wire_name.startswith("filter[")]
+        assert not offenders, (
+            f"{ep.name} ({ep.path}) exposes {offenders}; filters on custom entities "
+            f"return 0 rows rather than erroring"
+        )
 
 
 def test_the_provider_is_keyless():

@@ -168,9 +168,8 @@ endpoints:
     params:
       - { name: limit, in: query, api_name: "page[limit]", type: integer, default: 50, description: "Rows per page (max 50) — a full division is ~16 rows." }
       - { name: offset, in: query, api_name: "page[offset]", type: integer, description: "Rows to skip." }
-      - { name: fightmetric_id, in: query, api_name: "filter[fightmetric_id]", type: integer, description: "One fighter's ranking rows." }
       - { name: sort, in: query, type: string, default: "weight_class_rank", description: "Sort field; 'weight_class_rank' ascends from the champion." }
-    response_hint: "[{attributes:{fightmetric_id, weight_class_rank, weight_class_rank_previous, meta_weight_class_rank, meta_weight_class_rank_previous, is_interim, category}}]  — `category` distinguishes the division (0 appears to be pound-for-pound); compare `weight_class_rank` with `weight_class_rank_previous` for movement. Resolve `fightmetric_id` to a name via ufc_athlete_stats or ufc_search_athletes."
+    response_hint: "[{attributes:{fightmetric_id, weight_class_rank, weight_class_rank_previous, meta_weight_class_rank, meta_weight_class_rank_previous, is_interim, category}}]  — `category` distinguishes the division (0 appears to be pound-for-pound); compare `weight_class_rank` with `weight_class_rank_previous` for movement. Resolve `fightmetric_id` to a name via ufc_search_athletes.\n\nWARNING: like the other custom-entity collections here, this one CANNOT be filtered — `filter[fightmetric_id]` returns 0 rows rather than an error (verified). Page the whole set (~200 rows) and match client-side; for one fighter's current ranking, ufc_athlete resolves it through `include`."
     examples:
       - description: "Rankings from the top"
         params: {limit: 50}
@@ -194,11 +193,11 @@ endpoints:
   - name: ufc_jsonapi_index
     group: ufc.records
     capabilities: []
-    summary: "The JSON:API resource index — all 290 resource types ufc.com exposes, for discovering surfaces this spec does not wrap yet."
+    summary: "The JSON:API resource index — all 291 resource types ufc.com exposes, for discovering surfaces this spec does not wrap yet."
     base: default
     path: /
     auth: default
-    response_hint: "{jsonapi:{version}, links:{'node--event':{href}, 'node--athlete':{href}, 'athlete_stat--athlete_stat':{href}, …290 entries…}}  — each key is a resource type and its href is the collection URL. Useful when you need something this provider does not expose; most of the 290 are CMS plumbing (paragraphs, media, config) rather than sport data."
+    response_hint: "{jsonapi:{version}, links:{'node--event':{href}, 'node--athlete':{href}, 'athlete_stat--athlete_stat':{href}, …291 entries…}}  — each key is a resource type and its href is the collection URL. Useful when you need something this provider does not expose; most of the 291 are CMS plumbing (paragraphs, media, config) rather than sport data."
     examples:
       - description: "Every exposed resource type"
         params: {}

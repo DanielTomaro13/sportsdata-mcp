@@ -6,6 +6,20 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.25.1 — 2026-08-11
+
+### Fixed
+
+- **`ufc_rankings` exposed a filter that silently returned nothing.** Like the other
+  custom-entity collections on ufc.com, `athlete_ranking` answers
+  `filter[fightmetric_id]` with 0 rows rather than an error — so asking for one fighter's
+  ranking reported "not ranked" for a ranked fighter. The parameter is gone.
+
+  The test meant to prevent exactly this listed the two tools it knew about and missed
+  the third. It now derives the rule from the endpoint path — every non-`/node/`
+  collection is checked — because a rule that has to be remembered for each new endpoint
+  is not a rule.
+
 ## 0.25.0 — 2026-08-11
 
 ### Added
