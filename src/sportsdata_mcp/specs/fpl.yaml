@@ -1,0 +1,291 @@
+spec_version: 1
+
+# Fantasy Premier League — the official fantasy.premierleague.com API. No key.
+#
+# The most-played fantasy game in the world (4,085,510 registered squads at the time of
+# writing, from `total_players`), and its API is entirely public for everything except
+# your own squad. Verified live 2026-08-12.
+#
+# ⚠ ONE BLOB, SIX DATASETS. `bootstrap-static` returns 1.37 MB containing players, teams,
+# gameweeks, positions, chips and game settings. Measured:
+#
+#     elements (players)   1,447,462 bytes   ~362,000 tokens
+#     events (gameweeks)      29,201
+#     teams                    8,258
+#     everything else         ~7,000
+#
+# No context window holds 362k tokens, and FPL offers no server-side field selection, so
+# the single most useful endpoint would be unusable as passthrough. The tools below hit
+# that one URL and declare `response_pick`/`response_fields` to return one dataset each
+# (see project.py). Nothing is invented or renamed — only removed.
+#
+# SEASONAL 404s ARE NORMAL, NOT DRIFT. `dream-team/{gw}`, `entry/{id}/event/{gw}/picks`
+# and `event/{gw}/live` need a gameweek that has actually been played; before the season
+# starts they 404 or return empty. Do not "fix" them.
+#
+# UNITS THAT CATCH PEOPLE:
+#   * `now_cost` is TENTHS of a million — 60 means £6.0m.
+#   * `form`, `points_per_game`, `selected_by_percent`, `ep_next` and the expected-goals
+#     family are STRINGS, not numbers.
+#   * `element_type` is the position id: 1 GK, 2 DEF, 3 MID, 4 FWD (resolve via
+#     fpl_game_rules).
+#   * `team` is FPL's own team id (1-20, alphabetical), NOT the Premier League's
+#     official id — joining to the `premierleague` provider means matching on name.
+
+provider:
+  id: fpl
+  display_name: "Fantasy Premier League (official, no key)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FPL.md"
+  base_urls:
+    default: https://fantasy.premierleague.com/api
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: none
+    # Your own squad needs the session cookie the website sets when you log in. Optional,
+    # so every other tool works with nothing configured.
+    session:
+      type: static_header
+      header: Cookie
+      env: FPL_SESSION_COOKIE
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  # ─── Players ──────────────────────────────────────────────────────────
+  - name: fpl_players
+    group: fpl.players
+    capabilities: [ref.players, stats.player_season, stats.fantasy_projections]
+    summary: "Every FPL player with price, form, ownership, expected goals and availability. LARGE — ~65k tokens for all 581 players; use fpl_player_detail for one player's depth."
+    base: default
+    path: /bootstrap-static/
+    auth: default
+    response_pick: [elements]
+    response_fields:
+      [id, web_name, team, element_type, now_cost, total_points, points_per_game,
+       form, selected_by_percent, status, news, chance_of_playing_next_round, minutes,
+       goals_scored, assists, clean_sheets, bonus, expected_goals, expected_assists,
+       defensive_contribution, ict_index, ep_next]
+    response_hint: "{elements:[{id, web_name:'Salah', team:11, element_type:3, now_cost:145, total_points, points_per_game:'6.2', form:'5.4', selected_by_percent:'42.1', status:'a'|'i'|'d'|'s'|'u', news:'Knock - 75% chance of playing', chance_of_playing_next_round, minutes, goals_scored, assists, clean_sheets, bonus, expected_goals:'0.54', expected_assists, defensive_contribution, ict_index, ep_next:'6.1'}]}  — `now_cost` is TENTHS of a million (145 = £14.5m). `status`: a available, i injured, d doubtful, s suspended, u unavailable. Trimmed from 105 fields per player to 22; the upstream blob is ~362k tokens, which no context window holds."
+    examples:
+      - description: "Every player, key fields"
+        params: {}
+
+  - name: fpl_player_detail
+    group: fpl.players
+    capabilities: [stats.player_game_log, stats.player_career]
+    summary: "One player in full: every gameweek this season, past seasons, and upcoming fixtures with difficulty."
+    base: default
+    path: /element-summary/{playerId}/
+    auth: default
+    params:
+      - { name: playerId, in: path, type: integer, required: true, description: "Player id from fpl_players (`elements[].id`)." }
+    response_hint: "{fixtures:[{id, event, team_h, team_a, is_home, difficulty:1-5, kickoff_time}], history:[{element, fixture, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, expected_goals, value, transfers_balance, selected, was_home, opponent_team}], history_past:[{season_name:'2024/25', total_points, minutes, goals_scored, end_cost, start_cost}]}  — `difficulty` is FPL's own 1 (easiest) to 5 (hardest) rating, and it drives most fixture-run analysis. `value` in history is the price AT THAT GAMEWEEK, so you can see price movement."
+    examples:
+      - description: "One player's full record"
+        params: {playerId: 1}
+
+  # ─── Reference (all slices of the same blob) ──────────────────────────
+  - name: fpl_teams
+    group: fpl.reference
+    capabilities: [ref.teams]
+    summary: "The 20 Premier League clubs with FPL's attack/defence strength ratings."
+    base: default
+    path: /bootstrap-static/
+    auth: default
+    response_pick: [teams]
+    response_hint: "{teams:[{id:1-20, name:'Arsenal', short_name:'ARS', code, strength:1-5, strength_overall_home, strength_overall_away, strength_attack_home, strength_attack_away, strength_defence_home, strength_defence_away, played, win, draw, loss, points, position, form}]}  — `id` is FPL's own alphabetical 1-20, NOT the Premier League's official team id; join to the `premierleague` provider by name. The strength_* numbers are FPL's internal ratings (~1000-1400) and are what fixture-difficulty is derived from."
+    examples:
+      - description: "All 20 clubs"
+        params: {}
+
+  - name: fpl_gameweeks
+    group: fpl.reference
+    capabilities: [ref.seasons, sport.competition_screen]
+    summary: "All 38 gameweeks: deadlines, average scores, highest score, chip usage, and which one is current."
+    base: default
+    path: /bootstrap-static/
+    auth: default
+    response_pick: [events]
+    response_hint: "{events:[{id:1-38, name:'Gameweek 1', deadline_time:'2026-08-15T17:30:00Z', deadline_time_epoch, finished, data_checked, is_previous, is_current, is_next, average_entry_score, highest_score, highest_scoring_entry, most_selected, most_transferred_in, most_captained, most_vice_captained, top_element, transfers_made, chip_plays:[{chip_name, num_played}]}]}  — `deadline_time` is THE thing an agent needs: transfers and lineup changes lock at it. `is_current`/`is_next` are how you find where the season is without doing date arithmetic."
+    examples:
+      - description: "The full gameweek calendar"
+        params: {}
+
+  - name: fpl_game_rules
+    group: fpl.reference
+    capabilities: []
+    summary: "Positions, chips, phases and scoring settings — the lookup tables the other tools' ids refer to."
+    base: default
+    path: /bootstrap-static/
+    auth: default
+    response_pick: [element_types, chips, phases, game_settings, element_stats, total_players]
+    response_hint: "{element_types:[{id:1-4, singular_name:'Goalkeeper', plural_name, squad_select, squad_min_play, squad_max_play, element_count}], chips:[{id, name:'wildcard'|'freehit'|'bboost'|'3xc', number, start_event, stop_event}], phases:[{id, name:'Overall'|'August', start_event, stop_event}], game_settings:{squad_squadplay, squad_total_spend, transfers_cost, transfers_limit, …}, element_stats:[{label:'Goals scored', name:'goals_scored'}], total_players:4085510}  — `element_types` resolves the `element_type` id on every player (1 GK, 2 DEF, 3 MID, 4 FWD). `total_players` is how many squads exist worldwide, which is what an overall rank is out of."
+    examples:
+      - description: "The lookup tables"
+        params: {}
+
+  # ─── Fixtures and live scoring ────────────────────────────────────────
+  - name: fpl_fixtures
+    group: fpl.fixtures
+    capabilities: [sport.fixtures_by_date, sport.match_score]
+    summary: "Fixtures with FPL difficulty ratings, and goal/assist/bonus breakdowns once played."
+    base: default
+    path: /fixtures/
+    auth: default
+    params:
+      - { name: event, in: query, type: integer, description: "Restrict to one gameweek (1-38). Omit for the whole season." }
+      - { name: future, in: query, type: boolean, description: "true returns only fixtures not yet played." }
+    response_hint: "[{id, code, event, team_h, team_a, team_h_score, team_a_score, kickoff_time, started, finished, finished_provisional, minutes, team_h_difficulty:1-5, team_a_difficulty:1-5, stats:[{identifier:'goals_scored'|'assists'|'bonus'|'bps'|'saves'|…, h:[{element, value}], a:[{element, value}]}]}]  — `stats` is EMPTY until the match is played, then carries per-player contributions keyed by player id. The two difficulty ratings are from each side's perspective. `finished_provisional` goes true before `finished`: bonus points are not final until `finished`."
+    examples:
+      - description: "One gameweek's fixtures"
+        params: {event: 1}
+
+  - name: fpl_live_gameweek
+    group: fpl.fixtures
+    capabilities: [sport.in_play, stats.player_match]
+    summary: "Live per-player scoring for a gameweek — points as they are being earned."
+    base: default
+    path: /event/{gameweek}/live/
+    auth: default
+    params:
+      - { name: gameweek, in: path, type: integer, required: true, description: "Gameweek number (1-38)." }
+    response_hint: "{elements:[{id, stats:{minutes, goals_scored, assists, clean_sheets, goals_conceded, saves, bonus, bps, total_points, expected_goals, …}, explain:[{fixture, stats:[{identifier, points, value}]}]}]}  — `explain` breaks a player's points down by WHY they were awarded, which is the only way to reconcile a score. Returns `{elements: []}` for a gameweek that has not started — empty is normal pre-season, not a failure."
+    examples:
+      - description: "Live scoring for a gameweek"
+        params: {gameweek: 1}
+
+  - name: fpl_dream_team
+    group: fpl.fixtures
+    capabilities: [stats.leaders_season]
+    summary: "The highest-scoring XI of a completed gameweek."
+    base: default
+    path: /dream-team/{gameweek}/
+    auth: default
+    params:
+      - { name: gameweek, in: path, type: integer, required: true, description: "A COMPLETED gameweek. An unplayed one 404s — that is seasonal, not drift." }
+    response_hint: "{top_player:{id, points}, team:[{element, position, points}]}  — 404s until the gameweek is finished."
+    examples:
+      - description: "A gameweek's best XI"
+        params: {gameweek: 1}
+
+  - name: fpl_event_status
+    group: fpl.fixtures
+    capabilities: []
+    summary: "Whether bonus points and league tables have been finalised for the current gameweek."
+    base: default
+    path: /event-status/
+    auth: default
+    response_hint: "{status:[{bonus_added, date, event, points:'r'|'p'|'l'}], leagues:'Updated'|''}  — this is how you know scores are FINAL. `bonus_added: false` means bonus points are still provisional, so a score read now may change."
+    examples:
+      - description: "Is this gameweek settled?"
+        params: {}
+
+  - name: fpl_set_piece_notes
+    group: fpl.fixtures
+    capabilities: []
+    summary: "Official set-piece taker notes per club — who takes penalties, corners and free kicks."
+    base: default
+    path: /team/set-piece-notes/
+    auth: default
+    response_hint: "{last_updated, teams:[{id, notes:[{external_link, info_message:'Penalties: Haaland, then Alvarez', source_link}]}]}  — genuinely useful for FPL and priced-market work alike: penalty duty is worth several points a season and moves with injuries."
+    examples:
+      - description: "Who takes the penalties"
+        params: {}
+
+  # ─── Managers and leagues ─────────────────────────────────────────────
+  - name: fpl_manager
+    group: fpl.managers
+    capabilities: [stats.player_profile]
+    summary: "A manager's squad summary: overall rank, points, and every league they are in."
+    base: default
+    path: /entry/{managerId}/
+    auth: default
+    params:
+      - { name: managerId, in: path, type: integer, required: true, description: "Manager (entry) id — the number in the URL when you view a squad on the FPL site." }
+    response_hint: "{id, name:'Squad Name', player_first_name, player_last_name, player_region_name, summary_overall_points, summary_overall_rank, summary_event_points, summary_event_rank, current_event, started_event, last_deadline_bank, last_deadline_value, last_deadline_total_transfers, leagues:{classic:[{id, name, entry_rank, entry_last_rank}], h2h:[…], cup:{…}}}  — `last_deadline_value` and `last_deadline_bank` are in TENTHS of a million, like player prices."
+    examples:
+      - description: "A manager's summary"
+        params: {managerId: 1}
+
+  - name: fpl_manager_history
+    group: fpl.managers
+    capabilities: [stats.player_career]
+    summary: "A manager's gameweek-by-gameweek history, past seasons, and chips already used."
+    base: default
+    path: /entry/{managerId}/history/
+    auth: default
+    params:
+      - { name: managerId, in: path, type: integer, required: true, description: "Manager (entry) id." }
+    response_hint: "{current:[{event, points, total_points, rank, overall_rank, bank, value, event_transfers, event_transfers_cost, points_on_bench}], past:[{season_name:'2024/25', total_points, rank}], chips:[{name:'wildcard', time, event}]}  — `chips` is what has ALREADY been played, which is how you know what is still available. `current` is empty before gameweek 1."
+    examples:
+      - description: "A manager's season"
+        params: {managerId: 1}
+
+  - name: fpl_manager_picks
+    group: fpl.managers
+    capabilities: [fantasy.rosters]
+    summary: "The exact XI, bench order, captain and chip a manager used in a gameweek."
+    base: default
+    path: /entry/{managerId}/event/{gameweek}/picks/
+    auth: default
+    params:
+      - { name: managerId, in: path, type: integer, required: true, description: "Manager (entry) id." }
+      - { name: gameweek, in: path, type: integer, required: true, description: "A gameweek that has STARTED — picks are hidden until the deadline passes, and an unplayed one 404s." }
+    response_hint: "{active_chip, automatic_subs:[{element_in, element_out}], entry_history:{event, points, total_points, rank, bank, value, event_transfers, event_transfers_cost, points_on_bench}, picks:[{element, position:1-15, multiplier:0|1|2|3, is_captain, is_vice_captain}]}  — `position` 1-11 is the XI and 12-15 the bench IN ORDER. `multiplier` 2 is the captain, 3 a triple-captain chip, and 0 means they did not play (benched)."
+    examples:
+      - description: "A manager's gameweek team"
+        params: {managerId: 1, gameweek: 1}
+
+  - name: fpl_classic_league
+    group: fpl.managers
+    capabilities: [stats.ladder]
+    summary: "Classic (total-points) league standings, paginated."
+    base: default
+    path: /leagues-classic/{leagueId}/standings/
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id. 314 is the global 'Overall' league; your own mini-league id is in its URL." }
+      - { name: page_standings, in: query, type: integer, description: "Standings page (50 per page)." }
+      - { name: page_new_entries, in: query, type: integer, description: "Page of managers who joined recently." }
+    response_hint: "{league:{id, name, created, closed, admin_entry, start_event, league_type, scoring}, new_entries:{has_next, page, results}, standings:{has_next, page, results:[{id, entry, entry_name, player_name, rank, last_rank, rank_sort, total, event_total}]}}  — `entry` is the manager id for fpl_manager; `rank` vs `last_rank` gives movement. Big leagues page at 50."
+    examples:
+      - description: "A league table"
+        params: {leagueId: 314}
+
+  - name: fpl_h2h_league
+    group: fpl.managers
+    capabilities: [stats.ladder, stats.head_to_head]
+    summary: "Head-to-head league standings with win/draw/loss records."
+    base: default
+    path: /leagues-h2h/{leagueId}/standings/
+    auth: default
+    params:
+      - { name: leagueId, in: path, type: integer, required: true, description: "H2H league id (from fpl_manager's `leagues.h2h`). A classic-league id 404s here." }
+      - { name: page_standings, in: query, type: integer, description: "Standings page." }
+    response_hint: "{league:{id, name, league_type, scoring:'h'}, standings:{has_next, page, results:[{id, entry, entry_name, player_name, rank, last_rank, total, matches_played, matches_won, matches_drawn, matches_lost, points_for}]}}  — `total` is H2H league points (3 a win), `points_for` the FPL points scored. Ranking is on `total`, so a high scorer can sit mid-table."
+    examples:
+      - description: "An H2H table"
+        params: {leagueId: 1}
+
+  # ─── Your own squad (needs the session cookie) ────────────────────────
+  - name: fpl_my_team
+    group: fpl.managers
+    capabilities: [fantasy.rosters]
+    summary: "YOUR current squad including picks not yet visible to others, plus bank, free transfers and chip availability. Needs your FPL session cookie."
+    base: default
+    path: /my-team/{managerId}/
+    auth: session
+    params:
+      - { name: managerId, in: path, type: integer, required: true, description: "Your own manager id — this endpoint only ever returns YOUR squad." }
+    response_hint: "{picks:[{element, position, selling_price, purchase_price, multiplier, is_captain, is_vice_captain}], chips:[{status_for_entry:'available'|'played'|'unavailable', name, number, start_event, stop_event, chip_type}], transfers:{cost, status, limit, made, bank, value}}  — the ONE place `selling_price` and `purchase_price` appear: FPL sells a risen player back at half the gain, so selling_price is often below now_cost and that difference decides whether a transfer is affordable. Returns 403 {'detail':'Authentication credentials were not provided.'} without FPL_SESSION_COOKIE."
+    examples:
+      - description: "Your own squad"
+        params: {managerId: 1}

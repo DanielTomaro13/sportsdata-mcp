@@ -6,6 +6,28 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.26.0 — 2026-08-13
+
+### Added
+
+- **`fpl` — Fantasy Premier League's official API, keyless, 16 tools.** The world's
+  most-played fantasy game (4,085,510 registered squads), public except for your own
+  squad: every player with price/form/ownership/xG, one player's full gameweek history,
+  clubs with strength ratings, all 38 gameweek **deadlines**, fixtures with difficulty
+  ratings, live per-player scoring with point-by-point `explain`, dream teams, official
+  set-piece takers, any manager's squad and picks, classic and H2H leagues, and — with
+  your own session cookie — `fpl_my_team` for `selling_price`, free transfers and chip
+  availability.
+
+- **Reductive response projection** (`response_pick`, `response_fields`) — the engine's
+  second declared exception to passthrough after `classify`, and the first that
+  *removes*. It exists because FPL returns one 1.37 MB blob holding six unrelated
+  datasets, of which the player rows alone are **~362,000 tokens** — more than any
+  context window holds, with no server-side field selection and no narrower route. Four
+  tools now hit that URL and return one slice each; `fpl_players` lands at ~58k tokens.
+  Nothing is invented, renamed or coerced — only removed, and only where an endpoint
+  declares it.
+
 ## 0.25.1 — 2026-08-11
 
 ### Fixed

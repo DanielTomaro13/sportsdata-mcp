@@ -30,6 +30,7 @@ from .dispatchers.templated_rest import make_templated_rest_dispatcher
 from .errors import ToolError
 from .http_client import HTTPClient
 from .licence import group_is_live
+from .project import apply_projection
 from .resources.builders import (
     register_graphql_catalog,
     register_reference_resource,
@@ -298,8 +299,12 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             auth_key=ep.auth,
             response_format=ep.response_format,
         )
-        # Pure passthrough unless the endpoint opted into additive `classify` tags.
-        return apply_classify(result, ep.classify) if ep.classify else result
+        # Pure passthrough unless the endpoint opted in. Order matters: `classify` adds
+        # a derived tag, then `project` reduces — so an endpoint can tag rows and still
+        # ship a slim payload.
+        if ep.classify:
+            result = apply_classify(result, ep.classify)
+        return apply_projection(result, pick=ep.response_pick, fields=ep.response_fields)
 
     handler.__signature__ = sig  # type: ignore[attr-defined]
     # FastMCP/pydantic derive the JSON-schema from __annotations__, not __signature__,

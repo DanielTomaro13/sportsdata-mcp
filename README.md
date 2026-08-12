@@ -9,7 +9,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~762 tools across 61 providers in Claude Desktop,
+Free & open source (MIT). ~778 tools across 62 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -439,6 +439,27 @@ Completes basketball alongside the NBA and NBL. One letter selects the competiti
 ESPN already gives you college scores; this adds the NCAA's own **polls and conference
 standings** in a normalised shape. A third-party mirror of NCAA.com rather than an
 official feed. See [documentation/NCAA.md](documentation/NCAA.md).
+
+### Fantasy Premier League — `fantasy.premierleague.com` (official, no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `fpl.players` | 2 | Every player with price, form, ownership, xG/xA; one player in full depth |
+| `fpl.reference` | 3 | Clubs with strength ratings, all 38 gameweeks with **deadlines**, scoring rules |
+| `fpl.fixtures` | 5 | Fixtures with difficulty 1-5, live per-player scoring, dream team, set-piece takers |
+| `fpl.managers` | 6 | Any manager's squad, history and picks; classic and H2H leagues; **your own team** |
+
+The world's most-played fantasy game — 4,085,510 registered squads — and public except
+for your own squad.
+
+One quirk shapes the whole provider: `bootstrap-static` is a **single 1.37 MB blob** whose
+player rows alone are **~362,000 tokens**, with no server-side field selection. Four tools
+hit that one URL and each return one slice, so `fpl_players` lands at ~58k tokens instead
+of being unusable. Nothing is invented or renamed — only removed.
+
+Watch the units: `now_cost` is **tenths of a million** (145 = £14.5m), `form` and the
+expected-goals family are **strings**, and `team` is FPL's own 1-20 id rather than the
+Premier League's. See [documentation/FPL.md](documentation/FPL.md).
 
 ### UFC — `ufc.com` JSON:API (official, no key)
 
