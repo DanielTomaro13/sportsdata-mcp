@@ -50,6 +50,15 @@ build = [
   "cryptography>=42,<50",
 ]
 
+# Rendered as the sidebar links on the PyPI page. "Funding" gets PyPI's own
+# heart icon and is the only donate surface a `pip install` user ever sees.
+[project.urls]
+Homepage = "https://github.com/DanielTomaro13/sportsdata-mcp"
+Source = "https://github.com/DanielTomaro13/sportsdata-mcp"
+Issues = "https://github.com/DanielTomaro13/sportsdata-mcp/issues"
+Changelog = "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/CHANGELOG.md"
+Funding = "https://ko-fi.com/danieltomaro"
+
 [project.scripts]
 sportsdata-mcp = "sportsdata_mcp.cli:main"
 

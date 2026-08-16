@@ -4,6 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/DanielTomaro13/sportsdata-mcp)](https://github.com/DanielTomaro13/sportsdata-mcp/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![sportsdata-mcp MCP server](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp/badges/score.svg)](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20this%20project-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/danieltomaro)
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=sportsdata&config=eyJjb21tYW5kIjogInV2eCIsICJhcmdzIjogWyJzcG9ydHNkYXRhLW1jcCIsICJzZXJ2ZSJdfQ==)
 
@@ -1037,6 +1038,16 @@ Every push/PR runs three jobs (`.github/workflows/ci.yml`):
   geo-block GitHub's runners simply skip there.
 - **package** — builds the wheel and proves the CLI loads the packaged specs from a
   clean install.
+
+## Support this project
+
+sportsdata-mcp is free, MIT-licensed, and has no paid tier — every provider and
+every tool is in the box. Keeping 62 provider specs working against APIs that
+change without notice is the ongoing cost. If it saves you time, you can chip in
+at **[ko-fi.com/danieltomaro](https://ko-fi.com/danieltomaro)**.
+
+Entirely optional, and nothing is gated behind it. Starring the repo, filing a
+good bug report, or adding a provider spec helps just as much.
 
 ## License
 
