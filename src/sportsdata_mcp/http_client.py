@@ -276,7 +276,11 @@ class HTTPClient:
                     merged_headers[name] = value
                 continue
             # Transient upstream errors (e.g. NBA/Akamai 429/5xx) — exponential backoff.
-            if r.status_code in self._retry_statuses and retries_used < self._max_retries:
+            if (
+                r.status_code in self._retry_statuses
+                and retries_used < self._max_retries
+                and self._may_retry(method, r.status_code)
+            ):
                 retries_used += 1
                 wait = self._retry_backoff * (2 ** (retries_used - 1))
                 log.warning(
@@ -372,6 +376,25 @@ class HTTPClient:
             ) from e
         # Trailing blank lines produce rows whose every value is None/''.
         return [row for row in rows if any((v or "").strip() for v in row.values())]
+
+    @staticmethod
+    def _may_retry(method: str, status: int) -> bool:
+        """Is it SAFE to send this request again?
+
+        The retry policy was written when every tool was a GET, and retried purely on
+        status. That is wrong the moment a write exists: a 5xx is AMBIGUOUS — the server
+        may have applied the change and then failed to tell us — so replaying a POST can
+        apply it twice. Measured before this guard: one tool call sent a transfer THREE
+        times, which in FPL terms is three transfers, extra points hits, and players the
+        owner did not choose.
+
+        * Idempotent methods (GET/HEAD/PUT/DELETE) are safe to replay by definition.
+        * POST/PATCH may be replayed ONLY on 429, which means the request was rejected
+          before processing — never on a 5xx, where "did it happen?" is unanswerable.
+        """
+        if method.upper() in {"GET", "HEAD", "PUT", "DELETE", "OPTIONS"}:
+            return True
+        return status == 429
 
     @staticmethod
     def _is_error_marker(value: object) -> bool:

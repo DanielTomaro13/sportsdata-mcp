@@ -294,3 +294,54 @@ endpoints:
     examples:
       - description: "Your own squad"
         params: {managerId: 1}
+
+  # ─── WRITES — opt-in by exact group name, never by a wildcard ─────────
+  #
+  # These CHANGE A REAL TEAM. They are in `fpl.write`, which `*`, `all`, any preset and
+  # even `fpl.*` deliberately skip: enabling everything must not mean "and you may pick
+  # my team". Reach them with:  --groups "free,fpl.*,fpl.write"
+  #
+  # The contract below was read out of FPL's own public JavaScript bundle, then the
+  # my-team payload was confirmed against a live squad. It is undocumented and can
+  # change without notice — so ALWAYS re-read fpl_my_team afterwards. A 200 here is not
+  # proof the team is what you intended.
+  #
+  # CSRF: every write needs an `X-CSRFToken` header carrying the `csrftoken` cookie
+  # value. `sportsdata-mcp connect fpl` collects it alongside the session cookie.
+
+  - name: fpl_set_lineup
+    group: fpl.write
+    capabilities: [fantasy.rosters]
+    method: POST
+    summary: "SET YOUR LINEUP — starting XI, bench order, captain and vice-captain. CHANGES YOUR REAL TEAM."
+    base: default
+    path: /my-team/{managerId}/
+    auth: session
+    params:
+      - { name: managerId, in: path, type: integer, required: true, description: "Your own manager id. This only ever writes to YOUR team." }
+      - { name: csrf, in: header, api_name: "X-CSRFToken", type: string, required: true, description: "The `csrftoken` cookie value. Without it FPL returns 403. `sportsdata-mcp connect fpl` collects it." }
+      - { name: picks, in: body, type: json, required: true, description: "ALL FIFTEEN picks, not just the ones changing. Each: {element, position, is_captain, is_vice_captain, multiplier}. position 1-11 is the XI in slot order, 12-15 the bench IN ORDER; multiplier 1 normal, 2 captain, 3 triple-captain, 0 bench. Exactly one is_captain and one is_vice_captain. Read fpl_my_team first and modify what it returns." }
+      - { name: chip, in: body, type: string, enum: [bboost, "3xc"], description: "Play a TEAM chip with this lineup. Only bboost and 3xc belong here — wildcard and freehit are transfer chips and go to fpl_transfers. Check fpl_my_team's chips[].status_for_entry is 'available' first." }
+    response_hint: "HTTP 200 with an empty or confirmation body on success. Errors come back with a description: an illegal formation (needs exactly 1 GK, 3+ DEF, 1+ FWD across positions 1-11), a captain who is also vice, or a locked gameweek.\n\nVERIFY AFTERWARDS: call fpl_my_team and compare. This endpoint is undocumented and a 200 does not prove the lineup is what you intended. If the deadline has passed the write is rejected — check fpl_gameweeks first."
+    examples:
+      - description: "Set the XI and captain (all 15 picks required)"
+        params: {managerId: 1, csrf: "<csrftoken cookie value>", picks: [{element: 82, position: 1, is_captain: false, is_vice_captain: false, multiplier: 1}]}
+
+  - name: fpl_transfers
+    group: fpl.write
+    capabilities: [sport.transactions]
+    method: POST
+    summary: "MAKE TRANSFERS, or play a wildcard/free hit. CHANGES YOUR REAL TEAM and may cost points."
+    base: default
+    path: /transfers/
+    auth: session
+    params:
+      - { name: csrf, in: header, api_name: "X-CSRFToken", type: string, required: true, description: "The `csrftoken` cookie value. Without it FPL returns 403." }
+      - { name: entry, in: body, type: integer, required: true, description: "Your manager id." }
+      - { name: event, in: body, type: integer, required: true, description: "The gameweek the transfers apply to — the NEXT one, from fpl_gameweeks (is_next)." }
+      - { name: transfers, in: body, type: json, required: true, description: "A list of {element_in, element_out, purchase_price, selling_price}. `selling_price` MUST come from fpl_my_team, never now_cost — FPL returns only half a price rise, so they differ and the transfer is rejected if wrong. For a straight buy use element_out: null and selling_price: 0. Send [] when playing a chip alone." }
+      - { name: chip, in: body, type: string, enum: [wildcard, freehit], description: "Play a TRANSFER chip. bboost and 3xc are team chips and go to fpl_set_lineup instead." }
+    response_hint: "HTTP 200 on success. Errors describe the cause: insufficient funds (check bank plus selling_price, not now_cost), more than 3 players from one club, a squad that is not 15, or a passed deadline.\n\nCOST: outside the pre-season window each transfer beyond your free ones costs 4 points. Read fpl_my_team's `transfers` first — when `status` is 'unlimited' changes are FREE and unlimited, and `limit` is null.\n\nVERIFY AFTERWARDS with fpl_my_team. Note this endpoint is NOT retried on a 5xx, because a replayed transfer would apply twice."
+    examples:
+      - description: "One transfer for the next gameweek"
+        params: {csrf: "<csrftoken cookie value>", entry: 1, event: 1, transfers: [{element_in: 351, element_out: 233, purchase_price: 145, selling_price: 138}]}

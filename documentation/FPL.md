@@ -111,6 +111,57 @@ which variable to set. Every other tool here needs nothing.
 fantasy.premierleague.com, open developer tools → Application → Cookies, and copy the
 values into that environment variable yourself.
 
+## Writes — changing your team
+
+Two tools change your real squad. They live in `fpl.write`, which **no wildcard reaches** —
+not `*`, not `all`, not a preset, not even `fpl.*`. You have to name it:
+
+```bash
+sportsdata-mcp serve --groups "free,fpl.*,fpl.write"
+```
+
+| Tool | What it does |
+|---|---|
+| `fpl_set_lineup` | Starting XI, bench order, captain, vice-captain, and team chips (bboost, 3xc) |
+| `fpl_transfers` | Transfers, and transfer chips (wildcard, freehit) |
+
+### Setup
+
+```bash
+sportsdata-mcp connect fpl
+```
+
+That reads your session **and** `csrftoken` cookies from your browser, verifies them
+against a live call, and saves them. Every FPL write needs an **`X-CSRFToken` header**
+carrying the `csrftoken` cookie value — without it FPL returns 403.
+
+### Five things that will cost you points
+
+**Send all fifteen picks, not just the ones changing.** `fpl_set_lineup` replaces the
+whole lineup. Read `fpl_my_team` first and modify what it returns.
+
+**`selling_price` is not `now_cost`.** FPL returns only half a price rise when you sell,
+so a risen player sells for less than his listed price. Compute affordability from
+`selling_price` + `bank`, or the transfer is rejected.
+
+**Chips go to different endpoints.** `bboost` and `3xc` are `chip_type: team` → they ride
+`fpl_set_lineup`. `wildcard` and `freehit` are `chip_type: transfer` → they ride
+`fpl_transfers`. Sending one to the wrong tool does nothing.
+
+**Check `transfers.status` before quoting a cost.** When it is `"unlimited"` — before the
+first deadline — changes are free and unlimited, and the `cost: 4` field does not apply.
+
+**A 200 is not proof.** These endpoints are undocumented. Always re-read `fpl_my_team`
+afterwards and compare against what you intended.
+
+### Retry behaviour, deliberately
+
+`fpl_transfers` is **not retried on a 5xx**. A 5xx is ambiguous — the server may have
+applied the transfer and then failed to answer — and replaying it would apply it twice.
+It is still retried on 429, which means the request was rejected before processing. Reads
+are unaffected.
+
+
 ## Worked example: who should I captain?
 
 1. `fpl_gameweeks` → the current gameweek and its **deadline**.

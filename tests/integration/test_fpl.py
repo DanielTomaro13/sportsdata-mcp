@@ -43,12 +43,15 @@ async def test_all_tools_register(server):
     } <= names
 
 
-def test_only_my_team_requires_the_session_cookie():
-    """Everything else must work with nothing configured — that is the whole appeal of
-    this provider."""
+def test_only_your_own_squad_and_writes_need_the_session_cookie():
+    """Every READ except your own squad must work with nothing configured — that is the
+    whole appeal of this provider. The writes need it by definition."""
     spec = next(s for s in load_all_specs() if s.provider.id == "fpl")
     authed = {e.name for e in spec.endpoints if e.auth == "session"}
-    assert authed == {"fpl_my_team"}
+    assert authed == {"fpl_my_team", "fpl_set_lineup", "fpl_transfers"}
+    # And every one of those is either your own squad or a write — never a public read.
+    writes = {e.name for e in spec.endpoints if e.group.endswith(".write")}
+    assert authed - writes == {"fpl_my_team"}
     assert spec.provider.requires_user_key is False
 
 

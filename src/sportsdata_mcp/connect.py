@@ -172,9 +172,10 @@ def read_browser_cookies(host: str, names: tuple[str, ...]) -> dict[str, str]:
         shutil.copy2(db, copy)
         con = sqlite3.connect(f"file:{copy}?mode=ro", uri=True)
         try:
+            placeholders = ",".join("?" * len(names))
             rows = con.execute(
                 "SELECT name, encrypted_value FROM cookies "
-                "WHERE host_key LIKE ? AND name IN (%s)" % ",".join("?" * len(names)),
+                f"WHERE host_key LIKE ? AND name IN ({placeholders})",
                 (f"%{host}", *names),
             ).fetchall()
         finally:
