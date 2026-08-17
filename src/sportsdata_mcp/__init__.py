@@ -1,3 +1,3 @@
 """sportsdata-mcp — FastMCP server exposing sports-data APIs as MCP tools."""
 
-__version__ = "0.26.0"
+__version__ = "0.27.0"

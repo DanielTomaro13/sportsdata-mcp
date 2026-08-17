@@ -6,6 +6,47 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.27.0 — 2026-08-17
+
+### Fixed (security)
+
+- **The OAuth refresh token was the one credential the log redaction missed.** Several
+  providers authenticate in the URL and `httpx` logs the composed URL, so `redact.py`
+  scrubs known secrets from every log record. It built its list from a hand-written set
+  of five auth attributes and omitted the sixth — `refresh_token_env`. The refresh token
+  is the durable credential (it mints access tokens roughly hourly, forever) and is the
+  value most likely to appear in a log, so the one worth protecting most was the only one
+  unprotected. It now derives from `spec.AUTH_ENV_ATTRS`, and a test asserts redaction
+  covers **every** env var **every** provider declares — this was the third time a
+  hand-written copy of that list was wrong, and the last time it can be.
+
+### Added
+
+- **`yahoo` — Yahoo Fantasy Sports, 24 tools, the only fantasy platform with a
+  SANCTIONED write API.** Discovery, league/team/player reads, standings, scoreboards
+  with projected points, transactions with winning FAAB bids, drafts, ownership — plus
+  officially supported `yahoo_set_lineup` (PUT), `yahoo_add_drop` and
+  `yahoo_propose_trade`.
+
+  **Access is approval-gated** — apply at `sports.yahoo.com/developer`. Self-registration
+  does not grant the scope (verified: `fspt-w` → `invalid_scope` on two separately
+  registered apps), so the provider is complete but inert until Yahoo approves an
+  application. `scripts/yahoo-oauth-setup.py` walks the OAuth dance and preflights that
+  check in one request.
+
+- **Write tools are opt-in by exact name.** A `.write` group is never enabled by `*`, by
+  a preset, or even by a provider glob like `yahoo.*` — "enable everything" must not
+  quietly mean "and you may change my team".
+
+- **Honest tool annotations.** `readOnlyHint` is a promise a client acts on, and every
+  tool claimed it unconditionally — so the first write tool inherited a claim that it
+  changes nothing. Annotations now derive from the endpoint, with a `read_only` override
+  for the POSTs that only read (FanDuel's promotions endpoint, and GraphQL queries,
+  which travel by POST).
+
+- **Raw request bodies** (`request_body_format: raw`) — Yahoo's writes accept XML only,
+  and a dict-to-XML serialiser would bake one provider's document shape into shared code.
+
 ## 0.26.0 — 2026-08-13
 
 ### Added
