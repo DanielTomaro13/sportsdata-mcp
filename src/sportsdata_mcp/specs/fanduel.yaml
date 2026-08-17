@@ -66,6 +66,8 @@ endpoints:
     group: fanduel.racing
     capabilities: [content.promo]
     summary: "Structured racing promotions / placements (POST; empty body returns all)."
+    # A POST that only reads — see spec.Endpoint.read_only.
+    read_only: true
     method: POST
     base: racing_promos
     path: /api/customisedPromotions/retrieveStructured

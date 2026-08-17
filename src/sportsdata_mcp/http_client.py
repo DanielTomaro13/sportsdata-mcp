@@ -192,6 +192,8 @@ class HTTPClient:
         params: dict | None = None,
         headers: dict | None = None,
         json_body: dict | list | None = None,
+        raw_body: str | None = None,
+        content_type: str | None = None,
         auth_key: str = "default",
     ) -> httpx.Response:
         merged_headers = dict(headers or {})
@@ -247,7 +249,17 @@ class HTTPClient:
             if signer is not None:
                 attempt_headers = {**merged_headers, **signer.sign_request(method, httpx.URL(full_url).path)}
             log.info("→ %s %s (provider=%s, auth=%s)", method, full_url, self._provider.id, auth_key)
-            r = await self._client.request(method, full_url, params=merged_params, headers=attempt_headers, json=json_body)
+            if raw_body is not None:
+                # Verbatim — no re-encoding, so what the spec documented is what is sent.
+                send_headers = dict(attempt_headers)
+                send_headers.setdefault("Content-Type", content_type or "application/xml")
+                r = await self._client.request(
+                    method, full_url, params=merged_params, headers=send_headers, content=raw_body.encode()
+                )
+            else:
+                r = await self._client.request(
+                    method, full_url, params=merged_params, headers=attempt_headers, json=json_body
+                )
             # A stale credential surfaces as 401 — refetch once and retry immediately.
             # (Signers re-sign every attempt, so a 401 retry just gets a fresh signature.)
             if r.status_code == 401 and needs_auth and signer is None and not auth_refetched:
@@ -288,7 +300,11 @@ class HTTPClient:
         is 401 anonymous, data with the cookie), and serving one for the other would
         be a cross-tier leak rather than merely a stale read.
         """
-        if str(kwargs.get("method", "GET")).upper() != "GET" or kwargs.get("json_body") is not None:
+        if (
+            str(kwargs.get("method", "GET")).upper() != "GET"
+            or kwargs.get("json_body") is not None
+            or kwargs.get("raw_body") is not None
+        ):
             return None
         return json.dumps(
             [
@@ -418,15 +434,13 @@ class HTTPClient:
         different problem (revoked key, wrong tier), and shouldn't be told to set what
         it already has.
         """
-        missing: set[str] = set()
-        for spec in self._provider.auth.values():
-            # `env` covers header/query auth; Basic auth names its halves separately, and
-            # skipping them would leave MySportsFeeds users with a bare 401 and no hint.
-            for attr in ("env", "username_env", "password_env"):
-                env = getattr(spec, attr, None)
-                if env and not (os.environ.get(env) or (self._secrets or {}).get(env)):
-                    missing.add(env)
-        return missing
+        from .spec import auth_env_names
+
+        return {
+            name
+            for name in auth_env_names(self._provider)
+            if not (os.environ.get(name) or (self._secrets or {}).get(name))
+        }
 
     def _guard_status_and_size(self, r: httpx.Response) -> None:
         """Status + size checks shared by the JSON and CSV decoders."""

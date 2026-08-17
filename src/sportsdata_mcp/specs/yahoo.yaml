@@ -1,0 +1,497 @@
+spec_version: 1
+
+# Yahoo Fantasy Sports — the ONLY major fantasy platform with a sanctioned write API.
+# NFL, NBA, MLB and NHL: leagues, rosters, standings, matchups, transactions, drafts,
+# free agents, and officially supported lineup / add-drop / trade writes.
+#
+# ⚠⚠ ACCESS IS APPROVAL-GATED. This provider is fully built and CANNOT BE USED until
+# Yahoo approves an application at https://sports.yahoo.com/developer — registering an
+# app yourself is not enough. Verified 2026-08-13 on two separately registered apps:
+#
+#     scope=(none)   302 -> consent page reached
+#     scope=fspt-r   error=invalid_scope
+#     scope=fspt-w   error=invalid_scope
+#
+# An app cannot request a scope its registration does not carry, and Yahoo attaches the
+# Fantasy Sports permission ON APPROVAL. Until then every endpoint returns
+# 401 oauth_problem="additional_authorization_required" even with a valid token.
+#
+# `scripts/yahoo-oauth-setup.py` walks the OAuth dance and preflights that scope check in
+# one request, so an unapproved app is caught before anyone walks a consent flow.
+#
+# ⚠ SHAPES FROM THE VENDOR'S DOCUMENTATION (`shapes_verified: false`). Nothing here could
+# be probed — Yahoo 401s every endpoint without an approved token, including game
+# metadata — so field names are from Yahoo's published guide. Treat nesting as
+# approximate until a real response confirms it.
+#
+# ⚠ THE JSON IS UNUSUAL, AND THIS IS THE MAIN THING TO KNOW. Yahoo serves XML by default;
+# `format=json` (already set on every tool) yields a structure that mixes arrays with
+# NUMERIC-KEYED OBJECTS and interleaves metadata:
+#
+#     {"fantasy_content": {"users": {"0": {"user": [
+#         {...user meta...},
+#         {"games": {"0": {"game": [...]}, "count": 1}}
+#     ]}, "count": 1}}}
+#
+# So: `users` is an OBJECT keyed "0","1",… plus a `count` sibling — not a list. And a
+# resource is often a two-element ARRAY of [metadata, {sub-resource}] rather than one
+# object. Walk it defensively; do not assume list semantics anywhere.
+#
+# KEY FORMATS — every id is a compound string, and getting these wrong is the usual 400:
+#     game_key    "nfl" | "nba" | "mlb" | "nhl"  (current season) or a numeric id "449"
+#     league_key  {game_key}.l.{league_id}       e.g. "449.l.12345"
+#     team_key    {league_key}.t.{team_id}       e.g. "449.l.12345.t.3"
+#     player_key  {game_key}.p.{player_id}       e.g. "449.p.31883"
+#
+# ATTRIBUTION IS A CONDITION OF ACCESS: any product using this data must display
+# "Fantasy data provided by Yahoo Fantasy" with the official logo, unmodified.
+
+provider:
+  id: yahoo
+  display_name: "Yahoo Fantasy Sports (approval-gated — sanctioned writes)"
+  requires_user_key: true
+  shapes_verified: false
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Yahoo.md"
+  base_urls:
+    default: https://fantasysports.yahooapis.com/fantasy/v2
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: oauth_refresh
+      token_url: https://api.login.yahoo.com/oauth2/get_token
+      client_id_env: YAHOO_CLIENT_ID
+      client_secret_env: YAHOO_CLIENT_SECRET
+      refresh_token_env: YAHOO_REFRESH_TOKEN
+      grant: refresh_token
+      optional: true
+  defaults:
+    # "Yahoo monitors API usage… if individual usage is excessive over short periods"
+    # — their words. Stay well under whatever that means.
+    rate_limit_rps: 2
+    burst: 4
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 2.0
+
+endpoints:
+  # ─── Discovery: what does this user actually have? ────────────────────
+  - name: yahoo_my_games
+    group: yahoo.user
+    capabilities: [sport.competitions_list]
+    summary: "Which fantasy games the authenticated user plays. START HERE — everything else needs a game_key from this."
+    base: default
+    path: /users;use_login=1/games
+    auth: default
+    params:
+      - { name: format, in: query, type: string, default: json, description: "Leave as json; Yahoo serves XML otherwise." }
+    response_hint: "{fantasy_content:{users:{'0':{user:[{guid}, {games:{'0':{game:[{game_key:'449', game_id, name:'Football', code:'nfl', season:'2025', is_over}]}, count}}]}, count}}}  — SHAPE FROM VENDOR DOCS. Note `users` and `games` are OBJECTS keyed '0','1',… with a `count` sibling, and `user` is a two-element ARRAY of [meta, {games}]."
+    examples:
+      - description: "The user's games"
+        params: {}
+
+  - name: yahoo_my_leagues
+    group: yahoo.user
+    capabilities: [sport.competitions_list]
+    summary: "The authenticated user's leagues for one or more games — where you get league_key."
+    base: default
+    path: /users;use_login=1/games;game_keys={gameKeys}/leagues
+    auth: default
+    params:
+      - { name: gameKeys, in: path, type: string, required: true, description: "Comma-separated game keys, e.g. 'nfl' or 'nfl,nba'. Bare codes mean the CURRENT season." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{users:{'0':{user:[{guid}, {games:{'0':{game:[{game_key}, {leagues:{'0':{league:[{league_key:'449.l.12345', league_id, name, num_teams, scoring_type, current_week, start_week, end_week, is_finished}]}, count}}]}}}}]}}}  — SHAPE FROM VENDOR DOCS. `league_key` is what every league tool below needs."
+    examples:
+      - description: "NFL leagues"
+        params: {gameKeys: "nfl"}
+
+  - name: yahoo_my_teams
+    group: yahoo.user
+    capabilities: [ref.teams]
+    summary: "The authenticated user's own fantasy teams — where you get team_key, which every write needs."
+    base: default
+    path: /users;use_login=1/games;game_keys={gameKeys}/teams
+    auth: default
+    params:
+      - { name: gameKeys, in: path, type: string, required: true, description: "Comma-separated game keys, e.g. 'nfl'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{users:{'0':{user:[{guid}, {games:{'0':{game:[{game_key}, {teams:{'0':{team:[[{team_key:'449.l.12345.t.3'}, {team_id}, {name}, …]]}, count}}]}}}}]}}}  — SHAPE FROM VENDOR DOCS. NOTE the team is a NESTED array-of-arrays of single-key objects, which is the most awkward shape in this API."
+    examples:
+      - description: "The user's NFL teams"
+        params: {gameKeys: "nfl"}
+
+  # ─── Game reference ───────────────────────────────────────────────────
+  - name: yahoo_game
+    group: yahoo.reference
+    capabilities: [sport.competitions_list]
+    summary: "Game metadata for a sport-season: season year, whether it is over, and the game_key other calls need."
+    base: default
+    path: /game/{gameKey}
+    auth: default
+    params:
+      - { name: gameKey, in: path, type: string, required: true, description: "'nfl', 'nba', 'mlb', 'nhl' for the current season, or a numeric id like '449'." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{game:[{game_key, game_id, name, code, type:'full', url, season, is_registration_over, is_game_over, is_offseason}]}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Current NFL season"
+        params: {gameKey: "nfl"}
+
+  - name: yahoo_game_stat_categories
+    group: yahoo.reference
+    capabilities: []
+    summary: "Every stat category a game scores, with its id — the lookup that makes scoring settings and player stats readable."
+    base: default
+    path: /game/{gameKey}/stat_categories
+    auth: default
+    params:
+      - { name: gameKey, in: path, type: string, required: true, description: "Game key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{game:[{game_key}, {stat_categories:{stats:[{stat:{stat_id, name:'Passing Yards', display_name:'Pass Yds', sort_order, position_types}}]}}]}}  — SHAPE FROM VENDOR DOCS. Player stats and league scoring both refer to bare `stat_id`s; without this they are unreadable numbers."
+    examples:
+      - description: "NFL stat categories"
+        params: {gameKey: "nfl"}
+
+  - name: yahoo_game_roster_positions
+    group: yahoo.reference
+    capabilities: []
+    summary: "The roster positions a game defines (QB, RB, FLEX, BN, IR…) — needed to build a valid lineup write."
+    base: default
+    path: /game/{gameKey}/roster_positions
+    auth: default
+    params:
+      - { name: gameKey, in: path, type: string, required: true, description: "Game key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{game:[{game_key}, {roster_positions:[{roster_position:{position:'QB', position_type:'O', is_starting_position}}]}]}}  — SHAPE FROM VENDOR DOCS. `is_starting_position` distinguishes a starting slot from BN/IR, which is exactly what a lineup optimiser needs."
+    examples:
+      - description: "NFL roster positions"
+        params: {gameKey: "nfl"}
+
+  # ─── League ───────────────────────────────────────────────────────────
+  - name: yahoo_league
+    group: yahoo.league
+    capabilities: [sport.competition_screen]
+    summary: "League metadata: name, size, scoring type, current week, and the season's week range."
+    base: default
+    path: /league/{leagueKey}
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key, e.g. '449.l.12345' (from yahoo_my_leagues)." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key, league_id, name, url, num_teams, scoring_type:'head'|'point'|'roto', league_type, current_week, start_week, end_week, start_date, end_date, is_finished}]}}  — SHAPE FROM VENDOR DOCS. `current_week` drives every week-scoped call below."
+    examples:
+      - description: "One league"
+        params: {leagueKey: "449.l.12345"}
+
+  - name: yahoo_league_settings
+    group: yahoo.league
+    capabilities: [fantasy.league_settings]
+    summary: "The rules: roster slots, scoring weights, waiver type, trade deadline, playoff structure. Read this before proposing anything."
+    base: default
+    path: /league/{leagueKey}/settings
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {settings:[{draft_type, scoring_type, uses_playoff, playoff_start_week, uses_faab, waiver_type:'FR'|'CO', waiver_rule, trade_end_date, trade_ratify_type, roster_positions:[{roster_position:{position, count}}], stat_categories:{stats:[…]}, stat_modifiers:{stats:[{stat:{stat_id, value}}]}}]}]}}  — SHAPE FROM VENDOR DOCS. `uses_faab` decides whether waivers are budget bids or priority order — an agent must know which before claiming."
+    examples:
+      - description: "League rules"
+        params: {leagueKey: "449.l.12345"}
+
+  - name: yahoo_league_standings
+    group: yahoo.league
+    capabilities: [stats.ladder]
+    summary: "Standings with each team's record, points for/against and playoff seed."
+    base: default
+    path: /league/{leagueKey}/standings
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {standings:[{teams:{'0':{team:[[{team_key}, …], {team_standings:{rank, outcome_totals:{wins, losses, ties, percentage}, points_for, points_against, streak}}]}, count}}]}]}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "League standings"
+        params: {leagueKey: "449.l.12345"}
+
+  - name: yahoo_league_scoreboard
+    group: yahoo.league
+    capabilities: [sport.match_score]
+    summary: "One week's matchups with both teams' points — live during a week, final after."
+    base: default
+    path: /league/{leagueKey}/scoreboard;week={week}
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number (from yahoo_league's current_week / start_week / end_week)." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {scoreboard:{'0':{matchups:{'0':{matchup:{week, status, is_playoffs, teams:{'0':{team:[…, {team_points:{total}}, {team_projected_points:{total}}]}, count:2}}}, count}}, week}}]}}  — SHAPE FROM VENDOR DOCS. Note `team_projected_points` alongside actual, which is what an in-week win-probability read needs."
+    examples:
+      - description: "A week's matchups"
+        params: {leagueKey: "449.l.12345", week: 1}
+
+  - name: yahoo_league_teams
+    group: yahoo.league
+    capabilities: [ref.teams]
+    summary: "Every team in the league with its manager — how you map team_key to a person."
+    base: default
+    path: /league/{leagueKey}/teams
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {teams:{'0':{team:[[{team_key}, {team_id}, {name}, {url}, {team_logos}, {waiver_priority}, {faab_balance}, {number_of_moves}, {number_of_trades}, {managers:[{manager:{nickname, guid, is_commissioner}}]}]]}, count}}]}}  — SHAPE FROM VENDOR DOCS. `faab_balance` and `waiver_priority` are what a waiver strategy is built on."
+    examples:
+      - description: "Teams in a league"
+        params: {leagueKey: "449.l.12345"}
+
+  - name: yahoo_league_players
+    group: yahoo.league
+    capabilities: [ref.players, sport.transactions]
+    summary: "The player pool filtered by availability — free agents, waivers, or all. The add/drop shortlist."
+    base: default
+    path: /league/{leagueKey}/players;status={status};start={start};count={count}
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: status, in: path, type: string, default: A, enum: [A, FA, W, T, K], description: "A available, FA free agents, W on waivers, T taken (rostered), K keepers." }
+      - { name: start, in: path, type: integer, default: 0, description: "Pagination offset — Yahoo returns 25 at a time." }
+      - { name: count, in: path, type: integer, default: 25, description: "Page size (max 25)." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {players:{'0':{player:[[{player_key}, {player_id}, {name:{full, first, last}}, {editorial_team_abbr}, {display_position}, {eligible_positions}, {status:'IR'|'O'|'Q'}, {percent_owned}]]}, count}}]}}  — SHAPE FROM VENDOR DOCS. HARD-CAPPED AT 25 PER PAGE: walk `start` to see more, and expect several calls for a full pool."
+    examples:
+      - description: "Available players"
+        params: {leagueKey: "449.l.12345", status: "A"}
+
+  - name: yahoo_league_transactions
+    group: yahoo.league
+    capabilities: [sport.transactions]
+    summary: "Adds, drops, waiver claims and trades across the league — who is doing what."
+    base: default
+    path: /league/{leagueKey}/transactions
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {transactions:{'0':{transaction:[{transaction_key, transaction_id, type:'add'|'drop'|'add/drop'|'trade'|'commish', status:'successful'|'pending', timestamp, faab_bid}, {players:{…}}]}, count}}]}}  — SHAPE FROM VENDOR DOCS. `faab_bid` on successful claims is the market price of a player in your league — the single most useful input for bidding."
+    examples:
+      - description: "League transactions"
+        params: {leagueKey: "449.l.12345"}
+
+  - name: yahoo_league_draft
+    group: yahoo.league
+    capabilities: [sport.draft]
+    summary: "Draft results — every pick in order with round, team and player."
+    base: default
+    path: /league/{leagueKey}/draftresults
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {draft_results:{'0':{draft_result:{pick, round, team_key, player_key}}, count}}]}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "Draft results"
+        params: {leagueKey: "449.l.12345"}
+
+  # ─── Team ─────────────────────────────────────────────────────────────
+  - name: yahoo_team
+    group: yahoo.team
+    capabilities: [ref.teams]
+    summary: "One team's metadata: name, manager, waiver priority, FAAB balance, moves used."
+    base: default
+    path: /team/{teamKey}
+    auth: default
+    params:
+      - { name: teamKey, in: path, type: string, required: true, description: "Team key, e.g. '449.l.12345.t.3' (from yahoo_my_teams or yahoo_league_teams)." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{team:[[{team_key}, {team_id}, {name}, {waiver_priority}, {faab_balance}, {number_of_moves}, {number_of_trades}, {roster_adds:{coverage_type, value}}, {managers:[…]}]]}}  — SHAPE FROM VENDOR DOCS. `roster_adds` is how many moves have been used against any weekly cap."
+    examples:
+      - description: "One team"
+        params: {teamKey: "449.l.12345.t.3"}
+
+  - name: yahoo_team_roster
+    group: yahoo.team
+    capabilities: [fantasy.rosters]
+    summary: "A team's roster for a week — who is started, benched, and in which slot. The read that precedes every lineup write."
+    base: default
+    path: /team/{teamKey}/roster;week={week}
+    auth: default
+    params:
+      - { name: teamKey, in: path, type: string, required: true, description: "Team key." }
+      - { name: week, in: path, type: integer, required: true, description: "Week number. Past weeks are historical; the current week is what a lineup write changes." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{team:[[{team_key}, …], {roster:{'0':{players:{'0':{player:[[{player_key}, {name}, {eligible_positions:[{position}]}, {status}], {selected_position:[{coverage_type:'week'}, {position:'QB'|'BN'|'IR'}]}]}, count}}, coverage_type, week, is_editable}}]}}  — SHAPE FROM VENDOR DOCS. `selected_position.position` is the CURRENT slot and `eligible_positions` the legal ones; `is_editable` false means the week is locked and a write will fail."
+    examples:
+      - description: "This week's roster"
+        params: {teamKey: "449.l.12345.t.3", week: 1}
+
+  - name: yahoo_team_matchups
+    group: yahoo.team
+    capabilities: [stats.team_game_log]
+    summary: "A team's whole season of matchups — opponents, results and weekly scores."
+    base: default
+    path: /team/{teamKey}/matchups
+    auth: default
+    params:
+      - { name: teamKey, in: path, type: string, required: true, description: "Team key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{team:[[{team_key}, …], {matchups:{'0':{matchup:{week, week_start, week_end, status, is_playoffs, winner_team_key, teams:{…}}}, count}}]}}  — SHAPE FROM VENDOR DOCS."
+    examples:
+      - description: "A team's season"
+        params: {teamKey: "449.l.12345.t.3"}
+
+  - name: yahoo_team_stats
+    group: yahoo.team
+    capabilities: [stats.team_season]
+    summary: "A team's aggregated stats for a season or a week."
+    base: default
+    path: /team/{teamKey}/stats;type={type}
+    auth: default
+    params:
+      - { name: teamKey, in: path, type: string, required: true, description: "Team key." }
+      - { name: type, in: path, type: string, default: season, enum: [season, week, date, lastweek, lastmonth], description: "Aggregation window." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{team:[[{team_key}, …], {team_stats:{coverage_type, season, stats:[{stat:{stat_id, value}}]}}, {team_points:{total}}]}}  — SHAPE FROM VENDOR DOCS. `stat_id` resolves via yahoo_game_stat_categories."
+    examples:
+      - description: "Season totals"
+        params: {teamKey: "449.l.12345.t.3", type: "season"}
+
+  # ─── Players ──────────────────────────────────────────────────────────
+  - name: yahoo_player_stats
+    group: yahoo.players
+    capabilities: [stats.player_season, stats.player_game_log]
+    summary: "One or more players' stats for a season or week."
+    base: default
+    path: /players;player_keys={playerKeys}/stats;type={type}
+    auth: default
+    params:
+      - { name: playerKeys, in: path, type: string, required: true, description: "Comma-separated player keys, e.g. '449.p.31883'. Batch several in one call." }
+      - { name: type, in: path, type: string, default: season, enum: [season, week, date, lastweek, lastmonth, average_season], description: "Aggregation window." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{players:{'0':{player:[[{player_key}, {name}, {editorial_team_abbr}, {display_position}], {player_stats:{coverage_type, season, stats:[{stat:{stat_id, value}}]}}, {player_points:{total}}]}, count}}}  — SHAPE FROM VENDOR DOCS. Batching keys is how you stay inside the rate limit."
+    examples:
+      - description: "A player's season"
+        params: {playerKeys: "449.p.31883", type: "season"}
+
+  - name: yahoo_player_ownership
+    group: yahoo.players
+    capabilities: [ref.players]
+    summary: "Ownership and roster status for players in a league — percent owned and whether they are rostered, on waivers or free."
+    base: default
+    path: /league/{leagueKey}/players;player_keys={playerKeys}/ownership
+    auth: default
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key — ownership is league-specific." }
+      - { name: playerKeys, in: path, type: string, required: true, description: "Comma-separated player keys." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json." }
+    response_hint: "{fantasy_content:{league:[{league_key}, {players:{'0':{player:[[{player_key}, {name}], {ownership:{ownership_type:'team'|'waivers'|'freeagents', owner_team_key, waiver_date}}, {percent_owned:{value}}]}, count}}]}}  — SHAPE FROM VENDOR DOCS. `ownership_type` is the difference between 'add them now' and 'you must outbid someone'."
+    examples:
+      - description: "Is this player available?"
+        params: {leagueKey: "449.l.12345", playerKeys: "449.p.31883"}
+
+  # ─── WRITES — sanctioned, and the reason this provider exists ─────────
+  # Not in `free` or `all`; a caller must enable yahoo.write explicitly.
+  - name: yahoo_set_lineup
+    group: yahoo.write
+    capabilities: [fantasy.rosters]
+    method: PUT
+    summary: "SET A LINEUP — assign each player a starting slot or bench for a week. WRITES TO YOUR TEAM."
+    base: default
+    path: /team/{teamKey}/roster
+    auth: default
+    request_body_format: raw
+    request_content_type: application/xml
+    params:
+      - { name: teamKey, in: path, type: string, required: true, description: "Your team key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json (controls the RESPONSE; the request body is XML)." }
+      - name: xml
+        in: body
+        type: string
+        required: true
+        description: >-
+          The roster document, XML — Yahoo accepts no other format here. EVERY player on
+          the roster must appear, not just the ones moving, and `position` must be one of
+          their `eligible_positions` (BN for bench, IR only if eligible). Template:
+          <?xml version="1.0"?><fantasy_content><roster><coverage_type>week</coverage_type>
+          <week>1</week><players><player><player_key>449.p.31883</player_key>
+          <position>QB</position></player><player><player_key>449.p.9527</player_key>
+          <position>BN</position></player></players></roster></fantasy_content>
+          Read yahoo_team_roster first and check `is_editable` — a locked week rejects this.
+    response_hint: "HTTP 200 with a confirmation body on success. Yahoo returns 400 with a description for an illegal slot, an ineligible position, or a locked week. ALWAYS re-read yahoo_team_roster afterwards to confirm — a 200 is not proof the lineup is what you intended."
+    examples:
+      - description: "Start a QB, bench another player"
+        params:
+          teamKey: "449.l.12345.t.3"
+          xml: '<?xml version="1.0"?><fantasy_content><roster><coverage_type>week</coverage_type><week>1</week><players><player><player_key>449.p.31883</player_key><position>QB</position></player></players></roster></fantasy_content>'
+
+  - name: yahoo_add_drop
+    group: yahoo.write
+    capabilities: [sport.transactions]
+    method: POST
+    summary: "ADD, DROP, or ADD/DROP a player — including a FAAB waiver bid. WRITES TO YOUR TEAM."
+    base: default
+    path: /league/{leagueKey}/transactions
+    auth: default
+    request_body_format: raw
+    request_content_type: application/xml
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json (the request body is XML)." }
+      - name: xml
+        in: body
+        type: string
+        required: true
+        description: >-
+          The transaction document, XML. `type` is add, drop or add/drop. An add needs
+          destination_team_key; a drop needs source_team_key; add/drop needs BOTH players
+          in one document or the roster will be over the limit. For a waiver claim in a
+          FAAB league add <faab_bid>N</faab_bid> — check yahoo_league_settings.uses_faab
+          first, because a bid in a priority league is rejected. Template:
+          <?xml version="1.0"?><fantasy_content><transaction><type>add/drop</type>
+          <players><player><player_key>449.p.31883</player_key><transaction_data>
+          <type>add</type><destination_team_key>449.l.12345.t.3</destination_team_key>
+          </transaction_data></player><player><player_key>449.p.9527</player_key>
+          <transaction_data><type>drop</type><source_team_key>449.l.12345.t.3</source_team_key>
+          </transaction_data></player></players></transaction></fantasy_content>
+    response_hint: "HTTP 201 with the created transaction on success; 400 with a description if the player is not available, the roster would be illegal, or a FAAB bid exceeds the balance. Re-read yahoo_team_roster to confirm — and note a WAIVER claim returns success as PENDING, not completed: it processes later, so the roster will not change immediately."
+    examples:
+      - description: "Add one player and drop another"
+        params:
+          leagueKey: "449.l.12345"
+          xml: '<?xml version="1.0"?><fantasy_content><transaction><type>add/drop</type><players><player><player_key>449.p.31883</player_key><transaction_data><type>add</type><destination_team_key>449.l.12345.t.3</destination_team_key></transaction_data></player></players></transaction></fantasy_content>'
+
+  - name: yahoo_propose_trade
+    group: yahoo.write
+    capabilities: [sport.transactions]
+    method: POST
+    summary: "PROPOSE, accept, reject or cancel a TRADE. WRITES TO YOUR TEAM — route this to a human by policy."
+    base: default
+    path: /league/{leagueKey}/transactions
+    auth: default
+    request_body_format: raw
+    request_content_type: application/xml
+    params:
+      - { name: leagueKey, in: path, type: string, required: true, description: "League key." }
+      - { name: format, in: query, type: string, default: json, description: "Leave as json (the request body is XML)." }
+      - name: xml
+        in: body
+        type: string
+        required: true
+        description: >-
+          The trade document, XML. To PROPOSE, `type` is trade with trader/tradee team
+          keys and every player moving, each tagged with its source and destination team.
+          To RESPOND to one you received, use type `pending_trade` with the
+          transaction_key and action accept|reject|cancel. Template (propose):
+          <?xml version="1.0"?><fantasy_content><transaction><type>trade</type>
+          <trader_team_key>449.l.12345.t.3</trader_team_key>
+          <tradee_team_key>449.l.12345.t.7</tradee_team_key><players><player>
+          <player_key>449.p.31883</player_key><transaction_data><type>pending_trade</type>
+          <source_team_key>449.l.12345.t.3</source_team_key>
+          <destination_team_key>449.l.12345.t.7</destination_team_key>
+          </transaction_data></player></players></transaction></fantasy_content>
+    response_hint: "HTTP 201 on success. A proposal is PENDING until the other manager responds, and many leagues then add a review period (see yahoo_league_settings.trade_ratify_type) — so success here means 'offered', never 'done'. Trades are irreversible once ratified; the recommendation is to keep this on always_ask rather than autonomous."
+    examples:
+      - description: "Propose a trade"
+        params:
+          leagueKey: "449.l.12345"
+          xml: '<?xml version="1.0"?><fantasy_content><transaction><type>trade</type><trader_team_key>449.l.12345.t.3</trader_team_key><tradee_team_key>449.l.12345.t.7</tradee_team_key><players/></transaction></fantasy_content>'

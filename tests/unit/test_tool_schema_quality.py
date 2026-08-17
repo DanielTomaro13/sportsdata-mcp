@@ -18,6 +18,8 @@ import pytest
 
 from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
+from sportsdata_mcp.spec import auth_env_names
+from sportsdata_mcp.spec_loader import load_all_specs
 
 
 @pytest.fixture(scope="module")
@@ -55,11 +57,16 @@ async def test_every_tool_carries_annotations(all_tools):
 
 
 async def test_read_only_hints_are_honest(all_tools):
-    """The annotation is a promise. `sportsdata_feedback` mutates local state, so it must
-    NOT claim to be read-only — a client that trusts the hint would call it freely."""
+    """The annotation is a promise a client acts on. Anything that changes state — local
+    (`sportsdata_feedback`) or remote (a `.write` group tool) — must not claim otherwise.
+
+    The write side is covered in depth by tests/unit/test_write_tools.py; this asserts the
+    complement, that everything ELSE still reads as read-only.
+    """
+    writes = {t.name for s in load_all_specs() for t in s.all_tools() if t.group.endswith(".write")}
     for t in all_tools:
-        if t.name == "sportsdata_feedback":
-            assert t.annotations.readOnlyHint is False
+        if t.name == "sportsdata_feedback" or t.name in writes:
+            assert t.annotations.readOnlyHint is False, f"{t.name} should not claim read-only"
         elif t.annotations is not None:
             assert t.annotations.readOnlyHint is True, f"{t.name} claims to write"
 
@@ -124,12 +131,13 @@ async def test_byo_tools_name_the_env_var_in_their_description(all_tools):
         spec = byo.get(t.name.split("_")[0])
         if spec is None:
             continue
-        envs = [
-            env for a in spec.provider.auth.values()
-            for attr in ("env", "username_env")
-            if (env := getattr(a, attr, None))
-        ]
-        assert any(e in (t.description or "") for e in envs), f"{t.name} names no env var"
+        envs = sorted(auth_env_names(spec.provider))
+        # A description names the variable(s) a user must set. For OAuth providers the
+        # engine reports the whole trio, so matching ANY of them is the right assertion —
+        # requiring all three would demand noise in every tool description.
+        assert any(e in (t.description or "") for e in envs), (
+            f"{t.name} names none of {envs}"
+        )
 
 
 async def test_alternatives_are_only_listed_when_they_are_actionable(all_tools):

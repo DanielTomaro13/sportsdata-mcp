@@ -17,6 +17,7 @@ import re
 
 import pytest
 
+from sportsdata_mcp.spec import auth_env_names
 from sportsdata_mcp.spec_loader import load_all_specs
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -68,12 +69,7 @@ def test_docs_mention_every_tool(spec):
 def test_byo_docs_name_the_env_var(spec):
     """"Get a key" is useless without the variable name to put it in."""
     text = _doc_path(spec).read_text()
-    envs = [
-        env
-        for auth in spec.provider.auth.values()
-        for attr in ("env", "username_env")
-        if (env := getattr(auth, attr, None))
-    ]
+    envs = sorted(auth_env_names(spec.provider))
     assert any(e in text for e in envs), f"{spec.provider.id}: doc names none of {envs}"
 
 

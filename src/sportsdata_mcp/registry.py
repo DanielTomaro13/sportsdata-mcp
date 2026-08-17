@@ -48,6 +48,32 @@ log = logging.getLogger("sportsdata_mcp.registry")
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
 
 
+def _annotations_for(tool) -> ToolAnnotations:
+    """Annotations derived from the HTTP method, never assumed.
+
+    `readOnlyHint` is a PROMISE a client acts on: a tool claiming it may be called
+    without asking the user. Every tool in this catalogue was a GET when the constant
+    above was written, so it was applied unconditionally — and the first write tool
+    (Yahoo's sanctioned lineup PUT) inherited a claim that it does not change anything,
+    which is exactly backwards for the one tool where confirmation matters most.
+    """
+    method = getattr(tool, "method", "GET").upper()
+    declared = getattr(tool, "read_only", None)
+    # A GraphQL *query* is a read that travels by POST, and this catalogue exposes no
+    # mutations — so the transport verb says nothing about state here.
+    is_graphql_read = getattr(tool, "kind", "") in ("graphql_persisted", "graphql_query")
+    if declared is True or is_graphql_read or (declared is None and method == "GET"):
+        return _READ_ONLY
+    return ToolAnnotations(
+        readOnlyHint=False,
+        # PUT is idempotent by definition (setting the same lineup twice is the same
+        # lineup); POST is not (two add/drops are two transactions).
+        idempotentHint=method == "PUT",
+        destructiveHint=True,
+        openWorldHint=True,
+    )
+
+
 # ─── Python type mapping ───────────────────────────────────────────────
 
 _PY_TYPES: dict[str, type] = {
@@ -190,12 +216,9 @@ def _auth_line(provider) -> str:
     """
     if provider is None:
         return ""
-    envs = sorted({
-        env
-        for auth in provider.auth.values()
-        for attr in ("env", "username_env")
-        if (env := getattr(auth, attr, None))
-    })
+    from .spec import auth_env_names
+
+    envs = sorted(auth_env_names(provider))
     if provider.requires_user_key and envs:
         return f"\nAuth: needs your own key in {' or '.join(envs)}."
     if envs:
@@ -289,6 +312,15 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
         query = _build_query(ep, kwargs)
         header = _build_headers(ep, kwargs)
         body = _build_body(ep, kwargs)
+        raw = None
+        if ep.request_body_format == "raw":
+            # The single body param carries the document verbatim (Yahoo's XML writes).
+            raw = next(
+                (str(v) for p_, v in ((p_, kwargs.get(p_.name)) for p_ in ep.params)
+                 if p_.in_ == "body" and v is not None),
+                None,
+            )
+            body = None
         result = await http.request_json(
             method=ep.method,
             base=ep.base,
@@ -296,6 +328,8 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             params=query,
             headers=header,
             json_body=body,
+            raw_body=raw,
+            content_type=ep.request_content_type,
             auth_key=ep.auth,
             response_format=ep.response_format,
         )
@@ -473,7 +507,7 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
                     endpoint, shapes_verified=provider.shapes_verified,
                     provider=provider, cap_index=cap_index,
                 ),
-                annotations=_READ_ONLY,
+                annotations=_annotations_for(endpoint),
             )(handler)
             registered.tools.append(endpoint.name)
 
@@ -489,7 +523,7 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
                     dispatcher, shapes_verified=provider.shapes_verified,
                     provider=provider, cap_index=cap_index,
                 ),
-                annotations=_READ_ONLY,
+                annotations=_annotations_for(dispatcher),
             )(handler)
             registered.tools.append(dispatcher.name)
             if dispatcher.kind in ("graphql_persisted", "graphql_query"):

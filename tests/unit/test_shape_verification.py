@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
+from sportsdata_mcp.spec import auth_env_names
 from sportsdata_mcp.spec_loader import load_all_specs
 
 
@@ -24,15 +25,12 @@ def test_unverified_providers_are_explicitly_flagged():
     for spec in load_all_specs():
         if spec.provider.shapes_verified:
             continue
-        # `username_env` is the HTTP Basic case (MySportsFeeds). Checking only `env`
-        # made this fire on it — correctly reporting that the RULE had a blind spot,
-        # not that the provider was wrong. The same blind spot existed in the engine's
-        # "which key is missing" message, and this is what surfaced it.
-        needs_key = any(
-            getattr(a, attr, None)
-            for a in spec.provider.auth.values()
-            for attr in ("env", "username_env")
-        )
+        # This assertion has now caught the same blind spot three times — `username_env`
+        # when HTTP Basic landed, then the OAuth trio when Yahoo did. Each time the RULE
+        # was wrong rather than the provider, because every call site listed the auth
+        # attributes by hand. `auth_env_names` is the single source of truth, and using
+        # it here is what stops a fourth.
+        needs_key = bool(auth_env_names(spec.provider))
         assert needs_key, (
             f"{spec.provider.id} is flagged unverified but needs no key — "
             "if we can call it, we should have probed it"

@@ -110,6 +110,30 @@ class AuthStaticBasic(BaseModel):
     optional: bool = False
 
 
+# Every attribute across every auth type that names an environment variable. Listing
+# these by hand at each call site has now gone wrong three times — `username_env` was
+# missed when HTTP Basic landed, and the OAuth trio when Yahoo did — each time producing
+# a check that silently passed because it was looking at the wrong field.
+AUTH_ENV_ATTRS = (
+    "env",
+    "username_env",
+    "password_env",
+    "client_id_env",
+    "client_secret_env",
+    "refresh_token_env",
+)
+
+
+def auth_env_names(provider) -> set[str]:
+    """Every env var this provider's auth reads, whatever the auth type."""
+    return {
+        name
+        for auth in provider.auth.values()
+        for attr in AUTH_ENV_ATTRS
+        if (name := getattr(auth, attr, None))
+    }
+
+
 AuthSpec = Annotated[
     AuthNone | AuthStaticHeader | AuthStaticQuery | AuthStaticBasic | AuthOAuthRefresh | AuthKalshiRSA | AuthAFLWMCTok,
     Field(discriminator="type"),
@@ -367,6 +391,18 @@ class Endpoint(BaseModel):
     # with no server-side field selection, which no context window can hold.
     response_pick: list[str] = Field(default_factory=list)
     response_fields: list[str] = Field(default_factory=list)
+    # Send the body VERBATIM with this content type instead of JSON-encoding it. Yahoo's
+    # fantasy write endpoints accept XML only, and inventing a dict->XML serialiser in
+    # the engine would mean baking one provider's document shape into shared code. A raw
+    # string keeps the engine generic: the spec documents the exact template, the caller
+    # fills it in, and what is sent is what was written.
+    request_body_format: Literal["json", "raw"] = "json"
+    request_content_type: str | None = None
+    # Whether this endpoint CHANGES anything. Defaults from the method, which is right
+    # almost always — but not universally: FanDuel's promotions endpoint is a POST whose
+    # empty body returns everything, a read wearing a write's method. Annotating it
+    # destructive would make a client confirm before a harmless lookup.
+    read_only: bool | None = None
 
     @model_validator(mode="after")
     def _path_params_required(self) -> Endpoint:
