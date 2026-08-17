@@ -449,6 +449,67 @@ def telemetry(show_payload: bool) -> None:
         click.echo("\nRun with --show-payload to see the exact JSON. Details: docs/TELEMETRY.md")
 
 
+@cli.command()
+@click.argument("provider", required=False)
+@click.option("--manual", is_flag=True, help="Paste the credential instead of reading the browser.")
+def connect(provider: str | None, manual: bool) -> None:
+    """Connect a provider that needs a credential — automatically where possible.
+
+    With no argument, lists what can be connected and what already is. With a provider
+    name, reads the credential from your browser (one Keychain prompt), verifies it
+    against a live call, and saves it to ~/.config/sportsdata-mcp/config.yaml (0600).
+
+    Nothing is printed that could be a credential, and only the one host's cookies are
+    ever read.
+    """
+    from . import connect as conn_mod
+
+    if not provider:
+        click.echo("Providers that need a credential:\n")
+        for pid, label, have in conn_mod.status():
+            mark = click.style("✓ connected", fg="green") if have else click.style("· not connected", fg="yellow")
+            click.echo(f"  {pid:<14} {label:<34} {mark}")
+        click.echo("\nEverything else needs nothing at all.")
+        click.echo(f"Connect one with:  sportsdata-mcp connect {next(iter(conn_mod.CONNECTORS))}")
+        return
+
+    c = conn_mod.CONNECTORS.get(provider)
+    if c is None:
+        raise click.ClickException(
+            f"'{provider}' does not need connecting, or is not supported yet. "
+            f"Known: {', '.join(conn_mod.CONNECTORS)}"
+        )
+
+    cookies: dict[str, str] = {}
+    if not manual:
+        click.echo(f"Reading {c.cookie_host} cookies from your browser…")
+        click.echo(click.style("  macOS may ask permission for the keychain — that is this step.", fg="cyan"))
+        cookies = conn_mod.read_browser_cookies(c.cookie_host, c.cookie_names)
+        if cookies:
+            click.echo(f"  found: {', '.join(sorted(cookies))}")
+        else:
+            click.echo(click.style("  nothing found (browser not supported, permission declined, or not logged in)", fg="yellow"))
+
+    if not cookies:
+        click.echo(f"\nLog in at {c.login_url}, then {c.manual_hint}.")
+        for name in c.cookie_names:
+            val = click.prompt(f"  {name}", default="", hide_input=True, show_default=False)
+            if val:
+                cookies[name] = val
+    if not cookies:
+        raise click.ClickException("no credential supplied")
+
+    header = conn_mod.build_cookie_header(cookies)
+    ok, why = conn_mod.verify(c, header)
+    if not ok:
+        raise click.ClickException(f"not saved — {why}")
+    path = conn_mod.save_secret(c.env_var, header)
+    click.echo(click.style(f"\n✓ {c.label} connected — {why}", fg="green"))
+    click.echo(f"  saved to {path} (0600) as {c.env_var}, fingerprint {conn_mod.fingerprint(header)}")
+    for note in c.notes:
+        click.echo(f"  note: {note}")
+
+
 def main() -> None:
     cli(obj={})
 

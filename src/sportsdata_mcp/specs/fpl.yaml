@@ -190,7 +190,12 @@ endpoints:
 
   - name: fpl_set_piece_notes
     group: fpl.fixtures
-    capabilities: [content.news]
+    # Deliberately untagged. `content.news` was tried and is wrong: every other tool
+    # carrying it is an ARTICLE FEED, and a capability means "these answer the same
+    # question" — a model asking for news would get penalty takers. No existing
+    # capability fits, and inventing a single-provider one to make a tool visible is
+    # the wrong reason to add one. Group selection reaches it regardless.
+    capabilities: []
     summary: "Official set-piece taker notes per club — who takes penalties, corners and free kicks."
     base: default
     path: /team/set-piece-notes/
