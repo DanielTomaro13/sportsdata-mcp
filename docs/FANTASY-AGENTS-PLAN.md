@@ -183,8 +183,44 @@ POST /api/my-team/{id}/       {chip, picks:[{element, position, is_captain,
 Chips (wildcard, free hit, bench boost, triple captain) ride the `chip` field on those
 same calls rather than having their own endpoint.
 
-**What is still unknown:** the exact CSRF mechanism and required headers on the write
-calls. That is one browser capture away (see *What I need*).
+**The write contract — SETTLED**, read out of the app's own public JavaScript bundle
+(`/assets/index-*.js`), with no credentials used and no write performed. Every write goes
+through one helper:
+
+```js
+headers: {"Content-Type": "application/json", "X-CSRFToken": u3("csrftoken")}
+```
+
+So a write needs **the session cookies plus an `X-CSRFToken` header whose value is the
+`csrftoken` cookie** — a detail that would have produced a 403 on every attempt if
+guessed wrong.
+
+**Lineup / captain / chip** — `POST /api/my-team/{entry}/`
+
+```json
+{"chip": null,
+ "picks": [{"element": 351, "position": 1, "is_captain": false,
+            "is_vice_captain": false, "multiplier": 1}]}
+```
+
+**Transfers / transfer-chips** — `POST /api/transfers/`
+
+```json
+{"chip": null, "entry": 1234567, "event": 3,
+ "transfers": [{"element_in": 351, "element_out": 233,
+                "purchase_price": 145, "selling_price": 138}]}
+```
+
+A straight buy with no sale uses `"element_out": null, "selling_price": 0`. Chips are
+split by `chip_type`: **transfer** chips (`wildcard`, `freehit`) ride the transfers call
+with an empty `transfers: []`; **team** chips (`bboost`, `3xc`) ride the my-team call.
+
+Prices are in tenths of a million, and `selling_price` must be the value from
+`fpl_my_team` — not `now_cost` — because FPL sells a risen player back at half the gain.
+
+**What remains is verification, not discovery.** The payloads are known; they have not
+been exercised against a live session, and a wrong write breaks a real team rather than
+failing a read.
 
 #### Automation: **L2 comfortably; L3 only if you store credentials locally**
 
