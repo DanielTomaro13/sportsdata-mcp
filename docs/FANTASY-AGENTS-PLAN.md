@@ -8,21 +8,55 @@ plane would require, and what is needed to build it.
 
 ---
 
-## The finding that reorders everything
+## Two findings that reorder everything
 
-**Yahoo is the only major fantasy platform with a sanctioned, documented write API.**
+### 1. Yahoo is the only platform with a sanctioned write API
 
-Everything else means reverse-engineering a private endpoint that can change without
-notice and whose terms generally prohibit automated access. Yahoo publishes an OAuth2 API
-with `PUT`/`POST` for roster changes, add/drops, waiver claims and trades. It is rate
-limited, versioned, and intended to be used this way.
+It publishes OAuth2 with `PUT`/`POST` for roster changes, add/drops, waiver claims and
+trades — rate limited, versioned, intended to be used this way. Everything else means
+reverse-engineering a private endpoint.
 
-That makes Yahoo the right flagship — not because it is the biggest platform, but because
-it is the only one where "agent has full control of a team" is a supported use case rather
-than a tolerated one.
+### 2. …but Yahoo's API is now APPROVAL-GATED, and that is a blocker
 
-Verified: `GET fantasysports.yahooapis.com/fantasy/v2/game/nfl` →
-`401 OAuth oauth_problem="unable_to_determine_oauth_type"`. A real OAuth surface.
+**Access is no longer self-serve.** `sports.yahoo.com/developer` is an application form:
+
+> 1. **APPLICATION SUBMISSION** — provide information about your organization, your
+>    product, and use case(s)
+> 2. **APPLICATION REVIEW** — "We'll review your application and reach out with any
+>    follow-up questions"
+> 3. **ACCESS** — "If you're approved, we'll follow up with next steps"
+
+Confirmed empirically rather than inferred. Two separate self-registered apps produced
+identical failures, and the authorise endpoint rejects the fantasy scopes outright:
+
+```
+scope=(none)   302 → consent page reached
+scope=fspt-r   error=invalid_scope
+scope=fspt-w   error=invalid_scope
+```
+
+An app cannot *request* a scope its registration does not carry, and the Fantasy Sports
+permission is attached by Yahoo **on approval** — it is not a checkbox you can tick. That
+is why the permission never appeared in the developer console.
+
+**Consequence: Yahoo cannot be built until an application is approved.** It stays the
+best destination and is no longer the first stop.
+
+### What approval commits you to
+
+Worth reading before applying, because two of these are product constraints, not
+paperwork:
+
+- **Attribution is mandatory** — "Fantasy data provided by Yahoo Fantasy" must appear in
+  the product, with the official logo, under specific usage rules (no recolouring,
+  rotation, effects or combination with other marks).
+- **"Developers may not modify, reverse engineer, decompile, or otherwise alter the API
+  or separate its underlying data."**
+- One developer account only; no automated account creation.
+- Usage is monitored and throttled if excessive.
+
+An autonomous agent that manages a team is exactly the use case a reviewer will look at
+closely. Approval is not guaranteed, and the application should describe it honestly.
 
 ---
 
@@ -107,9 +141,19 @@ consent, and the refresh token stored locally. The engine's existing `oauth_refr
 already does the token dance — this is the same mechanism `tab` and other providers use
 today.
 
-**Verdict:** build this first. It is the only platform where an autonomous agent is
-operating within the intended use of the API, and the only one where L3 needs no
-compromise.
+#### ⚠️ Blocked on approval
+
+Self-registration does not grant the Fantasy Sports scope (verified: `fspt-w` →
+`invalid_scope` on two separately registered apps). Apply at
+`sports.yahoo.com/developer` and wait.
+
+`scripts/yahoo-oauth-setup.py` preflights this in a single request, so a misconfigured
+or unapproved app is caught before anyone walks the consent flow.
+
+**Verdict:** still the best destination — the only platform where an autonomous agent
+operates within the intended use of the API, and the only one where L3 needs no
+compromise. But it is now **apply first, build on approval**, which makes **FPL the
+platform to build now**.
 
 ---
 

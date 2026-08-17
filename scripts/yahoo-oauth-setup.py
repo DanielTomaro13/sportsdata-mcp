@@ -59,8 +59,40 @@ def main() -> int:
     if not client_id or not client_secret:
         sys.exit("both the client id and secret are required")
 
+    # PREFLIGHT. Yahoo only lets an app request `fspt-w` if the registration carries the
+    # Fantasy Sports permission, so asking for it here answers "is this app configured
+    # correctly?" in one request — before putting anyone through a consent dance that
+    # would succeed and then 401 on every fantasy call.
+    if not _scope_allowed(client_id, redirect_uri, "fspt-w"):
+        print(
+            "\n❌ This app cannot request the Fantasy Sports scope — Yahoo rejects\n"
+            "   `fspt-w` as invalid_scope, which means the permission is not on the\n"
+            "   app registration. Consent would succeed and every fantasy call would\n"
+            "   still 401, so stopping here.\n\n"
+            "   At https://developer.yahoo.com/apps/ open the app and check:\n\n"
+            "     Application Type   MUST be 'Web Application'. The Fantasy Sports\n"
+            "                        permission is NOT offered for 'Installed Application',\n"
+            "                        and that is the usual cause — the checkbox is simply\n"
+            "                        absent rather than unticked.\n"
+            "     OAuth Client Type  Confidential Client\n"
+            "     API Permissions    Fantasy Sports → Read/Write\n\n"
+            "   If Fantasy Sports does not appear in the permissions list at all, the\n"
+            "   app type is wrong — create a new Web Application rather than editing.\n\n"
+            "   Re-run this script to re-check; it takes one request and no consent.\n",
+            file=sys.stderr,
+        )
+        return 2
+    print("\n✓ preflight: the app can request Fantasy Sports read/write")
+
     params = urllib.parse.urlencode(
-        {"client_id": client_id, "redirect_uri": redirect_uri, "response_type": "code", "language": "en-us"}
+        {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "language": "en-us",
+            # Ask explicitly, so a misconfigured app fails at consent rather than later.
+            "scope": "fspt-w",
+        }
     )
     print("\n" + "─" * 70)
     print("1. Open this URL and approve access:\n")
@@ -137,6 +169,29 @@ def main() -> int:
             print(r.text[:300], file=sys.stderr)
             return 1
     return 0
+
+
+def _scope_allowed(client_id: str, redirect_uri: str, scope: str) -> bool:
+    """Does Yahoo let this app request `scope`?
+
+    The authorise endpoint 302s to an error URL carrying `error=invalid_scope` when the
+    app registration does not include the permission. Only the CLIENT ID is used — a
+    public identifier that ships in every OAuth redirect — so this reveals nothing.
+    """
+    try:
+        with httpx.Client(timeout=20, follow_redirects=False) as c:
+            r = c.get(
+                AUTH_URL,
+                params={
+                    "client_id": client_id,
+                    "redirect_uri": redirect_uri,
+                    "response_type": "code",
+                    "scope": scope,
+                },
+            )
+        return "invalid_scope" not in r.headers.get("location", "")
+    except httpx.HTTPError:
+        return True  # a network blip must not block a correctly configured app
 
 
 def _shape(value, depth: int = 0):
