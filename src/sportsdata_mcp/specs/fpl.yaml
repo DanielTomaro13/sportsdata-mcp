@@ -121,7 +121,7 @@ endpoints:
 
   - name: fpl_game_rules
     group: fpl.reference
-    capabilities: []
+    capabilities: [fantasy.league_settings]
     summary: "Positions, chips, phases and scoring settings — the lookup tables the other tools' ids refer to."
     base: default
     path: /bootstrap-static/
@@ -178,7 +178,7 @@ endpoints:
 
   - name: fpl_event_status
     group: fpl.fixtures
-    capabilities: []
+    capabilities: [ref.seasons]
     summary: "Whether bonus points and league tables have been finalised for the current gameweek."
     base: default
     path: /event-status/
@@ -190,7 +190,7 @@ endpoints:
 
   - name: fpl_set_piece_notes
     group: fpl.fixtures
-    capabilities: []
+    capabilities: [content.news]
     summary: "Official set-piece taker notes per club — who takes penalties, corners and free kicks."
     base: default
     path: /team/set-piece-notes/
