@@ -115,8 +115,27 @@ def main() -> int:
             body = r.json()
             print("\nThis is SAFE TO SHARE — it is structure, not credentials:")
             print(json.dumps(_shape(body), indent=1)[:2000])
+        elif "additional_authorization_required" in r.text:
+            # The single most likely failure, and the raw message does not say why.
+            # The token is VALID — it simply carries no Fantasy Sports scope, because
+            # Yahoo grants scopes from the app registration at consent time.
+            print(
+                "\n❌ The token is valid, but the app has no Fantasy Sports permission.\n\n"
+                "   Yahoo attaches scopes at CONSENT time from the app registration, so\n"
+                "   adding the permission now does NOT upgrade the token you just minted.\n\n"
+                "   Fix, in order:\n"
+                "     1. https://developer.yahoo.com/apps/ → your app → API Permissions\n"
+                "        tick **Fantasy Sports** and choose **Read/Write**, then save\n"
+                "     2. revoke the old grant so the exposed token dies:\n"
+                "        https://login.yahoo.com/account/security/app-passwords\n"
+                "        (Account Info → Apps connected to your account → remove it)\n"
+                "     3. run this script again — the new consent carries the scope\n",
+                file=sys.stderr,
+            )
+            return 2
         else:
-            print(r.text[:300])
+            print(r.text[:300], file=sys.stderr)
+            return 1
     return 0
 
 
