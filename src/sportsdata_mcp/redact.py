@@ -38,6 +38,14 @@ _MIN_SECRET_LEN = 8
 _PLACEHOLDER = "***REDACTED***"
 
 
+def _auth_env_names_for(auth) -> set[str]:
+    """Every env var one auth spec reads. Imported lazily so this module stays free of a
+    spec dependency at import time."""
+    from .spec import AUTH_ENV_ATTRS
+
+    return {name for attr in AUTH_ENV_ATTRS if (name := getattr(auth, attr, None))}
+
+
 def secret_values(specs=None, extra: dict[str, str] | None = None) -> set[str]:
     """Every credential value currently visible to this process.
 
@@ -52,9 +60,11 @@ def secret_values(specs=None, extra: dict[str, str] | None = None) -> set[str]:
     names: set[str] = set()
     for spec in specs:
         for auth in spec.provider.auth.values():
-            for attr in ("env", "username_env", "password_env", "client_id_env", "client_secret_env"):
-                if name := getattr(auth, attr, None):
-                    names.add(name)
+            # Derived, never listed. A hand-written attribute list here missed
+            # `refresh_token_env` when Yahoo landed — leaving the single most durable
+            # credential in the system (season-long access to someone's fantasy account)
+            # as the one thing NOT scrubbed from a verbose log.
+            names |= _auth_env_names_for(auth)
 
     values = {v for name in names if (v := os.environ.get(name))}
     values |= set((extra or {}).values())

@@ -13,6 +13,7 @@ they paste into a bug report. Found in a full-codebase review; these tests keep 
 from __future__ import annotations
 
 import logging
+import os
 
 import pytest
 
@@ -203,3 +204,44 @@ def test_a_handler_added_after_install_still_gets_covered(monkeypatch):
         root.removeHandler(first)
         if second is not None:
             root.removeHandler(second)
+
+
+# ─── the blind spot this file keeps rediscovering ───────────────────────
+
+
+def test_every_auth_env_var_is_redacted_whatever_the_auth_type(monkeypatch):
+    """Derived from the spec, not from a hand-written attribute list.
+
+    That list has now been wrong three times, and the third was the worst: `redact.py`
+    knew five of the six auth attributes and missed `refresh_token_env`, so Yahoo's
+    REFRESH TOKEN — the single most durable credential in the system, granting a season
+    of access to someone's fantasy account — was the one thing not scrubbed from a
+    verbose log.
+
+    Asserting over `AUTH_ENV_ATTRS` means a new auth type is covered the day it lands.
+    """
+    from sportsdata_mcp.spec import AUTH_ENV_ATTRS, auth_env_names
+    from sportsdata_mcp.spec_loader import load_all_specs
+
+    every_var = {name for s in load_all_specs() for name in auth_env_names(s.provider)}
+    assert every_var, "no auth env vars found — has the spec model changed?"
+
+    # Give each one a distinctive value, then assert redaction sees all of them.
+    for i, name in enumerate(sorted(every_var)):
+        monkeypatch.setenv(name, f"secret-value-for-{name.lower()}-{i:04d}")
+
+    values = redact.secret_values()
+    missed = [n for n in every_var if os.environ[n] not in values]
+    assert not missed, f"these auth env vars would leak into logs: {sorted(missed)}"
+
+    # And the attribute list itself must be the shared one.
+    assert "refresh_token_env" in AUTH_ENV_ATTRS
+
+
+def test_an_oauth_refresh_token_is_scrubbed_from_a_token_exchange_log(monkeypatch):
+    """The concrete case: the refresh grant POSTs the token, and httpx logs the request."""
+    monkeypatch.setenv("YAHOO_REFRESH_TOKEN", "AHR9-a-refresh-token-worth-a-whole-season")
+    filt = redact.RedactingFilter(redact.secret_values())
+    line = filt._scrub("POST /oauth2/get_token grant_type=refresh_token&refresh_token=AHR9-a-refresh-token-worth-a-whole-season")
+    assert "AHR9" not in line
+    assert "***REDACTED***" in line
