@@ -295,7 +295,29 @@ def _describe(
 # ─── Endpoint handler factory ──────────────────────────────────────────
 
 
+def _guard_projected_size(result, http: HTTPClient, tool: str) -> None:
+    """Apply the response cap to a PROJECTED payload.
+
+    Endpoints with `response_pick`/`response_fields` skip the raw-body check, because
+    the raw body is not what reaches the model — FPL's bootstrap-static is 1.4MB and
+    `fpl_gameweeks` ships a small slice of it. Without this, a projecting endpoint would
+    have no cap at all.
+    """
+    limit = http.max_response_bytes
+    if limit <= 0:
+        return
+    size = len(json.dumps(result, default=str).encode())
+    if size > limit:
+        raise ToolError(
+            f"{tool} projected to {size:,} bytes, still over the cap (limit {limit:,}). "
+            "Narrow the query (date range, filters) and retry.",
+            recoverable=True,
+            code="RESPONSE_TOO_LARGE",
+        )
+
+
 def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
+    projects = bool(ep.response_pick or ep.response_fields)
     sig_params = [
         inspect.Parameter(
             p.name,
@@ -332,13 +354,19 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             content_type=ep.request_content_type,
             auth_key=ep.auth,
             response_format=ep.response_format,
+            projected=projects,
         )
         # Pure passthrough unless the endpoint opted in. Order matters: `classify` adds
         # a derived tag, then `project` reduces — so an endpoint can tag rows and still
         # ship a slim payload.
         if ep.classify:
             result = apply_classify(result, ep.classify)
-        return apply_projection(result, pick=ep.response_pick, fields=ep.response_fields)
+        result = apply_projection(result, pick=ep.response_pick, fields=ep.response_fields)
+        if projects:
+            # The raw-body cap was skipped upstream for this endpoint, so the size limit
+            # is enforced here instead — on the payload the model will actually receive.
+            _guard_projected_size(result, http, ep.name)
+        return result
 
     handler.__signature__ = sig  # type: ignore[attr-defined]
     # FastMCP/pydantic derive the JSON-schema from __annotations__, not __signature__,

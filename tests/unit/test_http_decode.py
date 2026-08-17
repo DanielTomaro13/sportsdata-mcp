@@ -226,3 +226,37 @@ async def test_request_gives_up_after_max_retries():
     assert r.status_code == 503
     assert calls["n"] == 3  # 1 initial + 2 retries
     await c.aclose()
+
+
+# ─── the cap measures what the model receives, not what the wire carried ───
+#
+# Endpoints with `response_pick`/`response_fields` exist precisely to turn a huge
+# upstream payload into a small one. Checking the RAW body against the context cap
+# measured a payload nobody would ever see, and it made four FPL tools (all served from
+# a 1.4MB bootstrap-static) fail outright under the agents platform's default 150KB cap.
+
+
+def test_projected_endpoints_skip_the_raw_body_check():
+    c = _client(max_bytes=10)
+    big = _resp(200, b'{"events": [1, 2, 3], "elements": "' + b"x" * 5_000 + b'"}', JSON)
+    assert c._decode(big, skip_size_check=True)["events"] == [1, 2, 3]
+    with pytest.raises(ToolError):
+        c._decode(big)  # unprojected endpoints are still capped on the raw body
+
+
+def test_the_cap_is_still_enforced_on_the_projected_result():
+    """Skipping the raw check must not mean no check at all."""
+    from sportsdata_mcp.registry import _guard_projected_size
+
+    c = _client(max_bytes=100)
+    _guard_projected_size({"small": True}, c, "demo_tool")  # under the cap: fine
+    with pytest.raises(ToolError) as ei:
+        _guard_projected_size({"rows": ["x" * 50] * 20}, c, "demo_tool")
+    assert ei.value.code == "RESPONSE_TOO_LARGE"
+    assert "projected to" in str(ei.value)
+
+
+def test_an_uncapped_client_never_guards_the_projection():
+    from sportsdata_mcp.registry import _guard_projected_size
+
+    _guard_projected_size({"rows": ["x" * 1000] * 100}, _client_with_cap(0), "demo_tool")

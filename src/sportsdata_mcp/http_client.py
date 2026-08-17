@@ -136,6 +136,12 @@ class HTTPClient:
         if self._proxy_base:
             log.info("provider %s routed through licence proxy %s", provider.id, self._proxy_base)
 
+    @property
+    def max_response_bytes(self) -> int:
+        """The configured context cap; <= 0 means uncapped. Read by the registry, which
+        enforces it on projected payloads."""
+        return self._max_bytes
+
     def _auth_provider(self, key: str) -> AuthProvider:
         if key in self._auth_providers:
             return self._auth_providers[key]
@@ -329,6 +335,9 @@ class HTTPClient:
         are only published as CSV downloads; the model still receives ordinary JSON.
         """
         response_format = kwargs.pop("response_format", "json")
+        # Endpoints that project are size-checked on the PROJECTED result instead
+        # (registry.py) — see the guard in `_decode`.
+        projected = bool(kwargs.pop("projected", False))
         key = self._cache_key(kwargs) if self._cache_ttl > 0 else None
         if key is not None:
             hit = self._cache.get(key)
@@ -336,7 +345,8 @@ class HTTPClient:
                 log.debug("cache hit (provider=%s) %s", self._provider.id, kwargs.get("url"))
                 return hit[1]
         r = await self.request(**kwargs)
-        body = self._decode_csv(r) if response_format == "csv" else self._decode(r)
+        body = (self._decode_csv(r) if response_format == "csv"
+                else self._decode(r, skip_size_check=projected))
         if key is not None:
             # Evict expired entries before inserting, and bound the map so a long-running
             # server driven over many distinct params can't grow without limit.
@@ -491,7 +501,7 @@ class HTTPClient:
                 code="RESPONSE_TOO_LARGE",
             )
 
-    def _decode(self, r: httpx.Response) -> dict | list:
+    def _decode(self, r: httpx.Response, *, skip_size_check: bool = False) -> dict | list:
         # 1. Status guard — surface bot-blocks / rate-limits / server errors as clean
         #    ToolErrors first, so an HTTP error reports its status (HTTP_503 etc.) rather
         #    than masquerading as RESPONSE_TOO_LARGE when the error body happens to be big.
@@ -537,8 +547,16 @@ class HTTPClient:
 
         # 2. Size guard — for a 2xx body, refuse to dump megabytes into the model's
         #    context. A non-positive cap (max_response_bytes <= 0) disables it entirely.
+        #
+        #    SKIPPED when the endpoint projects (`response_pick`/`response_fields`). The
+        #    cap protects the CONTEXT, and a projected endpoint's raw body never reaches
+        #    it — FPL's bootstrap-static is 1.4MB and `fpl_gameweeks` ships ~40KB of it.
+        #    Checking the raw body there measures a payload nobody will ever see, and it
+        #    made four FPL tools unusable from any agent (the agents platform sets a
+        #    150KB cap by default). The projected result is checked instead, in
+        #    `registry.py`, against this same limit.
         body = r.content
-        if self._max_bytes > 0 and len(body) > self._max_bytes:
+        if self._max_bytes > 0 and not skip_size_check and len(body) > self._max_bytes:
             log.warning(
                 "oversize response (provider=%s, %d bytes > limit %d)", self._provider.id, len(body), self._max_bytes
             )
