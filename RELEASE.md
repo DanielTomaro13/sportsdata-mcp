@@ -27,7 +27,11 @@ Add these repo **Actions secrets** (you already have these from the desktop app)
 
 ## Cut a release
 
-1. Bump the version in `pyproject.toml` + `src/sportsdata_mcp/__init__.py`.
+1. Bump the version: `python scripts/bump-version.py X.Y.Z`. Four files carry it —
+   `pyproject.toml`, `src/sportsdata_mcp/__init__.py`, `server.json` (twice) and
+   `manifest.json` — and a registry entry pointing at a version that is not on PyPI is a
+   broken install, so edit them with the script rather than by hand. CI fails fast on any
+   disagreement; `python scripts/bump-version.py --check` is the same check locally.
 2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The **Release (macOS installer)** workflow builds the bundle, and:
    - **with** the Apple secrets → signs + notarizes + staples a **DMG**, attached to the release;

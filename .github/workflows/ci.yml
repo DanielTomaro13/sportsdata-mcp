@@ -74,6 +74,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Version lockstep
+        # The `test` job asserts this too, but only after ~8 minutes of tests. A bump
+        # that misses one of the four files is the likeliest way to redden main, so it
+        # fails here in seconds instead (stdlib only — no install needed).
+        run: python scripts/bump-version.py --check
+
       - name: Build wheel
         run: |
           python -m pip install --upgrade pip build
