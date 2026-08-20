@@ -95,7 +95,7 @@ CONNECTORS: dict[str, Connector] = {
     "espnfantasy": Connector(
         provider="espnfantasy",
         label="ESPN Fantasy (private leagues)",
-        env_var="ESPN_S2",
+        env_var="ESPN_FANTASY_COOKIE",
         cookie_names=("espn_s2", "SWID"),
         cookie_host="espn.com",
         verify_url="",  # needs a league id, so it cannot be verified generically
