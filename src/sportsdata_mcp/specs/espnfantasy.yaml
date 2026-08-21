@@ -43,6 +43,10 @@ provider:
     default: https://lm-api-reads.fantasy.espn.com/apis/v3/games
     # Player news rides on a different host and is NOT under lm-api-reads.
     news: https://site.api.espn.com/apis/fantasy/v3/games
+    # WRITES GO TO A DIFFERENT HOST. `lm-api-reads` answers 405 to a POST; the write
+    # host answers 401 to a GET. ESPN's own bundle builds them from the same template
+    # (`lm-api-{reads|writes}.fantasy.espn.com`) and picks by `hostType`.
+    writes: https://lm-api-writes.fantasy.espn.com/apis/v3/games
   default_headers:
     User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     Accept: "application/json"
@@ -539,3 +543,88 @@ endpoints:
     examples:
       - description: "Season + projection splits for one player"
         params: {game: ffl, seasonId: 2018, leagueId: 1234, fantasy_filter: {players: {filterIds: {value: [15825]}, filterStatsForTopScoringPeriodIds: {value: 16, additionalValue: ["002018", "102018"]}}}}
+
+  # ─── WRITES — opt-in by exact group name, never by a wildcard ─────────
+  #
+  # These CHANGE A REAL TEAM. They live in `espnfantasy.write`, which `*`, `all`, any
+  # preset and even `espnfantasy.*` deliberately skip. Reach them with:
+  #     --groups "free,espnfantasy.*,espnfantasy.write"
+  #
+  # THE CONTRACT BELOW WAS READ OUT OF ESPN'S OWN PUBLIC JS BUNDLE
+  # (cdn1.espn.net/kona/.../static/commons/main-*.js), the same way FPL's was. The
+  # request builder there is, in full:
+  #
+  #     item = ({fromSlotId, fromTeamId, playerId, toSlotId, toTeamId, type}) => {
+  #       let i = {playerId};
+  #       if (type)        i.type = type;
+  #       if (fromTeamId)  i.fromTeamId = fromTeamId;
+  #       if (toTeamId)    i.toTeamId = toTeamId;
+  #       if (fromSlotId !== undefined) i.fromLineupSlotId = fromSlotId;
+  #       if (toSlotId   !== undefined) i.toLineupSlotId   = toSlotId;
+  #       return i; }
+  #
+  #     ADD    → {playerId, type: "ADD",    toTeamId}
+  #     DROP   → {playerId, type: "DROP",   fromTeamId}
+  #     LINEUP → {playerId, type: "LINEUP", fromLineupSlotId, toLineupSlotId}
+  #
+  # and the envelope is createTransaction({analysis, bidAmount, comment, executionType,
+  # expirationDate, isActingAsTeamOwner, isLeagueManager, scoringPeriodId, teamId, type,
+  # memberId, relatedTransactionId, skipTransactionCounters}).
+  #
+  # ⚠ NOT YET CONFIRMED AGAINST A LIVE 200. The shapes come from ESPN's code, not from a
+  # response we have seen — `shapes_verified` stays false for these until one lands.
+  # ALWAYS re-read the roster afterwards: a 200 here is not proof.
+
+  - name: espnfantasy_set_lineup
+    group: espnfantasy.write
+    capabilities: [fantasy.rosters]
+    method: POST
+    shapes_verified: false
+    summary: "SET YOUR LINEUP — move players between starting slots and the bench. CHANGES YOUR REAL TEAM."
+    base: writes
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}/transactions/
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: teamId, in: body, type: integer, required: true, description: "YOUR team id in this league (the teamId in your team URL)." }
+      - { name: type, in: body, type: string, default: LINEUP, enum: [LINEUP], description: "Leave as LINEUP. Add/drop is espnfantasy_add_drop." }
+      - { name: executionType, in: body, type: string, default: EXECUTE, enum: [EXECUTE, CANCEL], description: "EXECUTE applies it now." }
+      - { name: scoringPeriodId, in: body, type: integer, required: true, description: "The week this applies to — from espnfantasy_status (`latestScoringPeriod`). A lineup set for the wrong week silently does nothing useful." }
+      - { name: items, in: body, type: json, required: true, description: "One entry per player MOVING: {playerId, type: 'LINEUP', fromLineupSlotId, toLineupSlotId}. Slot ids are the league's own — read them from espnfantasy_league_settings, never a hardcoded table, because flex/IR slots differ per sport AND per league. Players that are not moving are omitted." }
+      - { name: memberId, in: body, type: string, description: "Your member id — `members[].id` from espnfantasy_league. Optional: the session cookie already identifies you." }
+      - { name: isLeagueManager, in: body, type: boolean, default: false, description: "Leave false. True asserts commissioner powers over another team." }
+      - { name: isActingAsTeamOwner, in: body, type: boolean, default: false, description: "Leave false." }
+    response_hint: "HTTP 200 with the created transaction on success. Failures name the rule broken: TRAN_ROSTER_SLOT_LIMIT_EXCEEDED (too many in a slot), TRAN_ROSTER_POSITION_LIMIT_EXCEEDED (player not eligible there), TRAN_ROSTER_LIMIT_EXCEEDED (roster full). A locked player (game started) is also refused.\n\nVERIFY AFTERWARDS with espnfantasy_rosters and compare lineupSlotId per player. This endpoint is undocumented and a 200 does not prove the lineup is what you intended."
+    examples:
+      - description: "Bench one player and start another"
+        params: {game: ffl, seasonId: 2026, leagueId: 1234, teamId: 4, scoringPeriodId: 1, items: [{playerId: 3139477, type: LINEUP, fromLineupSlotId: 20, toLineupSlotId: 0}]}
+
+  - name: espnfantasy_add_drop
+    group: espnfantasy.write
+    capabilities: [sport.transactions]
+    method: POST
+    shapes_verified: false
+    summary: "ADD AND/OR DROP players — free agency or a waiver claim. CHANGES YOUR REAL TEAM and may spend waiver budget."
+    base: writes
+    path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}/transactions/
+    auth: private
+    params:
+      - { name: game, in: path, type: string, default: ffl, enum: [ffl, flb, fba, fhl, wfba], description: "Fantasy game code." }
+      - { name: seasonId, in: path, type: integer, required: true, description: "Season year." }
+      - { name: leagueId, in: path, type: integer, required: true, description: "League id." }
+      - { name: teamId, in: body, type: integer, required: true, description: "YOUR team id in this league." }
+      - { name: type, in: body, type: string, required: true, enum: [FREEAGENT, WAIVER], description: "FREEAGENT takes an unowned player immediately. WAIVER queues a claim processed later, and with FAAB it SPENDS bidAmount." }
+      - { name: executionType, in: body, type: string, default: EXECUTE, enum: [EXECUTE, CANCEL], description: "EXECUTE submits it; CANCEL withdraws a pending waiver (needs relatedTransactionId)." }
+      - { name: scoringPeriodId, in: body, type: integer, required: true, description: "The week this applies to — from espnfantasy_status." }
+      - { name: items, in: body, type: json, required: true, description: "{playerId, type: 'ADD', toTeamId} to add and {playerId, type: 'DROP', fromTeamId} to drop; both team ids are YOUR teamId. An add on a full roster must be paired with a drop in the SAME call, or it is refused." }
+      - { name: bidAmount, in: body, type: integer, description: "FAAB bid, WAIVER only. This SPENDS REAL BUDGET and is not refundable if the claim wins. Omit for FREEAGENT." }
+      - { name: memberId, in: body, type: string, description: "Your member id — `members[].id` from espnfantasy_league. Optional." }
+      - { name: relatedTransactionId, in: body, type: string, description: "The pending transaction to CANCEL. Only with executionType: CANCEL." }
+      - { name: isLeagueManager, in: body, type: boolean, default: false, description: "Leave false." }
+      - { name: isActingAsTeamOwner, in: body, type: boolean, default: false, description: "Leave false." }
+    response_hint: "HTTP 200 with the transaction on success; a WAIVER comes back PENDING and is processed on the league's waiver run, so the roster does NOT change immediately. Failures: TRAN_ROSTER_LIMIT_EXCEEDED (add without a matching drop), insufficient FAAB, or the player already owned.\n\nNOT RETRIED on a 5xx — a replayed waiver claim would bid twice. Verify with espnfantasy_rosters (free agency) or espnfantasy_pending_transactions (waivers)."
+    examples:
+      - description: "Claim a free agent and drop someone to make room"
+        params: {game: ffl, seasonId: 2026, leagueId: 1234, teamId: 4, type: FREEAGENT, scoringPeriodId: 1, items: [{playerId: 4241457, type: ADD, toTeamId: 4}, {playerId: 3139477, type: DROP, fromTeamId: 4}]}

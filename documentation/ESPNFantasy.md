@@ -431,3 +431,92 @@ tags compose with the rest of the server:
   (see [views that do nothing](#views-that-do-nothing)).
 - **Draft-room live feed** (`lm-api-reads`'s websocket draft channel) — a socket
   protocol, not REST.
+
+---
+
+## Writes
+
+Two tools change a real team: **`espnfantasy_set_lineup`** and **`espnfantasy_add_drop`**.
+Both live in the `espnfantasy.write` group, which `*`, `all`, any preset and even
+`espnfantasy.*` deliberately skip. Reach them explicitly:
+
+```
+--groups "free,espnfantasy.*,espnfantasy.write"
+```
+
+### A different host
+
+Writes do **not** go to `lm-api-reads`. ESPN builds both from one template and picks by
+`hostType`:
+
+| | host | a GET returns |
+|---|---|---|
+| reads | `lm-api-reads.fantasy.espn.com` | 200 |
+| writes | `lm-api-writes.fantasy.espn.com` | **405** |
+
+Everything is one endpoint:
+
+```
+POST https://lm-api-writes.fantasy.espn.com/apis/v3/games/{game}/seasons/{year}
+     /segments/0/leagues/{leagueId}/transactions/
+Content-Type: application/json
+Cookie: espn_s2=…; SWID={…}
+```
+
+Unauthenticated it answers `401` with a typed body — useful, because the `type` field
+names the failure without parsing prose:
+
+```json
+{"messages": ["Unauthorized:  Credentials are missing."],
+ "details": [{"type": "AUTH_MISSING_CREDENTIALS", ...}]}
+```
+
+`AUTH_LEAGUE_NOT_VISIBLE` is the other one worth knowing: the cookie is fine but this
+league is not yours (or the cookie went stale).
+
+### The envelope
+
+Transcribed from ESPN's own bundle (`cdn1.espn.net/kona/.../static/commons/main-*.js`),
+`createTransaction`:
+
+| field | notes |
+|---|---|
+| `type` | `LINEUP`, `FREEAGENT`, `WAIVER`, `ROSTER`, `TRADE_ACCEPT`, `TRADE_DECLINE`, `DRAFT` |
+| `executionType` | `EXECUTE` applies it; `CANCEL` withdraws a pending claim |
+| `teamId` | yours |
+| `scoringPeriodId` | the week; defaults to `league.status.latestScoringPeriod` |
+| `memberId` | the SWID from the profile — optional, the cookie already identifies you |
+| `bidAmount` | FAAB, `WAIVER` only |
+| `items` | the moves (below) |
+| `isLeagueManager`, `isActingAsTeamOwner`, `skipTransactionCounters` | leave false |
+| `comment`, `analysis`, `expirationDate`, `relatedTransactionId` | optional |
+
+### The items
+
+One builder produces all three shapes — fields are omitted when empty, which is why a
+LINEUP item carries no team ids and an ADD carries no slots:
+
+| move | item |
+|---|---|
+| start/bench | `{playerId, type: "LINEUP", fromLineupSlotId, toLineupSlotId}` |
+| add | `{playerId, type: "ADD", toTeamId}` |
+| drop | `{playerId, type: "DROP", fromTeamId}` |
+
+### Failure modes worth naming
+
+| body says | meaning |
+|---|---|
+| `TRAN_ROSTER_LIMIT_EXCEEDED*` | an ADD without a matching DROP on a full roster |
+| `TRAN_ROSTER_POSITION_LIMIT_EXCEEDED` | player not eligible for that slot |
+| `TRAN_ROSTER_SLOT_LIMIT_EXCEEDED` | too many players in that slot |
+
+A `WAIVER` returns **PENDING** and does not change the roster until the league's waiver
+run — a read-back straight afterwards correctly shows no change. A player whose game has
+started is locked and cannot be moved.
+
+### ⚠ Shape status
+
+These two carry `shapes_verified: false`. The contract above is ESPN's own code, not a
+response we have observed: no live `200` has been seen yet. The 27 read tools are
+unaffected — `shapes_verified` is per endpoint. **Always re-read `espnfantasy_rosters`
+afterwards**; a 200 is not proof, and these endpoints are undocumented and can change.

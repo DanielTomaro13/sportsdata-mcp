@@ -56,7 +56,7 @@ def test_only_the_named_host_is_read(tmp_path, monkeypatch):
     """The whole justification. Connecting FPL must not be able to see another site's
     session cookie, even one with an identical NAME."""
     db = _fake_cookie_db(tmp_path)
-    monkeypatch.setattr(connect, "_chrome_cookie_db", lambda: db)
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs", lambda: [db])
     monkeypatch.setattr(connect, "_chrome_key", lambda: b"\x00" * 16)
     monkeypatch.setattr(connect, "_decrypt", lambda v, k: v.decode())
 
@@ -68,7 +68,7 @@ def test_only_the_named_host_is_read(tmp_path, monkeypatch):
 
 def test_a_cookie_name_not_asked_for_is_not_returned(tmp_path, monkeypatch):
     db = _fake_cookie_db(tmp_path)
-    monkeypatch.setattr(connect, "_chrome_cookie_db", lambda: db)
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs", lambda: [db])
     monkeypatch.setattr(connect, "_chrome_key", lambda: b"\x00" * 16)
     monkeypatch.setattr(connect, "_decrypt", lambda v, k: v.decode())
     got = connect.read_browser_cookies("fantasy.premierleague.com", ("sessionid",))
@@ -77,13 +77,13 @@ def test_a_cookie_name_not_asked_for_is_not_returned(tmp_path, monkeypatch):
 
 def test_no_browser_is_not_an_error(monkeypatch):
     """A user without Chrome must fall through to the manual path, not crash."""
-    monkeypatch.setattr(connect, "_chrome_cookie_db", lambda: None)
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs", list)
     assert connect.read_browser_cookies("fantasy.premierleague.com", ("sessionid",)) == {}
 
 
 def test_declining_the_keychain_prompt_is_not_an_error(tmp_path, monkeypatch):
     """The prompt is the user's chance to say no, and saying no must be graceful."""
-    monkeypatch.setattr(connect, "_chrome_cookie_db", lambda: _fake_cookie_db(tmp_path))
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs", lambda: [_fake_cookie_db(tmp_path)])
     monkeypatch.setattr(connect, "_chrome_key", lambda: None)
     assert connect.read_browser_cookies("fantasy.premierleague.com", ("sessionid",)) == {}
 
@@ -185,3 +185,64 @@ def test_every_connector_names_a_single_host_and_a_login_url():
         assert c.cookie_host and "," not in c.cookie_host
         assert c.cookie_names
         assert c.login_url.startswith("https://")
+
+
+# ─── every profile, not just `Default` ──────────────────────────────────
+
+
+def _empty_cookie_db(tmp_path, name: str):
+    import sqlite3
+
+    db = tmp_path / name
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE cookies (host_key TEXT, name TEXT, encrypted_value BLOB)")
+    con.commit()
+    con.close()
+    return db
+
+
+def test_a_cookie_in_a_non_default_profile_is_found(tmp_path, monkeypatch):
+    """The original version read Chrome's `Default` profile and gave up. That is the
+    wrong profile for anyone with a work and a personal profile — and the failure was
+    indistinguishable from being logged out: "nothing found (…or not logged in)" while
+    the cookie sat in `Profile 1` the whole time.
+    """
+    empty = _empty_cookie_db(tmp_path, "default-cookies.sqlite")
+    real = _fake_cookie_db(tmp_path)
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs", lambda: [empty, real])
+    monkeypatch.setattr(connect, "_chrome_key", lambda: b"\x00" * 16)
+
+    got = connect.read_browser_cookies("fantasy.premierleague.com", ("sessionid", "pl_profile"))
+    assert set(got) == {"sessionid", "pl_profile"}
+
+
+def test_an_unreadable_profile_does_not_sink_the_search(tmp_path, monkeypatch):
+    """A locked or corrupt profile is common; the next one may hold the credential."""
+    missing = tmp_path / "does-not-exist.sqlite"
+    real = _fake_cookie_db(tmp_path)
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs", lambda: [missing, real])
+    monkeypatch.setattr(connect, "_chrome_key", lambda: b"\x00" * 16)
+
+    assert set(connect.read_browser_cookies(
+        "fantasy.premierleague.com", ("sessionid",))) == {"sessionid"}
+
+
+def test_partial_hits_across_profiles_are_never_merged(tmp_path, monkeypatch):
+    """Half a session from a work profile and half from a personal one is not a session,
+    it is a confusing 401. First profile with a usable hit wins, whole."""
+    import sqlite3
+
+    partial = tmp_path / "partial.sqlite"
+    con = sqlite3.connect(partial)
+    con.execute("CREATE TABLE cookies (host_key TEXT, name TEXT, encrypted_value BLOB)")
+    con.execute("INSERT INTO cookies VALUES (?,?,?)",
+                (".fantasy.premierleague.com", "sessionid", b"stale-session"))
+    con.commit()
+    con.close()
+    monkeypatch.setattr(connect, "_chrome_cookie_dbs",
+                        lambda: [partial, _fake_cookie_db(tmp_path)])
+    monkeypatch.setattr(connect, "_chrome_key", lambda: b"\x00" * 16)
+
+    got = connect.read_browser_cookies("fantasy.premierleague.com", ("sessionid", "pl_profile"))
+    assert set(got) == {"sessionid"}          # the first profile's hit, alone
+    assert "pl_profile" not in got            # NOT topped up from the second

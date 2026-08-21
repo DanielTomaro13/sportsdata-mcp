@@ -368,6 +368,14 @@ class Endpoint(BaseModel):
 
     name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     group: str
+    #: Per-endpoint override of the provider's `shapes_verified`. None = inherit.
+    #:
+    #: Needed because verification is not uniform across a provider. ESPN Fantasy's 27
+    #: READS were confirmed against live responses; its two WRITES were transcribed from
+    #: ESPN's own JS bundle and have never returned a 200 to us. Flipping the provider
+    #: flag would slap "unverified" on 27 good tools to be honest about 2, and a warning
+    #: that appears everywhere stops being read anywhere.
+    shapes_verified: bool | None = None
     capabilities: list[str] = Field(default_factory=list)
     summary: str
     method: Literal["GET", "POST", "PUT", "DELETE", "PATCH"] = "GET"

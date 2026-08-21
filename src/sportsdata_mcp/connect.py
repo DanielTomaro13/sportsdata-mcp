@@ -109,16 +109,43 @@ CONNECTORS: dict[str, Connector] = {
 # ─── reading one host's cookies from the local browser ──────────────────
 
 
+#: Chromium-family roots to search. Each may hold SEVERAL profiles.
+_CHROME_ROOTS = (
+    "Library/Application Support/Google/Chrome",
+    "Library/Application Support/Chromium",
+    "Library/Application Support/BraveSoftware/Brave-Browser",
+    "Library/Application Support/Microsoft Edge",
+    "Library/Application Support/Vivaldi",
+)
+
+
+def _chrome_cookie_dbs() -> list[Path]:
+    """EVERY profile's cookie DB, not just `Default`.
+
+    The original version looked only at `Default` and gave up. That is the wrong profile
+    for a large share of real people — a work profile, a personal profile, and `Default`
+    sitting empty from the day Chrome was installed — and the failure was indistinguishable
+    from being logged out: "nothing found (browser not supported, permission declined, or
+    not logged in)" while the cookie sat in `Profile 1` the whole time.
+
+    Ordered biggest-first, so the profile someone actually browses in is consulted before
+    an empty one.
+    """
+    dbs: list[Path] = []
+    for rel in _CHROME_ROOTS:
+        root = Path.home() / rel
+        if not root.exists():
+            continue
+        for db in root.glob("*/Cookies"):
+            if db.is_file() and db.parent.name != "System Profile":
+                dbs.append(db)
+    return sorted(dbs, key=lambda p: p.stat().st_size, reverse=True)
+
+
 def _chrome_cookie_db() -> Path | None:
-    for rel in (
-        "Library/Application Support/Google/Chrome/Default/Cookies",
-        "Library/Application Support/Chromium/Default/Cookies",
-        "Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies",
-    ):
-        p = Path.home() / rel
-        if p.exists():
-            return p
-    return None
+    """The single most likely DB. Kept for callers that want one path."""
+    dbs = _chrome_cookie_dbs()
+    return dbs[0] if dbs else None
 
 
 def _chrome_key() -> bytes | None:
@@ -159,27 +186,46 @@ def _decrypt(value: bytes, key: bytes) -> str:
 
 
 def read_browser_cookies(host: str, names: tuple[str, ...]) -> dict[str, str]:
-    """Cookies for ONE host. Never reads or returns anything for another domain."""
-    db = _chrome_cookie_db()
-    if db is None:
-        return {}
+    """Cookies for ONE host, across every local browser profile.
+
+    Never reads or returns anything for another domain: the host is a SQL predicate, so a
+    profile's other 1,500 cookies are never even selected, let alone decrypted.
+
+    Profiles are tried in turn and the first with a usable hit wins. A partial hit in one
+    profile is not merged with a partial hit in another — half a session from a work
+    profile and half from a personal one is not a session, it is a confusing 401.
+    """
     key = _chrome_key()
     if key is None:
         return {}
+    for db in _chrome_cookie_dbs():
+        found = _cookies_from_db(db, host, names, key)
+        if found:
+            return found
+    return {}
+
+
+def _cookies_from_db(
+    db: Path, host: str, names: tuple[str, ...], key: bytes
+) -> dict[str, str]:
     # Chrome holds the DB locked while running; work on a copy.
-    with tempfile.TemporaryDirectory() as tmp:
-        copy = Path(tmp) / "cookies.sqlite"
-        shutil.copy2(db, copy)
-        con = sqlite3.connect(f"file:{copy}?mode=ro", uri=True)
-        try:
-            placeholders = ",".join("?" * len(names))
-            rows = con.execute(
-                "SELECT name, encrypted_value FROM cookies "
-                f"WHERE host_key LIKE ? AND name IN ({placeholders})",
-                (f"%{host}", *names),
-            ).fetchall()
-        finally:
-            con.close()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "cookies.sqlite"
+            shutil.copy2(db, copy)
+            con = sqlite3.connect(f"file:{copy}?mode=ro", uri=True)
+            try:
+                placeholders = ",".join("?" * len(names))
+                rows = con.execute(
+                    "SELECT name, encrypted_value FROM cookies "
+                    f"WHERE host_key LIKE ? AND name IN ({placeholders})",
+                    (f"%{host}", *names),
+                ).fetchall()
+            finally:
+                con.close()
+    except (OSError, sqlite3.Error):
+        # One unreadable profile must not sink the search — the next may hold it.
+        return {}
     return {n: v for n, blob in rows if (v := _decrypt(blob, key))}
 
 

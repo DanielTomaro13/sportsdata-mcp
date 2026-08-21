@@ -532,7 +532,10 @@ def register_all(mcp, specs: list[Spec], cfg: Config) -> Registered:
             mcp.tool(
                 name=endpoint.name,
                 description=_describe(
-                    endpoint, shapes_verified=provider.shapes_verified,
+                    endpoint,
+                    shapes_verified=(endpoint.shapes_verified
+                                     if endpoint.shapes_verified is not None
+                                     else provider.shapes_verified),
                     provider=provider, cap_index=cap_index,
                 ),
                 annotations=_annotations_for(endpoint),

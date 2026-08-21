@@ -6,6 +6,32 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.27.2 — 2026-08-21
+
+### Added
+- **ESPN Fantasy writes** (`espnfantasy.write`): `espnfantasy_set_lineup` and
+  `espnfantasy_add_drop`. Reachable only by exact group name, never by `*`, `all`, a
+  preset or `espnfantasy.*`. The contract was transcribed from ESPN's own public JS
+  bundle and is documented in `documentation/ESPNFantasy.md`; both carry
+  `shapes_verified: false` until a live 200 confirms them.
+- `shapes_verified` is now settable **per endpoint**. ESPN's 27 reads are confirmed
+  against live responses while its 2 writes are not, and flipping the provider flag would
+  have put an "unverified" warning on 27 good tools to be honest about 2.
+
+### Fixed
+- **`connect` read only Chrome's `Default` profile.** For anyone with a work and a
+  personal profile that is the wrong one, and the failure was indistinguishable from
+  being logged out — "nothing found (…or not logged in)" while the cookie sat in
+  `Profile 1`. Every profile is now searched, largest first, and a partial hit in one is
+  never merged with a partial hit in another.
+- **`connect espnfantasy` saved to an env var nothing reads** (`ESPN_S2` vs the spec's
+  `ESPN_FANTASY_COOKIE`). It reported success and every private-league call carried on
+  401'ing. A test now asserts every connector targets an env var its provider reads.
+- **The response-size cap measured the raw body, before projection.** Endpoints exist
+  specifically to shrink a large payload; four FPL tools served from a 1.4MB
+  bootstrap-static were rejected for the size of what they were about to discard. The
+  projected result is now what the cap measures.
+
 ## 0.27.0 — 2026-08-17
 
 ### Fixed (security)
