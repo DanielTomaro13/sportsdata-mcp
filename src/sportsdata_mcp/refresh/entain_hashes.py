@@ -65,7 +65,10 @@ class RefreshError(Exception):
 @dataclass
 class HashChange:
     name: str
-    old: str
+    #: The hash being replaced, or None for an operation that never had one — a
+    #: full-query provider carries no sha256, so `str` was a claim the data does not
+    #: support.
+    old: str | None
     new: str
 
 
@@ -296,7 +299,9 @@ def run_refresh(
         to_register = [c for c in changed if c.name in documents]
         if to_register and gateway_info is None:
             echo("   ⚠ no graphql_persisted dispatcher/base URL — skipping gateway registration")
-        elif to_register:
+        elif to_register and gateway_info is not None:
+            # Spelled out rather than relying on the first branch having caught it: the
+            # unpack below is unsafe if this ever stops being the exact complement.
             gateway, headers = gateway_info
             echo(f"🔍 Registering {len(to_register)} changed pair(s) with {gateway}")
             for c in to_register:

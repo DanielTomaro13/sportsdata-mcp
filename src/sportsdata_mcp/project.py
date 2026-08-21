@@ -42,11 +42,11 @@ def _pick_fields(item: object, fields: list[str]) -> object:
 
 
 def apply_projection(
-    body: object,
+    body: dict | list,
     *,
     pick: list[str] | None = None,
     fields: list[str] | None = None,
-) -> object:
+) -> dict | list:
     """Reduce a decoded body. Returns it unchanged when neither is declared.
 
     `pick` keeps named top-level keys of a dict body. `fields` keeps named keys on the

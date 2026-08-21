@@ -97,7 +97,7 @@ class _DohBackend(httpcore.AnyIOBackend):
         self._resolver = resolver
         self._hosts = hosts
 
-    async def connect_tcp(  # type: ignore[override]
+    async def connect_tcp(
         self, host: str, port: int, timeout: float | None = None,
         local_address: str | None = None, socket_options=None,
     ):

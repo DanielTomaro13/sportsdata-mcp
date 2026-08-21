@@ -202,6 +202,17 @@ class ProviderDefaults(BaseModel):
     resolve_via_doh: bool = False
 
 
+
+def _default_auth() -> dict[str, AuthSpec]:
+    """A provider with no `auth:` block is anonymous.
+
+    A named function rather than a lambda so the DECLARED return type is the field's
+    type: a lambda infers `dict[str, AuthNone]`, which is narrower than `dict[str,
+    AuthSpec]` and made the default incompatible with the field it defaults.
+    """
+    return {"default": AuthNone()}
+
+
 class Provider(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -210,7 +221,7 @@ class Provider(BaseModel):
     doc_url: str | None = None
     base_urls: dict[str, str]
     default_headers: dict[str, str] = Field(default_factory=dict)
-    auth: dict[str, AuthSpec] = Field(default_factory=lambda: {"default": AuthNone()})
+    auth: dict[str, AuthSpec] = Field(default_factory=_default_auth)
     hash_refresh: HashRefresh | None = None
     defaults: ProviderDefaults = Field(default_factory=ProviderDefaults)
     # Commerce: this provider runs on OUR upstream credential (never shipped locally), so a

@@ -268,3 +268,29 @@ def test_run_refresh_writes_changed_hash(tmp_path: Path):
     assert [c.name for c in result.changed] == ["HomeSportsScreen"]
     assert result.unchanged == ["RacingRace"]
     assert f'sha256: "{NEW}"' in p.read_text()
+
+
+# ─── an operation that never had a hash ─────────────────────────────────
+
+
+def test_a_change_may_have_no_previous_hash():
+    """`op.sha256` is legitimately None — a newly-added operation, or a full-query
+    provider. `HashChange.old` was typed `str`, which was a claim the data does not
+    support."""
+    from sportsdata_mcp.refresh.entain_hashes import HashChange
+
+    change = HashChange("newOperation", None, "b" * 64)
+    assert change.old is None
+
+
+def test_the_diff_report_survives_a_hashless_operation():
+    """The real bug behind the type error: the CLI printed `c.old[:8]`, so the first
+    refresh after adding an operation died with `TypeError: 'NoneType' object is not
+    subscriptable` — at exactly the moment it had something useful to report."""
+    from sportsdata_mcp.cli import format_hash_change
+    from sportsdata_mcp.refresh.entain_hashes import HashChange
+
+    assert format_hash_change(HashChange("newOperation", None, "b" * 64)) == (
+        "newOperation: (new) → bbbbbbbb…bbbbbbb")
+    assert format_hash_change(HashChange("moved", "a" * 64, "c" * 64)) == (
+        "moved: aaaaaaaa…aaaaaaa → cccccccc…ccccccc")

@@ -37,8 +37,17 @@ class KalshiRSASigner:
         key_path = _resolve(spec.private_key_path_env, secrets)
         if pem is None and key_path:
             pem = Path(key_path).expanduser().read_text()
-        self.active = bool(self._key_id and pem)
-        self._private_key = self._load_key(pem) if self.active else None
+        # Written as one branch rather than `bool(...)` then a separate conditional so
+        # the "active implies both are present" invariant is CHECKED rather than merely
+        # true: inside this branch the key id and PEM are known non-None, and a future
+        # edit that breaks the pairing fails to type-check instead of failing at signing
+        # time on someone's first authenticated call.
+        if self._key_id and pem:
+            self._private_key = self._load_key(pem)
+            self.active = True
+        else:
+            self._private_key = None
+            self.active = False
 
     @staticmethod
     def _load_key(pem: str):
@@ -52,20 +61,21 @@ class KalshiRSASigner:
 
     def sign_request(self, method: str, path: str) -> dict[str, str]:
         """Headers for one request; empty dict in anonymous mode."""
-        if not self.active:
+        key_id, private_key = self._key_id, self._private_key
+        if not self.active or key_id is None or private_key is None:
             return {}
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
 
         timestamp_ms = str(int(time.time() * 1000))
         message = timestamp_ms + method.upper() + path.split("?")[0]
-        signature = self._private_key.sign(
+        signature = private_key.sign(
             message.encode(),
             padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH),
             hashes.SHA256(),
         )
         return {
-            "KALSHI-ACCESS-KEY": self._key_id,
+            "KALSHI-ACCESS-KEY": key_id,
             "KALSHI-ACCESS-SIGNATURE": base64.b64encode(signature).decode(),
             "KALSHI-ACCESS-TIMESTAMP": timestamp_ms,
         }

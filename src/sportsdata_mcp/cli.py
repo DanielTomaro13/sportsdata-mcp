@@ -167,6 +167,20 @@ def doctor(ctx: click.Context) -> None:
     raise SystemExit(0 if ok else 1)
 
 
+
+def format_hash_change(change) -> str:
+    """One line of the refresh diff.
+
+    `old` is None for an operation that never carried a hash — a newly-added one, or a
+    full-query provider. Subscripting that crashed the entire refresh report with
+    `TypeError: 'NoneType' object is not subscriptable`, at exactly the moment it had
+    something useful to say. Extracted from the echo loop so the case is testable rather
+    than only reachable by running a real refresh.
+    """
+    was = f"{change.old[:8]}…{change.old[-7:]}" if change.old else "(new)"
+    return f"{change.name}: {was} → {change.new[:8]}…{change.new[-7:]}"
+
+
 @cli.command("refresh-hashes")
 @click.argument("provider")
 @click.option("--dry-run", is_flag=True, help="Show the diff without writing the spec back.")
@@ -197,7 +211,7 @@ def refresh_hashes(provider: str, dry_run: bool) -> None:
     click.echo("", err=True)
     click.echo(f"📋 Diff against {spec_path.name}:", err=True)
     for c in result.changed:
-        click.echo(f"   • {c.name}: {c.old[:8]}…{c.old[-7:]} → {c.new[:8]}…{c.new[-7:]}  ✏️", err=True)
+        click.echo(f"   • {format_hash_change(c)}  ✏️", err=True)
     click.echo(f"   • {len(result.unchanged)} unchanged", err=True)
     manifest_only = result.extracted - len(result.documents)
     if manifest_only:

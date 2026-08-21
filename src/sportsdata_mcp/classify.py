@@ -31,11 +31,13 @@ def _matched(value: object, kind: str, operand: object) -> bool:
     if kind == "eq":
         return value == operand
     if kind == "prefix":
-        return _as_str(value).startswith(operand)  # type: ignore[arg-type]
+        return _as_str(value).startswith(_as_str(operand))
     if kind == "contains":
-        return operand in _as_str(value)  # type: ignore[operator]
-    # "regex" — operand is a compiled pattern
-    return operand.search(_as_str(value)) is not None  # type: ignore[union-attr]
+        return _as_str(operand) in _as_str(value)
+    # "regex" — operand is a compiled pattern. Narrowed rather than suppressed: the
+    # previous `type: ignore` comments named error codes mypy was not even raising, so
+    # they silenced nothing and hid that the dispatch was unchecked.
+    return isinstance(operand, re.Pattern) and operand.search(_as_str(value)) is not None
 
 
 def _rule_matcher(block: Classify) -> Callable[[dict], str | None]:
@@ -61,7 +63,8 @@ def _rule_matcher(block: Classify) -> Callable[[dict], str | None]:
         elif r.contains is not None:
             kind, operand = "contains", r.contains
         else:  # regex (validation guarantees exactly one matcher is set)
-            kind, operand = "regex", re.compile(r.regex)  # type: ignore[arg-type]
+            assert r.regex is not None  # guaranteed by ClassifyRule validation
+            kind, operand = "regex", re.compile(r.regex)
         compiled.append((fld, kind, operand, r.value))
 
     def classify(item: dict) -> str | None:
@@ -97,7 +100,7 @@ def _walk(node: object, segments: list[str], set_key: str, classify: Callable[[d
         _walk(child, rest, set_key, classify)
 
 
-def apply_classify(response: object, blocks: list[Classify]) -> object:
+def apply_classify(response: dict | list, blocks: list[Classify]) -> dict | list:
     """Apply every classify block to `response` in place (best-effort) and return it.
 
     Best-effort by design: a classifier must never turn a good response into an error.

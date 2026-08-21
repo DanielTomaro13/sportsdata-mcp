@@ -28,6 +28,13 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      # Added once the tree was clean. It found two real latent crashes on the way —
+      # a None hash subscripted in the refresh report, and a None hash subscripted
+      # while RAISING the persisted-query error — so this is a gate worth having, not
+      # a style preference.
+      - name: Mypy
+        run: mypy
+
       - name: Lint specs
         run: sportsdata-mcp lint
 

@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -347,6 +347,11 @@ def serve_stdio(cfg: Config | None = None, specs_dir: Path | None = None) -> Non
     mcp.run()  # stdio transport
 
 
+#: HTTP-family transports FastMCP accepts. `stdio` is served by `serve_stdio`.
+HTTPTransport = Literal["http", "sse", "streamable-http"]
+HTTP_TRANSPORTS: tuple[str, ...] = ("http", "sse", "streamable-http")
+
+
 def serve_http(
     cfg: Config | None = None,
     specs_dir: Path | None = None,
@@ -376,5 +381,13 @@ def serve_http(
             host,
             port,
         )
+    if transport not in HTTP_TRANSPORTS:
+        # `serve_http` is importable, so the CLI's own `click.Choice` is not the only
+        # way in. Failing here names the valid options; passing an unknown string
+        # through produced an error from deep inside FastMCP instead.
+        raise ValueError(
+            f"unsupported transport {transport!r} — expected one of {', '.join(HTTP_TRANSPORTS)}"
+        )
     log.info("serving MCP over %s at http://%s:%s/mcp", transport, host, port)
-    mcp.run(transport=transport, host=host, port=port)
+    # The check above is what makes this narrowing sound.
+    mcp.run(transport=cast(HTTPTransport, transport), host=host, port=port)

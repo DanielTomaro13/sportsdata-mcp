@@ -6,6 +6,26 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.27.3 — 2026-08-22
+
+### Fixed
+- **A refresh diff crashed on a newly-added GraphQL operation.** `HashChange.old` was
+  typed `str` but holds `op.sha256`, which is legitimately `None` for an operation that
+  never carried a hash — and the CLI printed `c.old[:8]`, so the first refresh after
+  adding one died with `TypeError: 'NoneType' object is not subscriptable`, at exactly
+  the moment it had something useful to report.
+- **A `None` hash was subscripted while RAISING `PersistedQueryNotFoundError`**, turning
+  a clear "run refresh-hashes" message into a traceback pointing at the wrong thing.
+- `serve_http` now rejects an unknown transport by name. It is importable, so the CLI's
+  own `click.Choice` was not the only way in, and an unknown string surfaced as an error
+  from deep inside FastMCP.
+
+### Changed
+- **mypy is now a CI gate**, and the tree is clean. It found both crashes above. Several
+  `type: ignore` comments named error codes mypy was not raising, so they silenced
+  nothing while implying the code had been checked; those are now real narrowing.
+  `types-PyYAML` and `mypy` join the dev extra.
+
 ## 0.27.2 — 2026-08-21
 
 ### Added

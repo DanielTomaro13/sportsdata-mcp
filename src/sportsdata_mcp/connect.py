@@ -48,6 +48,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -273,7 +274,7 @@ def save_secret(env_var: str, value: str) -> Path:
 
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    data = {}
+    data: dict[str, Any] = {}
     if path.exists():
         data = yaml.safe_load(path.read_text()) or {}
     data.setdefault("secrets", {})[env_var] = value

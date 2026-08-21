@@ -136,7 +136,11 @@ def make_graphql_dispatcher(disp: Dispatcher, spec: Spec, http: HTTPClient) -> C
 
         raise PersistedQueryNotFoundError(
             operation=operation,
-            hash_prefix=op.sha256[:16],
+            # `or ""` because an operation can carry no hash at all (newly added, never
+            # refreshed). Subscripting None here would raise a TypeError *while raising
+            # the real error* — replacing a clear "run refresh-hashes" message with a
+            # traceback that points at the wrong thing entirely.
+            hash_prefix=(op.sha256 or "")[:16],
             refresh_cmd=(
                 f"sportsdata-mcp refresh-hashes {spec.provider.id}"
                 if spec.provider.hash_refresh is not None

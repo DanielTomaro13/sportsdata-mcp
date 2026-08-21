@@ -344,13 +344,14 @@ def resolve_groups(tokens: list[str], groups: list[str], specs: list[Spec] | Non
         if token.startswith("-"):
             exclude.update(_match_token(token[1:], groups, specs))
         else:
-            matched = _match_token(token, groups, specs)
             # A WRITE group is only ever enabled by its EXACT name. `*`, a preset and
             # even a provider glob like `yahoo.*` all skip it, because none of those
             # express "and you may change my team". Writing to someone's fantasy roster
             # is not something to acquire by wildcard.
-            matched = {g for g in matched if not g.endswith(".write") or g == token}
-            include.update(matched)
+            include.update(
+                g for g in _match_token(token, groups, specs)
+                if not g.endswith(".write") or g == token
+            )
     return sorted(include - exclude)
 
 
