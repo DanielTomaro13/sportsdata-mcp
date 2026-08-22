@@ -109,13 +109,40 @@ async def test_list_bodies_are_not_probed(monkeypatch):
     assert got == [{"error": "1"}]
 
 
-def test_every_declared_signal_belongs_to_a_byo_provider():
-    """Not a rule of the engine, but a rule of this catalogue: the only reason to declare
-    a signal so far is an API that reports auth failures with a 200. If a keyless
-    provider ever needs one, that is worth a deliberate look rather than a silent pass."""
+#: Keyless providers that legitimately need an error signal, and why.
+#
+# The rule below asked for "a deliberate look" the first time a keyless provider needed
+# one. MyFantasyLeague is that case, and it is a different reason from every other entry:
+# it answers HTTP 200 with an error document for EVERYTHING — a bad league id on a fully
+# public call, not merely an auth failure — so the signal is not about credentials at all.
+# Marking it `requires_user_key` to satisfy the rule would have been a lie that leaks into
+# the BYO-tier UX, since its reference endpoints work with nothing configured.
+KEYLESS_WITH_SIGNALS = {
+    "myfantasyleague": "answers 200 + an error document for every failure, auth or not",
+}
+
+
+def test_every_declared_signal_is_justified():
+    """Not a rule of the engine, but a rule of this catalogue: a signal is declared either
+    because the API reports AUTH failures with a 200 (the BYO case), or because it reports
+    ALL failures that way and the exemption is written down above. A silent third reason
+    is what this is here to prevent."""
     for spec in load_all_specs():
-        if spec.provider.error_signals:
-            assert spec.provider.requires_user_key, spec.provider.id
+        if not spec.provider.error_signals:
+            continue
+        pid = spec.provider.id
+        assert spec.provider.requires_user_key or pid in KEYLESS_WITH_SIGNALS, (
+            f"{pid} declares an error signal but needs no key — if that is correct, add it "
+            f"to KEYLESS_WITH_SIGNALS with the reason"
+        )
+
+
+def test_the_keyless_exemptions_still_declare_signals():
+    """An exemption that outlives its signal is stale documentation."""
+    by_id = {s.provider.id: s for s in load_all_specs()}
+    for pid in KEYLESS_WITH_SIGNALS:
+        assert pid in by_id, f"{pid} is exempted but no longer exists"
+        assert by_id[pid].provider.error_signals, f"{pid} no longer declares a signal"
 
 
 # ─── presence mode and the string-zero trap ─────────────────────────────

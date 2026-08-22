@@ -6,6 +6,30 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.28.0 — 2026-08-22
+
+### Added
+- **MyFantasyLeague** (`myfantasyleague`) — 20 tools, **6 of them writes**, and the first
+  fantasy write contract in this catalogue that is *documented by the vendor* rather than
+  transcribed from minified JavaScript. Reads cover the league, rosters, free agents,
+  standings, schedule, league-scored player points, projections and live scoring; writes
+  cover lineups, immediate add/drops, waiver claims, blind bids, injured reserve and trade
+  responses. `myfantasyleague.write` is reachable only by exact group name.
+- **`response_format: xml`** on the engine. MFL's `/import` endpoints answer XML even when
+  asked for JSON, and answer HTTP 200 whether a write succeeded or failed — so without a
+  decoder an ordinary rejection surfaced as "the body did not parse", and a success looked
+  identical to it. XML decodes to the same shape the provider's own JSON mode produces, so
+  one `error_signals` rule covers both. Repeated child tags always collapse to a list, so a
+  one-row document and a many-row document never differ in shape.
+- `sportsdata-mcp connect mfl`.
+
+### Fixed
+- **`connect` called any HTTP 200 a working credential.** Each provider disagrees about
+  what a failure looks like, and the FPL-shaped check passed every MFL cookie. Verification
+  is now per connector, and a test asserts that any connector with a `verify_url` has one —
+  MFL in particular says no by returning `{"leagues": {}}`: 200, no error field, and
+  indistinguishable from success unless you decide what you meant by it.
+
 ## 0.27.3 — 2026-08-22
 
 ### Fixed

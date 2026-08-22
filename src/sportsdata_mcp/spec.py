@@ -403,7 +403,7 @@ class Endpoint(BaseModel):
     # (football-data.co.uk's decades of results + closing odds). `csv` parses the
     # body into a list of row objects keyed by the header line, so the tool returns
     # ordinary JSON to the model.
-    response_format: Literal["json", "csv"] = "json"
+    response_format: Literal["json", "csv", "xml"] = "json"
     # REDUCTIVE projection — see project.py. `response_pick` keeps named top-level keys
     # of a dict body; `response_fields` keeps named keys on list items. Needed because
     # FPL's bootstrap-static is a single 1.37 MB blob (~362k tokens of player rows alone)

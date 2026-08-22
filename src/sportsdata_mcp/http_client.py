@@ -47,6 +47,30 @@ def _snippet(r: httpx.Response, n: int = 200) -> str:
     return r.text[:n].replace("\n", " ").strip()
 
 
+def _xml_to_obj(el) -> object:
+    """One XML element as dict / str, mirroring MFL's own JSON rendering.
+
+    Attributes and children share a namespace, children win on a clash (they carry more).
+    Repeated child tags collapse to a list, so a document with one row and one with many
+    do not produce different SHAPES — the difference that turns "handle both" into a
+    crash the first time a league has exactly one pending trade.
+    """
+    obj: dict[str, object] = dict(el.attrib)
+    for child in el:
+        value = _xml_to_obj(child)
+        if child.tag in obj:
+            existing = obj[child.tag]
+            if isinstance(existing, list):
+                existing.append(value)
+            else:
+                obj[child.tag] = [existing, value]
+        else:
+            obj[child.tag] = value
+    if obj:
+        return obj
+    return (el.text or "").strip()
+
+
 class _TokenBucket:
     """Simple token-bucket rate limiter. Default 10 RPS, burst 10."""
 
@@ -345,8 +369,15 @@ class HTTPClient:
                 log.debug("cache hit (provider=%s) %s", self._provider.id, kwargs.get("url"))
                 return hit[1]
         r = await self.request(**kwargs)
-        body = (self._decode_csv(r) if response_format == "csv"
-                else self._decode(r, skip_size_check=projected))
+        # Declared up front: mypy otherwise infers the variable's type from the FIRST
+        # branch (csv's list[dict]) and then rejects the others.
+        body: dict | list
+        if response_format == "csv":
+            body = self._decode_csv(r)
+        elif response_format == "xml":
+            body = self._decode_xml(r)
+        else:
+            body = self._decode(r, skip_size_check=projected)
         if key is not None:
             # Evict expired entries before inserting, and bound the map so a long-running
             # server driven over many distinct params can't grow without limit.
@@ -386,6 +417,37 @@ class HTTPClient:
             ) from e
         # Trailing blank lines produce rows whose every value is None/''.
         return [row for row in rows if any((v or "").strip() for v in row.values())]
+
+    def _decode_xml(self, r: httpx.Response) -> dict | list:
+        """Parse an XML body into plain JSON-shaped data.
+
+        Only used by endpoints declaring ``response_format: xml``. MyFantasyLeague's
+        write API is the reason this exists: its `/import` endpoints answer in XML even
+        when asked for JSON, and they answer HTTP 200 whether the write succeeded or
+        failed — so without a decoder here, a perfectly ordinary rejection would surface
+        as "the body did not parse" and a SUCCESS would look identical to it.
+
+        Attributes become keys; a leaf element becomes its text. That is the same shape
+        MFL's own JSON mode produces for the equivalent document, so a spec's
+        `error_signals` and `response_hint` read the same either way.
+        """
+        self._guard_status_and_size(r)
+        import xml.etree.ElementTree as ET
+
+        text = r.text.lstrip("\ufeff").strip()
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError as e:
+            log.error("XML parse failed (provider=%s): %s", self._provider.id, _snippet(r, 120))
+            raise ToolError(
+                f"{self._provider.id} returned a body that did not parse as XML. "
+                f"Body starts: {_snippet(r)}",
+                recoverable=False,
+                code="XML_DECODE_ERROR",
+            ) from e
+        body = {root.tag: _xml_to_obj(root)}
+        self._raise_on_error_signal(body)
+        return body
 
     @staticmethod
     def _may_retry(method: str, status: int) -> bool:

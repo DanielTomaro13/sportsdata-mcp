@@ -246,3 +246,49 @@ def test_partial_hits_across_profiles_are_never_merged(tmp_path, monkeypatch):
     got = connect.read_browser_cookies("fantasy.premierleague.com", ("sessionid", "pl_profile"))
     assert set(got) == {"sessionid"}          # the first profile's hit, alone
     assert "pl_profile" not in got            # NOT topped up from the second
+
+
+# ─── each provider's own idea of "this credential works" ────────────────
+
+
+def test_mfl_says_no_by_returning_an_empty_success():
+    """MyFantasyLeague has three ways to say no and only one looks like a failure. A bad
+    or absent cookie on `myleagues` returns {"leagues": {}} — HTTP 200, no error field.
+    The shared FPL check passed that happily, so `connect mfl` would have stored a
+    credential it had just proved does not work."""
+    from sportsdata_mcp.connect import _mfl_signed_in
+
+    ok, why = _mfl_signed_in({"version": "1.0", "leagues": {}})
+    assert ok is False
+    assert "signed out" in why
+
+    ok, why = _mfl_signed_in({"error": {"$t": "Invalid league ID 12345"}})
+    assert ok is False
+    assert "Invalid league" in why
+
+    ok, why = _mfl_signed_in({"leagues": {"league": [{"league_id": "12345"}]}})
+    assert ok is True
+    assert "1 league" in why
+
+
+def test_mfl_accepts_a_single_league_not_just_a_list():
+    """One league arrives as an object, several as a list — the same shape trap the XML
+    decoder has. Treating only the list as valid would reject a one-league user."""
+    from sportsdata_mcp.connect import _mfl_signed_in
+
+    ok, why = _mfl_signed_in({"leagues": {"league": {"league_id": "12345"}}})
+    assert ok is True
+    assert "1 league" in why
+
+
+def test_every_connector_with_a_verify_url_has_a_verifier():
+    """A verify_url without a checker silently degrades to "any 200 is fine", which is
+    how a signed-out cookie gets stored as connected."""
+    from sportsdata_mcp.connect import CONNECTORS, VERIFIERS
+
+    for name, c in CONNECTORS.items():
+        if c.verify_url:
+            assert c.provider in VERIFIERS, (
+                f"connector {name} verifies against {c.verify_url} but has no checker — "
+                "a 200 alone does not prove a credential works"
+            )

@@ -1,0 +1,528 @@
+spec_version: 1
+
+# MyFantasyLeague (MFL) — a SANCTIONED fantasy API, documented by the vendor.
+#
+# Unlike FPL and ESPN Fantasy, nothing here was reverse-engineered. MFL publishes its
+# whole surface at https://api.myfantasyleague.com/{year}/api_info?STATE=details — 79
+# request types with named, described arguments — and the shapes below are transcribed
+# from it, then checked against live keyless calls where the endpoint allows one.
+#
+# TWO THINGS ABOUT THIS API THAT WILL BITE YOU
+#
+# 1. IT ANSWERS HTTP 200 FOR ERRORS. A bad league id, a missing cookie and a rejected
+#    write all come back 200 with an error document. That is what `error_signals` below
+#    is for: without it, every failure would look like a successful call returning odd
+#    data. This is the single most important line in this file.
+#
+# 2. EXPORTS AND IMPORTS DISAGREE ABOUT JSON. `/export` honours `JSON=1`; `/import`
+#    answers XML regardless (verified live: an import error returns
+#    `<error>Invalid League ID</error>` even with JSON=1). The write tools therefore
+#    declare `response_format: xml` and the engine decodes it to the same shape MFL's
+#    JSON mode produces, so one `error_signals` rule covers both.
+#
+# AUTH — and the correction that matters. MFL has TWO mechanisms and they are not
+# interchangeable:
+#
+#   * `APIKEY` (query param) — per user/franchise/league. READS ONLY. The vendor states
+#     plainly that it "does not work for import requests", so it cannot drive an agent
+#     that changes a team.
+#   * `Cookie: MFL_USER_ID=<base64>` — obtained by logging in. This is the ONLY thing
+#     that authorises a write.
+#
+# So MFL is not the "API key and no cookie chore" platform it looks like from the
+# outside: writes need a login-derived cookie, exactly like FPL and ESPN. Get it with
+# `sportsdata-mcp connect mfl`, which reads it from your browser and never sees a
+# password. The cookie value is base64 and may contain '+', '/' and '=', so it is sent
+# as a header rather than a query param.
+#
+# RATE LIMITS are real and enforced with 429s, and are per-IP. Registered clients get
+# ~2.5x by sending a registered User-Agent. We are conservative by default.
+#
+# Probed live 2026-08-22 against the 2026 season (players, injuries, and the error
+# shapes for export and import).
+
+provider:
+  id: myfantasyleague
+  display_name: "MyFantasyLeague (fantasy football — sanctioned API)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/MyFantasyLeague.md"
+  base_urls:
+    default: https://api.myfantasyleague.com
+  default_headers:
+    # MFL asks clients to identify themselves; a registered UA earns higher limits.
+    User-Agent: "sportsdata-mcp"
+    Accept: "application/json, text/xml;q=0.9"
+  auth:
+    default:
+      type: none
+    # Reads of a private league, and every write. `optional` so public calls (players,
+    # injuries, nflSchedule) still work with nothing configured.
+    session:
+      type: static_header
+      header: Cookie
+      env: MFL_COOKIE
+      optional: true
+  # HTTP 200 + an error document. Both spellings: `/export?JSON=1` renders the message
+  # under `error.$t`, `/import` renders bare `<error>text</error>` which the XML decoder
+  # turns into `{"error": "text"}`. Presence mode catches both.
+  # One rule covers both spellings: `/export?JSON=1` gives {"error":{"$t":"..."}} and the
+  # XML decoder turns `<error>text</error>` into {"error":"text"}. Presence mode fires on
+  # either, because both are a truthy top-level `error`.
+  error_signals:
+    - field: error
+  defaults:
+    # Deliberately well under the throttle. The limits are per-IP, undocumented in
+    # exact numbers, and shared with anything else on this machine.
+    rate_limit_rps: 2
+    burst: 4
+    request_timeout_seconds: 30
+    # 429 is the documented throttle response. Retried; 5xx too, but see the write
+    # tools — POSTs are never retried on 5xx by the engine.
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+
+  # ─── reference: no league, no credential ─────────────────────────────
+
+  - name: mfl_players
+    group: myfantasyleague.reference
+    capabilities: [ref.players]
+    summary: "Every player MFL knows: id, name, position, NFL team. The id translation table every other MFL tool depends on. LARGE."
+    base: default
+    path: /{year}/export
+    auth: default
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year, e.g. 2026." }
+      - { name: TYPE, in: query, type: string, default: players, description: "Leave as-is." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: DETAILS, in: query, type: integer, description: "1 adds height, weight, DOB, college and draft info — several MB. Omit unless you need it." }
+      - { name: SINCE, in: query, type: integer, description: "Unix time; return only players changed since then. The cheap way to stay current." }
+      - { name: PLAYERS, in: query, type: string_csv, description: "Specific player ids, comma-separated — far smaller than the full table." }
+    response_hint: "{players:{timestamp, player:[{id, name:'Last, First', position, team}]}}  — `id` is MFL's own player id and is what every roster, lineup and waiver call speaks. `name` is 'Surname, Firstname'. VERIFIED live 2026.\n\nThe full table is thousands of players; prefer PLAYERS= or SINCE= once you have ids."
+    examples:
+      - description: "Look up three players by id"
+        params: {year: 2026, PLAYERS: "13593,14208,15029"}
+
+  - name: mfl_injuries
+    group: myfantasyleague.reference
+    capabilities: [sport.injuries]
+    summary: "The NFL injury report by player id — status and body part, updated daily in season."
+    base: default
+    path: /{year}/export
+    auth: default
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: injuries, description: "Leave as-is." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: W, in: query, type: integer, description: "Week. Defaults to the most recent week with data." }
+    response_hint: "{injuries:{week, timestamp, injury:[{id, status:'Questionable'|'Out'|'IR'|'Inactive'|…, details:'Hamstring', exp_return}]}}  — VERIFIED live 2026. `id` joins to mfl_players."
+    examples:
+      - description: "This week's injury report"
+        params: {year: 2026}
+
+  - name: mfl_nfl_schedule
+    group: myfantasyleague.reference
+    capabilities: [sport.fixtures_by_date]
+    summary: "The NFL schedule for one week — kickoff times and both teams. Which is what tells you when a player locks."
+    base: default
+    path: /{year}/export
+    auth: default
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: nflSchedule, description: "Leave as-is." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: W, in: query, type: integer, description: "Week; defaults to the current one." }
+    response_hint: "{nflSchedule:{week, matchup:[{kickoff (unix seconds), team:[{id, isHome, score, spread}]}]}}  — `kickoff` is the lock time for that game's players. Does NOT update live during games."
+    examples:
+      - description: "Week 1 fixtures"
+        params: {year: 2026, W: 1}
+
+  # ─── the league: needs the cookie for a private league ────────────────
+
+  - name: mfl_league
+    group: myfantasyleague.league
+    capabilities: [sport.competition_screen]
+    summary: "League setup: name, roster size, starting-lineup requirements, franchises, divisions, IR and taxi-squad sizes. Read this FIRST — it defines what a legal lineup is."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: league, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id (from your league URL)." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie. Does NOT authorise writes." }
+    response_hint: "{league:{id, name, rosterSize, injuredReserve, taxiSquad, startWeek, endWeek, franchises:{franchise:[{id:'0001', name, owner_name}]}, starters:{count, position:[{name:'QB', limit:'1'}]}, …}}\n\nTHE THING YOU NEED: `starters` defines the legal formation and `franchises[].id` is the four-digit franchise id every write uses. Roster limits differ per league — never assume a standard shape."
+    examples:
+      - description: "League setup"
+        params: {year: 2026, L: "12345"}
+
+  - name: mfl_rosters
+    group: myfantasyleague.league
+    capabilities: [fantasy.rosters]
+    summary: "Every franchise's roster, with each player's status (active / IR / taxi) and salary or contract if the league uses them."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: rosters, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: FRANCHISE, in: query, type: string, description: "Just this franchise's roster, e.g. '0001'. Much smaller." }
+      - { name: W, in: query, type: integer, description: "Roster as it stood in this week; must be <= the upcoming week." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{rosters:{franchise:[{id:'0001', player:[{id, status:'ROSTER'|'INJURED_RESERVE'|'TAXI_SQUAD', salary, contractYear}]}]}}  — `status` is what an IR or taxi move changes. Join `id` to mfl_players for names."
+    examples:
+      - description: "One franchise's roster"
+        params: {year: 2026, L: "12345", FRANCHISE: "0001"}
+
+  - name: mfl_free_agents
+    group: myfantasyleague.league
+    capabilities: [fantasy.rosters]
+    summary: "Players not on any roster in this league — the pool an add or a waiver claim draws from."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: freeAgents, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: POSITION, in: query, type: string, description: "Restrict to one position, e.g. RB. Strongly recommended — the unfiltered pool is large." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{freeAgents:{leagueUnit:{unit, player:[{id, contractYear, salary}]}}}  — ids only; join to mfl_players for names and to mfl_player_scores for form."
+    examples:
+      - description: "Free-agent running backs"
+        params: {year: 2026, L: "12345", POSITION: "RB"}
+
+  - name: mfl_league_standings
+    group: myfantasyleague.league
+    capabilities: [stats.ladder]
+    summary: "Current standings — record, points for and against, and the league's own standings columns."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: leagueStandings, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: COLUMN_NAMES, in: query, type: integer, description: "1 also returns the column key → name mapping, in display order." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{leagueStandings:{franchise:[{id, h2hw, h2hl, h2ht, pf, pa, vp, …}]}}  — the columns vary by league configuration; COLUMN_NAMES=1 tells you what each key means."
+    examples:
+      - description: "Standings with column names"
+        params: {year: 2026, L: "12345", COLUMN_NAMES: 1}
+
+  - name: mfl_schedule
+    group: myfantasyleague.league
+    capabilities: [sport.fixtures_by_date]
+    summary: "The fantasy schedule — who you play, and the score for weeks already played."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: schedule, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: W, in: query, type: integer, description: "One week; omit for the whole season." }
+      - { name: F, in: query, type: string, description: "Just this franchise's fixtures, e.g. '0001'." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{schedule:{weeklySchedule:[{week, matchup:[{franchise:[{id, score, result, isHome}]}]}]}}"
+    examples:
+      - description: "This week's matchups"
+        params: {year: 2026, L: "12345", W: 1}
+
+  # ─── scoring and projections ─────────────────────────────────────────
+
+  - name: mfl_player_scores
+    group: myfantasyleague.scoring
+    capabilities: [stats.player_season]
+    summary: "Fantasy points under THIS league's scoring rules — for a week, year-to-date, or a weekly average. Rostered players and free agents alike."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: playerScores, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id — scoring is league-specific, which is the point of this endpoint." }
+      - { name: W, in: query, type: string, description: "Week number, 'YTD' for the season so far, or 'AVG' for a weekly average." }
+      - { name: PLAYERS, in: query, type: string_csv, description: "Restrict to these player ids. Strongly recommended." }
+      - { name: POSITION, in: query, type: string, description: "Restrict to one position." }
+      - { name: RULES, in: query, type: integer, description: "1 also returns the scoring-rule breakdown behind each total." }
+      - { name: COUNT, in: query, type: integer, description: "Cap the number of players returned." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{playerScores:{playerScore:[{id, score, isAvailable}]}}  — `score` is in THIS league's scoring, so it is comparable across your own players and the free-agent pool, and not comparable to any other league."
+    examples:
+      - description: "Season-to-date scores for a shortlist"
+        params: {year: 2026, L: "12345", W: "YTD", PLAYERS: "13593,14208"}
+
+  - name: mfl_projected_scores
+    group: myfantasyleague.scoring
+    capabilities: [stats.player_season]
+    summary: "Projected fantasy points for named players under this league's rules — the forward-looking number a lineup decision needs."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: projectedScores, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: PLAYERS, in: query, type: string_csv, required: true, description: "Player ids to project, comma-separated." }
+      - { name: W, in: query, type: integer, description: "Week; defaults to the upcoming one." }
+      - { name: COUNT, in: query, type: integer, description: "Cap the number returned." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{projectedScores:{playerScore:[{id, score}]}}  — projections come from a third party (fantasysharks) run through the league's scoring. They are an input, not a forecast to quote as fact."
+    examples:
+      - description: "Project two players for the upcoming week"
+        params: {year: 2026, L: "12345", PLAYERS: "13593,14208"}
+
+  - name: mfl_live_scoring
+    group: myfantasyleague.scoring
+    capabilities: [sport.live_scores]
+    summary: "Live matchup state — each franchise's score, game seconds remaining, and who has yet to play."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: liveScoring, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: W, in: query, type: integer, description: "Week; defaults to the current one." }
+      - { name: DETAILS, in: query, type: integer, description: "1 also returns non-starters." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{liveScoring:{franchise:[{id, score, gameSecondsRemaining, playersYetToPlay, playersCurrentlyPlaying}]}}  — `playersYetToPlay` is the honest read on whether a matchup is still live."
+    examples:
+      - description: "Live scores this week"
+        params: {year: 2026, L: "12345"}
+
+  # ─── your own franchise ──────────────────────────────────────────────
+
+  - name: mfl_my_leagues
+    group: myfantasyleague.mine
+    capabilities: [fantasy.rosters]
+    summary: "Every league YOU are in, with your franchise id in each. Needs your cookie. The way to find the ids every other tool wants."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: myleagues, description: "Leave as-is." }
+      - { name: FRANCHISE_NAMES, in: query, type: integer, description: "1 also returns franchise names." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+    response_hint: "{leagues:{league:[{league_id, franchise_id, name, url}]}}  — `franchise_id` is YOUR four-digit id in that league, which every write needs. Returns nothing useful without MFL_COOKIE."
+    examples:
+      - description: "My leagues this season"
+        params: {year: 2026}
+
+  - name: mfl_pending_trades
+    group: myfantasyleague.mine
+    capabilities: [sport.transactions]
+    summary: "Trades offered to you, and trades you have offered. Needs your cookie."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: pendingTrades, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "Commissioners only: whose pending trades to fetch." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{pendingTrades:{pendingTrade:[{trade_id, offeringteam, willGiveUp, willReceive, expires}]}}  — `trade_id` is what a response quotes. Draft picks appear as DP_/FP_ tokens and blind-bid dollars as BB_."
+    examples:
+      - description: "What is on the table"
+        params: {year: 2026, L: "12345"}
+
+  - name: mfl_transactions
+    group: myfantasyleague.league
+    capabilities: [sport.transactions]
+    summary: "Completed league transactions — adds, drops, trades, waivers. Filter it: unfiltered is very large."
+    base: default
+    path: /{year}/export
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: transactions, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: TRANS_TYPE, in: query, type: string, description: "One of WAIVER, BBID_WAIVER, FREE_AGENT, TRADE, IR, TAXI, AUCTION_INIT, AUCTION_BID, AUCTION_WON, SURVIVOR_PICK, POOL_PICK. Omit for all." }
+      - { name: FRANCHISE, in: query, type: string, description: "Just this franchise, e.g. '0001'." }
+      - { name: DAYS, in: query, type: integer, description: "Only the last N days." }
+      - { name: COUNT, in: query, type: integer, description: "Cap the number returned." }
+      - { name: W, in: query, type: integer, description: "Only this week." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Leave as-is." }
+      - { name: APIKEY, in: query, type: string, description: "Read-only alternative to the cookie." }
+    response_hint: "{transactions:{transaction:[{type, timestamp, franchise, transaction}]}}  — the `transaction` field is a packed, comma/pipe-delimited string whose meaning depends on `type`."
+    examples:
+      - description: "This franchise's last week of moves"
+        params: {year: 2026, L: "12345", FRANCHISE: "0001", DAYS: 7}
+
+  # ─── WRITES — opt-in by exact group name, never by a wildcard ─────────
+  #
+  # These CHANGE A REAL TEAM. `myfantasyleague.write` is skipped by `*`, `all`, every
+  # preset and even `myfantasyleague.*`. Reach it with:
+  #     --groups "free,myfantasyleague.*,myfantasyleague.write"
+  #
+  # THE CONTRACT IS THE VENDOR'S OWN, transcribed from api_info?STATE=details — the
+  # first fantasy writes in this catalogue that are documented rather than deduced.
+  #
+  # AUTH: the cookie ONLY. MFL states that the APIKEY parameter "does not work for
+  # import requests", so `APIKEY` is deliberately absent from every tool below. A write
+  # without MFL_COOKIE returns 200 with an error document, which `error_signals` turns
+  # into a real failure.
+  #
+  # RESPONSE: XML, even when JSON=1 is sent (verified live). Hence `response_format:
+  # xml`; the engine decodes it to the same shape MFL's JSON mode would produce.
+  #
+  # NOT RETRIED on 5xx — the engine retries POSTs on 429 only. A replayed waiver claim
+  # would bid twice.
+
+  - name: mfl_set_lineup
+    group: myfantasyleague.write
+    capabilities: [fantasy.rosters]
+    method: POST
+    response_format: xml
+    shapes_verified: false
+    summary: "SET YOUR STARTING LINEUP for a week. CHANGES YOUR REAL TEAM."
+    base: default
+    path: /{year}/import
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: lineup, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: W, in: query, type: integer, required: true, description: "The week this lineup is for. Setting a past week does nothing useful, and MFL will not tell you so." }
+      - { name: STARTERS, in: query, type: string_csv, required: true, description: "ALL starters as player ids, comma-separated. This REPLACES the lineup — anyone omitted is benched. Read mfl_league's `starters` for how many of each position are legal." }
+      - { name: COMMENTS, in: query, type: string, description: "A short note saved with the lineup." }
+      - { name: TIEBREAKERS, in: query, type: string_csv, description: "Only for leagues that use tiebreaker players." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "COMMISSIONERS ONLY: act on another franchise's behalf. Leave unset to act as yourself — setting it means changing someone else's team." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "Sent for consistency; MFL answers XML here regardless." }
+    response_hint: "`<status>OK</status>` on success, decoded to {status: 'OK'}. A failure is `<error>…</error>`, which the engine raises rather than returning — illegal formation, a locked player whose game has started, or an unknown player id.\n\nVERIFY AFTERWARDS with mfl_rosters: this is a full replacement, so a typo silently benches someone."
+    examples:
+      - description: "Set a week-1 lineup"
+        params: {year: 2026, L: "12345", W: 1, STARTERS: "13593,14208,15029"}
+
+  - name: mfl_add_drop
+    group: myfantasyleague.write
+    capabilities: [sport.transactions]
+    method: POST
+    response_format: xml
+    shapes_verified: false
+    summary: "ADD and/or DROP players IMMEDIATELY (first-come-first-served). CHANGES YOUR REAL TEAM."
+    base: default
+    path: /{year}/import
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: fcfsWaiver, description: "Leave as-is. This is MFL's immediate add/drop; a queued claim is mfl_waiver_claim." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: ADD, in: query, type: string, description: "ONE player id to add. At least one of ADD or DROP is required." }
+      - { name: DROP, in: query, type: string_csv, description: "Player ids to drop, comma-separated — several at once is allowed." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "COMMISSIONERS ONLY: act for another franchise." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "MFL answers XML here regardless." }
+    response_hint: "`<status>OK</status>` on success. Failures name the cause: a full roster with no matching drop, a player already owned, or a locked player.\n\nThis happens IMMEDIATELY — unlike a waiver claim there is no window to cancel it. Verify with mfl_rosters."
+    examples:
+      - description: "Claim a free agent, dropping one to make room"
+        params: {year: 2026, L: "12345", ADD: "15029", DROP: "13593"}
+
+  - name: mfl_waiver_claim
+    group: myfantasyleague.write
+    capabilities: [sport.transactions]
+    method: POST
+    response_format: xml
+    shapes_verified: false
+    summary: "Submit a round of WAIVER claims in priority order. Queued, not immediate. CHANGES YOUR REAL TEAM when the round processes."
+    base: default
+    path: /{year}/import
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: waiverRequest, description: "Leave as-is. For a blind-bid (FAAB) league use mfl_blind_bid instead." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: ROUND, in: query, type: integer, required: true, description: "Which waiver round these claims are for." }
+      - { name: PICKS, in: query, type: string, required: true, description: "Claims IN PRIORITY ORDER as `add_drop` pairs joined by commas: '1111_2222,3333_4444' means first choice add 1111 drop 2222, else add 3333 drop 4444. Pass an empty string to clear the round." }
+      - { name: REPLACE, in: query, type: integer, description: "1 REPLACES this round's existing claims. Omit and these are APPENDED to what is already queued — which is how you accidentally submit twice." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "COMMISSIONERS ONLY: act for another franchise." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "MFL answers XML here regardless." }
+    response_hint: "`<status>OK</status>` on success. The roster does NOT change now — claims process when the round runs, so a read-back straight afterwards correctly shows no change and that is NOT a failure.\n\nTO VERIFY: re-read this round's queue before the deadline, then confirm the outcome with mfl_transactions (TRANS_TYPE=WAIVER) once the round has processed."
+    examples:
+      - description: "Two claims in priority order, replacing anything queued"
+        params: {year: 2026, L: "12345", ROUND: 1, PICKS: "15029_13593,14208_13594", REPLACE: 1}
+
+  - name: mfl_blind_bid
+    group: myfantasyleague.write
+    capabilities: [sport.transactions]
+    method: POST
+    response_format: xml
+    shapes_verified: false
+    summary: "Submit BLIND-BID (FAAB) waiver claims. SPENDS REAL BUDGET if a claim wins."
+    base: default
+    path: /{year}/import
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: blindBidWaiverRequest, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: PICKS, in: query, type: string, required: true, description: "Bids as `add_amount_drop` triples joined by commas: '1111_5_2222' bids $5 on player 1111, dropping 2222 if won. Use '0000' as the drop id when dropping nobody. Empty string clears the round." }
+      - { name: ROUND, in: query, type: integer, description: "Required only in leagues using conditional blind bidding." }
+      - { name: REPLACE, in: query, type: integer, description: "1 REPLACES this round's bids; omit and these are APPENDED to the existing ones." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "COMMISSIONERS ONLY: act for another franchise." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "MFL answers XML here regardless." }
+    response_hint: "`<status>OK</status>` on success. Bids are BLIND — nobody sees them until the round processes, and a winning bid spends the money for real. Nothing changes on the roster until then, so an unchanged roster straight afterwards is NOT a failure.\n\nTO VERIFY: re-read the queued bids before the deadline, then confirm with mfl_transactions (TRANS_TYPE=BBID_WAIVER) and check the remaining budget once the round has run."
+    examples:
+      - description: "Bid $5 on one player, dropping nobody"
+        params: {year: 2026, L: "12345", PICKS: "15029_5_0000", REPLACE: 1}
+
+  - name: mfl_injured_reserve
+    group: myfantasyleague.write
+    capabilities: [fantasy.rosters]
+    method: POST
+    response_format: xml
+    shapes_verified: false
+    summary: "Move players to or from INJURED RESERVE. CHANGES YOUR REAL TEAM."
+    base: default
+    path: /{year}/import
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: ir, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: ACTIVATE, in: query, type: string_csv, description: "Player ids to move OFF injured reserve onto the active roster." }
+      - { name: DEACTIVATE, in: query, type: string_csv, description: "Player ids to move ONTO injured reserve. A league will only accept players it considers eligible." }
+      - { name: DROP, in: query, type: string_csv, description: "Player ids to drop outright — any roster status. This is a release, not a move." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "COMMISSIONERS ONLY: act for another franchise." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "MFL answers XML here regardless." }
+    response_hint: "`<status>OK</status>` on success. Activating without a free roster slot fails; so does deactivating a player the league does not consider IR-eligible. Verify with mfl_rosters and check each player's `status`."
+    examples:
+      - description: "Activate one player and shelve another"
+        params: {year: 2026, L: "12345", ACTIVATE: "13593", DEACTIVATE: "14208"}
+
+  - name: mfl_trade_response
+    group: myfantasyleague.write
+    capabilities: [sport.transactions]
+    method: POST
+    response_format: xml
+    shapes_verified: false
+    summary: "Accept, reject or revoke a PENDING TRADE. Accepting CHANGES BOTH TEAMS immediately."
+    base: default
+    path: /{year}/import
+    auth: session
+    params:
+      - { name: year, in: path, type: integer, required: true, description: "Season year." }
+      - { name: TYPE, in: query, type: string, default: tradeResponse, description: "Leave as-is." }
+      - { name: L, in: query, type: string, required: true, description: "League id." }
+      - { name: TRADE_ID, in: query, type: string, required: true, description: "From mfl_pending_trades." }
+      - { name: RESPONSE, in: query, type: string, required: true, enum: [accept, reject, revoke], description: "`accept`/`reject` only if the trade was offered TO you; `revoke` only if you offered it." }
+      - { name: COMMENTS, in: query, type: string, description: "A short note sent to the other manager on a reject." }
+      - { name: FRANCHISE_ID, in: query, type: string, description: "COMMISSIONERS ONLY: act for another franchise." }
+      - { name: JSON, in: query, type: integer, default: 1, description: "MFL answers XML here regardless." }
+    response_hint: "`<status>OK</status>` on success. Accepting is IRREVERSIBLE and moves players on two rosters at once — a trade is an agreement with another person, not a roster tweak. Verify with mfl_rosters for both franchises."
+    examples:
+      - description: "Reject an offer with a note"
+        params: {year: 2026, L: "12345", TRADE_ID: "4816", RESPONSE: reject, COMMENTS: "Thanks — not for me."}

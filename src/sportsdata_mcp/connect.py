@@ -46,6 +46,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,26 @@ CONNECTORS: dict[str, Connector] = {
             (
                 "`csrftoken` is collected because FPL's write endpoints require it as an "
                 "X-CSRFToken header. Reads work without it."
+            ),
+        ),
+    ),
+    "mfl": Connector(
+        provider="myfantasyleague",
+        label="MyFantasyLeague",
+        env_var="MFL_COOKIE",
+        cookie_names=("MFL_USER_ID",),
+        cookie_host="myfantasyleague.com",
+        # `myleagues` needs the cookie and returns YOUR leagues — so a 200 carrying a
+        # league list proves the credential works, while a signed-out call returns the
+        # provider's 200-with-an-error document instead.
+        verify_url="https://api.myfantasyleague.com/2026/export?TYPE=myleagues&JSON=1",
+        login_url="https://www.myfantasyleague.com/",
+        manual_hint="devtools → Application → Cookies → myfantasyleague.com → MFL_USER_ID",
+        notes=(
+            (
+                "MFL's APIKEY parameter is READ-ONLY by design — the vendor states it does "
+                "not work for import requests. This cookie is the only thing that can "
+                "change a team."
             ),
         ),
     ),
@@ -233,9 +254,51 @@ def _cookies_from_db(
 # ─── verification, storage ──────────────────────────────────────────────
 
 
+def _fpl_signed_in(body: object) -> tuple[bool, str]:
+    """FPL answers 200 with {"player": null} when signed out."""
+    if isinstance(body, dict) and "player" in body and body.get("player") is None:
+        return False, "the cookie is present but signed out — log in again and retry"
+    return True, "verified against a live call"
+
+
+def _mfl_signed_in(body: object) -> tuple[bool, str]:
+    """MyFantasyLeague has THREE ways to say no, and only one looks like a failure.
+
+    A bad league id gives {"error": {"$t": …}} — with HTTP 200. But a bad or absent
+    *cookie* on `myleagues` gives {"leagues": {}}: no error, no status code, just an
+    empty result that is indistinguishable from "this user is in no leagues" unless you
+    decide which one you meant. Here it means not signed in, because a user connecting
+    an account has at least one league — and calling that "connected" would store a
+    credential we had just proved does not work.
+    """
+    if not isinstance(body, dict):
+        return True, "accepted"
+    if body.get("error"):
+        detail = body["error"]
+        message = detail.get("$t") if isinstance(detail, dict) else detail
+        return False, f"the provider rejected it: {str(message)[:120]}"
+    leagues = (body.get("leagues") or {}).get("league") if isinstance(body.get("leagues"), dict) else None
+    if not leagues:
+        return False, (
+            "signed out — MyFantasyLeague returned no leagues for this cookie. Log in at "
+            "myfantasyleague.com in your browser and retry"
+        )
+    count = len(leagues) if isinstance(leagues, list) else 1
+    return True, f"verified against a live call — {count} league(s) visible"
+
+
+#: How each provider says "this credential works". Per connector rather than a growing
+#: chain of provider-specific `if`s in one function: each API disagrees about what a
+#: failure looks like, and the FPL check silently passed every MFL cookie.
+VERIFIERS: dict[str, Callable[[object], tuple[bool, str]]] = {
+    "fpl": _fpl_signed_in,
+    "myfantasyleague": _mfl_signed_in,
+}
+
+
 def verify(conn: Connector, cookie_header: str) -> tuple[bool, str]:
     """Prove the credential WORKS before storing it. 'Connected' should mean the
-    provider answered, not that a string was copied into a file."""
+    provider answered usefully, not that a string was copied into a file."""
     if not conn.verify_url:
         return True, "stored without verification (this provider has no generic check)"
     try:
@@ -248,15 +311,12 @@ def verify(conn: Connector, cookie_header: str) -> tuple[bool, str]:
         return False, f"could not reach {conn.label}: {type(e).__name__}"
     if r.status_code != 200:
         return False, f"{conn.label} rejected it (HTTP {r.status_code})"
-    # FPL answers 200 with {"player": null} when signed out — a status check alone
-    # would call an expired cookie "connected".
     try:
         body = r.json()
     except ValueError:
         return True, "accepted"
-    if isinstance(body, dict) and body.get("player") is None and "player" in body:
-        return False, "the cookie is present but signed out — log in again and retry"
-    return True, "verified against a live call"
+    checker = VERIFIERS.get(conn.provider)
+    return checker(body) if checker else (True, "verified against a live call")
 
 
 def config_path() -> Path:
