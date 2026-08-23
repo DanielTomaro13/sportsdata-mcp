@@ -3,6 +3,8 @@ spec_version: 1
 provider:
   id: sportsbet
   display_name: "Sportsbet (Australia)"
+  # Licensed for the Australian market and geo-blocked elsewhere.
+  region: [AU]
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Sportsbet.md"
   base_urls:
     default: https://www.sportsbet.com.au/apigw

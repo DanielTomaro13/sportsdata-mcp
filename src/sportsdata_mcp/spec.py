@@ -256,6 +256,23 @@ class Provider(BaseModel):
     # silently make "works with no setup" a lie.
     requires_user_key: bool = False
 
+    # The market(s) this provider actually serves, as ISO-3166 alpha-2 codes. None means
+    # "no particular market" — a global league feed, an aggregator, a model API.
+    #
+    # This exists to answer ONE user-facing question honestly: "why did that provider
+    # fail for me?". Bookmakers are licensed per jurisdiction and block everyone else at
+    # the edge, so an unreachable Sportsbet is usually CORRECT behaviour rather than an
+    # outage, and telling a user in Ohio that it is "down" sends them to file an issue
+    # against reality.
+    #
+    # It is deliberately a statement about the MARKET, not a claim about geo-blocking.
+    # Whether a given host blocks a given IP is not knowable from here, so `coverage`
+    # reports what the probe actually did from the user's own machine and uses this
+    # field only to explain it. Inferring the market from the domain would be close but
+    # wrong in both directions: `.com.au` league feeds serve the world, and some global
+    # domains are region-locked anyway.
+    region: list[str] | None = None
+
 
 # ─── Endpoint params ───────────────────────────────────────────────────
 

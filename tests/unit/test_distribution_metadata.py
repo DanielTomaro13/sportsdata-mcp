@@ -71,11 +71,39 @@ def test_advertised_counts_are_not_wildly_wrong():
 def test_readme_counts_are_not_wildly_wrong():
     text = (ROOT / "README.md").read_text()
     nprov, ntool, _ = _counts()
-    head = text[: text.index("\n## ")]  # the badge/summary block, not every mention
+    # The summary block only — up to the first subsection. Everything this test knows how
+    # to judge is a claim about the WHOLE catalogue, and the subsections below deliberately
+    # make SCOPED claims ("145 tools across eight Australian books") that are true and
+    # would fail a total-vs-total comparison. Those are guarded by their own test below.
+    head = text[: min(text.index("\n## "), text.index("\n### "))]
     for claimed in (int(m) for m in re.findall(r"~?(\d+) tools", head)):
         assert abs(claimed - ntool) <= ntool * 0.2, f"README says '{claimed} tools', actual {ntool}"
     for claimed in (int(m) for m in re.findall(r"~?(\d+) providers", head)):
         assert abs(claimed - nprov) <= nprov * 0.2, f"README says '{claimed} providers', actual {nprov}"
+
+
+def test_readme_australian_book_claim_is_accurate():
+    """The "Is this for you?" section scopes the product honestly, so its numbers have to
+    hold too — an overstated AU figure is worse than no figure, because it is the one
+    claim a user checks against their own experience in the first minute."""
+    import re as _re
+
+    from sportsdata_mcp.spec_loader import load_all_specs
+
+    text = (ROOT / "README.md").read_text()
+    section = text[text.index("### Is this for you?") :]
+    section = section[: section.index("\n### ", 1)]
+
+    au = [s for s in load_all_specs() if (s.provider.region or []) == ["AU"]]
+    au_tools = sum(len(s.all_tools()) for s in au)
+    rest_tools = sum(len(s.all_tools()) for s in load_all_specs()) - au_tools
+
+    claimed_au = int(_re.search(r"\*\*(\d+) tools across eight\s+Australian books\*\*", section).group(1))
+    assert claimed_au == au_tools, f"README claims {claimed_au} AU tools, actual {au_tools}"
+    assert len(au) == 8, f"README says eight Australian books, specs declare {len(au)}"
+
+    claimed_rest = int(_re.search(r"\*\*(\d+)\s*\n?tools across (\d+) providers\*\*", section).group(1))
+    assert claimed_rest == rest_tools, f"README claims {claimed_rest} non-AU tools, actual {rest_tools}"
 
 
 def test_every_manifest_key_maps_to_a_real_env_var():

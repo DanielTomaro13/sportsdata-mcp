@@ -32,6 +32,8 @@ spec_version: 1
 provider:
   id: dabble
   display_name: "Dabble (dabble.com.au)"
+  # Licensed for the Australian market and geo-blocked elsewhere.
+  region: [AU]
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Dabble.md"
   base_urls:
     default: https://api.dabble.com.au

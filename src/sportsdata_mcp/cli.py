@@ -168,6 +168,20 @@ def doctor(ctx: click.Context) -> None:
 
 
 
+@cli.command()
+@click.pass_context
+def coverage(ctx: click.Context) -> None:
+    """What works from HERE — reachable providers, and what your location blocks."""
+    import asyncio
+
+    from .coverage import render, run_coverage
+
+    cfg = load_config(explicit_path=ctx.obj.get("config_path"))
+    specs = load_all_specs()
+    report = asyncio.run(run_coverage(cfg, specs))
+    render(report, echo=click.echo)
+
+
 def format_hash_change(change) -> str:
     """One line of the refresh diff.
 

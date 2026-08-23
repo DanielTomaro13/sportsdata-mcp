@@ -17,6 +17,8 @@ spec_version: 1
 provider:
   id: tab
   display_name: "TAB (Australia)"
+  # Licensed for the Australian market and geo-blocked elsewhere.
+  region: [AU]
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/TAB.md"
   base_urls:
     default: https://api.beta.tab.com.au/v1

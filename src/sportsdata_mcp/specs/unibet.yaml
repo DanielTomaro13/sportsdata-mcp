@@ -15,6 +15,8 @@ spec_version: 1
 provider:
   id: unibet
   display_name: "Unibet (Australia)"
+  # Licensed for the Australian market and geo-blocked elsewhere.
+  region: [AU]
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Unibet.md"
   base_urls:
     racing_graphql: https://rsa.unibet.com.au

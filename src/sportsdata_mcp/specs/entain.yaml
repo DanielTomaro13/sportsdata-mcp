@@ -3,6 +3,8 @@ spec_version: 1
 provider:
   id: entain
   display_name: "Entain (Ladbrokes / Neds Australia)"
+  # Licensed for the Australian market and geo-blocked elsewhere.
+  region: [AU]
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/Entain.md"
   base_urls:
     default: https://api.ladbrokes.com.au

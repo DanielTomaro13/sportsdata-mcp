@@ -11,6 +11,8 @@ spec_version: 1
 provider:
   id: pointsbet
   display_name: "PointsBet (Australia)"
+  # Licensed for the Australian market and geo-blocked elsewhere.
+  region: [AU]
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/PointsBet.md"
   base_urls:
     default: https://api.au.pointsbet.com

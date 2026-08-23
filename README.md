@@ -39,6 +39,38 @@ harness with tote pools and exchange money — which most catalogues skip
 entirely. Capability tags make providers interchangeable, so "compare odds
 across books" is one question rather than forty-three integrations.
 
+### Is this for you?
+
+Worth being straight about, because it decides whether the first thing you ask
+works or looks broken.
+
+**Best fit — you follow or bet into Australian markets.** The cross-book edge
+above is the reason this exists, and it is built on **145 tools across eight
+Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
+Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
+and harness, with tote pools and exchange money — is covered to the same depth.
+
+**Also good — you want sport data anywhere in the world.** The other **680
+tools across 56 providers** are not region-locked: MLB, NBA, NFL, NHL, the
+Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
+plus Pinnacle and the Kalshi and Polymarket prediction markets. 484 of those
+need no key at all.
+
+**Not a fit — you want US sportsbook odds.** Those eight books are licensed for
+Australia and block traffic from outside it. From the US you get Pinnacle,
+FanDuel, Kalshi and Polymarket for prices; the stats and fantasy side works in
+full. If cross-book US pricing is what you came for, this is not the tool.
+
+Rather than take that on trust, ask it:
+
+```bash
+sportsdata-mcp coverage
+```
+
+It probes every provider from **your** machine and prints what answered, what
+your location blocks, and what needs a key — so an empty result is never
+ambiguous between "no data" and "wrong country".
+
 ### Built on this server
 
 Two live terminals, both open source, both running on nothing but these tools:
@@ -995,6 +1027,7 @@ See [`examples/comparator-prompt.md`](./examples/comparator-prompt.md) for a ful
 | `serve` | Start the MCP stdio server (default when no subcommand) |
 | `list-groups` | Print every group with tool count + description |
 | `lint` | Validate specs against the schema + capability catalogue (nonzero on failure) |
+| `coverage` | What works from **your** location: reachable providers, what your region blocks, what needs a key |
 | `doctor` | Per-provider reachability + auth + REST-contract probe (nonzero on failure) |
 | `refresh-hashes <provider>` | Refresh persisted-query hashes from the live front-end bundle (`--dry-run` to preview) |
 | `version` | Print version info |
