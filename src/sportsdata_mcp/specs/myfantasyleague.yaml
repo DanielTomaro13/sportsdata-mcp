@@ -39,7 +39,16 @@ spec_version: 1
 # ~2.5x by sending a registered User-Agent. We are conservative by default.
 #
 # Probed live 2026-08-22 against the 2026 season (players, injuries, and the error
-# shapes for export and import).
+# shapes for export and import), and 2026-08-23 against real public league 10005 for
+# every league-scoped read.
+#
+# WHY THE READ EXAMPLES NAME A REAL LEAGUE. The nightly drift check probes each group's
+# first example, and MFL answers a bad league id with HTTP 200 + an error body — so a
+# placeholder id is not "unprobeable", it is a guaranteed failure that trains everyone
+# to ignore a red drift check. League 10005 is public and answers every league-scoped
+# read without a credential, which makes the probe MEAN something: if MFL's shapes move,
+# drift says so. If that league ever disappears, drift fails loudly and this comment is
+# where to start.
 
 provider:
   id: myfantasyleague
@@ -70,10 +79,15 @@ provider:
   error_signals:
     - field: error
   defaults:
-    # Deliberately well under the throttle. The limits are per-IP, undocumented in
-    # exact numbers, and shared with anything else on this machine.
-    rate_limit_rps: 2
-    burst: 4
+    # Deliberately well under the throttle. The limits are per-IP, undocumented in exact
+    # numbers, and shared with anything else on this machine.
+    #
+    # Lowered from 2/4 after watching MFL DROP THE CONNECTION rather than return a 429:
+    # four probes in three seconds produced "Server disconnected without sending a
+    # response", which reads as drift and is really just impatience. An agent run is a
+    # dozen calls, so one per second costs nothing worth having.
+    rate_limit_rps: 1
+    burst: 2
     request_timeout_seconds: 30
     # 429 is the documented throttle response. Retried; 5xx too, but see the write
     # tools — POSTs are never retried on 5xx by the engine.
@@ -156,7 +170,7 @@ endpoints:
     response_hint: "{league:{id, name, rosterSize, injuredReserve, taxiSquad, startWeek, endWeek, franchises:{franchise:[{id:'0001', name, owner_name}]}, starters:{count, position:[{name:'QB', limit:'1'}]}, …}}\n\nTHE THING YOU NEED: `starters` defines the legal formation and `franchises[].id` is the four-digit franchise id every write uses. Roster limits differ per league — never assume a standard shape."
     examples:
       - description: "League setup"
-        params: {year: 2026, L: "12345"}
+        params: {year: 2026, L: "10005"}
 
   - name: mfl_rosters
     group: myfantasyleague.league
@@ -176,7 +190,7 @@ endpoints:
     response_hint: "{rosters:{franchise:[{id:'0001', player:[{id, status:'ROSTER'|'INJURED_RESERVE'|'TAXI_SQUAD', salary, contractYear}]}]}}  — `status` is what an IR or taxi move changes. Join `id` to mfl_players for names."
     examples:
       - description: "One franchise's roster"
-        params: {year: 2026, L: "12345", FRANCHISE: "0001"}
+        params: {year: 2026, L: "10005", FRANCHISE: "0001"}
 
   - name: mfl_free_agents
     group: myfantasyleague.league
@@ -195,7 +209,7 @@ endpoints:
     response_hint: "{freeAgents:{leagueUnit:{unit, player:[{id, contractYear, salary}]}}}  — ids only; join to mfl_players for names and to mfl_player_scores for form."
     examples:
       - description: "Free-agent running backs"
-        params: {year: 2026, L: "12345", POSITION: "RB"}
+        params: {year: 2026, L: "10005", POSITION: "RB"}
 
   - name: mfl_league_standings
     group: myfantasyleague.league
@@ -214,7 +228,7 @@ endpoints:
     response_hint: "{leagueStandings:{franchise:[{id, h2hw, h2hl, h2ht, pf, pa, vp, …}]}}  — the columns vary by league configuration; COLUMN_NAMES=1 tells you what each key means."
     examples:
       - description: "Standings with column names"
-        params: {year: 2026, L: "12345", COLUMN_NAMES: 1}
+        params: {year: 2026, L: "10005", COLUMN_NAMES: 1}
 
   - name: mfl_schedule
     group: myfantasyleague.league
@@ -234,7 +248,7 @@ endpoints:
     response_hint: "{schedule:{weeklySchedule:[{week, matchup:[{franchise:[{id, score, result, isHome}]}]}]}}"
     examples:
       - description: "This week's matchups"
-        params: {year: 2026, L: "12345", W: 1}
+        params: {year: 2026, L: "10005", W: 1}
 
   # ─── scoring and projections ─────────────────────────────────────────
 
@@ -259,7 +273,7 @@ endpoints:
     response_hint: "{playerScores:{playerScore:[{id, score, isAvailable}]}}  — `score` is in THIS league's scoring, so it is comparable across your own players and the free-agent pool, and not comparable to any other league."
     examples:
       - description: "Season-to-date scores for a shortlist"
-        params: {year: 2026, L: "12345", W: "YTD", PLAYERS: "13593,14208"}
+        params: {year: 2026, L: "10005", W: "YTD", PLAYERS: "13593,14208"}
 
   - name: mfl_projected_scores
     group: myfantasyleague.scoring
@@ -280,11 +294,11 @@ endpoints:
     response_hint: "{projectedScores:{playerScore:[{id, score}]}}  — projections come from a third party (fantasysharks) run through the league's scoring. They are an input, not a forecast to quote as fact."
     examples:
       - description: "Project two players for the upcoming week"
-        params: {year: 2026, L: "12345", PLAYERS: "13593,14208"}
+        params: {year: 2026, L: "10005", PLAYERS: "13593,14208"}
 
   - name: mfl_live_scoring
     group: myfantasyleague.scoring
-    capabilities: [sport.live_scores]
+    capabilities: [sport.match_score, sport.in_play]
     summary: "Live matchup state — each franchise's score, game seconds remaining, and who has yet to play."
     base: default
     path: /{year}/export
@@ -300,7 +314,7 @@ endpoints:
     response_hint: "{liveScoring:{franchise:[{id, score, gameSecondsRemaining, playersYetToPlay, playersCurrentlyPlaying}]}}  — `playersYetToPlay` is the honest read on whether a matchup is still live."
     examples:
       - description: "Live scores this week"
-        params: {year: 2026, L: "12345"}
+        params: {year: 2026, L: "10005"}
 
   # ─── your own franchise ──────────────────────────────────────────────
 
@@ -338,7 +352,7 @@ endpoints:
     response_hint: "{pendingTrades:{pendingTrade:[{trade_id, offeringteam, willGiveUp, willReceive, expires}]}}  — `trade_id` is what a response quotes. Draft picks appear as DP_/FP_ tokens and blind-bid dollars as BB_."
     examples:
       - description: "What is on the table"
-        params: {year: 2026, L: "12345"}
+        params: {year: 2026, L: "10005"}
 
   - name: mfl_transactions
     group: myfantasyleague.league
@@ -361,7 +375,7 @@ endpoints:
     response_hint: "{transactions:{transaction:[{type, timestamp, franchise, transaction}]}}  — the `transaction` field is a packed, comma/pipe-delimited string whose meaning depends on `type`."
     examples:
       - description: "This franchise's last week of moves"
-        params: {year: 2026, L: "12345", FRANCHISE: "0001", DAYS: 7}
+        params: {year: 2026, L: "10005", FRANCHISE: "0001", DAYS: 7}
 
   # ─── WRITES — opt-in by exact group name, never by a wildcard ─────────
   #

@@ -6,6 +6,25 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.28.1 — 2026-08-24
+
+### Fixed
+- **CI: an invented capability slug.** `mfl_live_scoring` declared `sport.live_scores`,
+  which is not in `_capabilities.yaml`. Caught by the spec-lint step — a *separate* CI
+  step from pytest, so a green local suite said nothing about it. A test now lints the
+  specs that actually ship, so this class of mistake fails on the machine that made it
+  rather than eight minutes into CI.
+- **Nightly drift: MFL read examples named a league that does not exist.** The drift
+  check probes each group's first example, and MFL answers a bad league id with HTTP 200
+  and an error body — so a placeholder was not "unprobeable", it was a guaranteed red
+  that trains everyone to ignore the check. The read examples now name a real public
+  league, which makes the probe mean something: if MFL's shapes move, drift says so.
+  Write examples keep a placeholder deliberately — a documented write example should not
+  point at a live team.
+- **MFL rate limit lowered to 1 rps / burst 2.** It drops the connection rather than
+  returning 429: four probes in three seconds produced "Server disconnected without
+  sending a response", which reads as drift and is really just impatience.
+
 ## 0.28.0 — 2026-08-22
 
 ### Added

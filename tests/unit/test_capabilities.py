@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
-from sportsdata_mcp.spec_loader import build_provider_index, lint, load_all_specs
+from sportsdata_mcp.spec_loader import (
+    build_provider_index,
+    lint,
+    load_all_specs,
+    packaged_specs_dir,
+)
 
 
 def test_lint_passes_on_valid_specs(specs_dir):
     errors, _warnings = lint(specs_dir)
     assert errors == []
+
+
+def test_lint_passes_on_THE_SPECS_THAT_SHIP():
+    """The gate above lints a temp dir holding one fake provider, so it proves the linter
+    works and nothing about the catalogue. `sportsdata-mcp lint` over the real specs ran
+    only in CI — which is where a bogus capability slug was caught, eight minutes after a
+    push and long after the test suite had gone green locally.
+
+    This lints what actually ships, in the ordinary suite, so a spec mistake fails on the
+    machine that made it.
+    """
+    errors, _warnings = lint(packaged_specs_dir())
+    assert errors == [], "the shipped specs do not lint — run `sportsdata-mcp lint`"
 
 
 def test_lint_flags_undefined_capability(write_spec):
