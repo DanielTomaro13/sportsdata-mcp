@@ -95,6 +95,25 @@ endpoints:
       - description: "Most-added players in the last 24h"
         params: {sport: nfl, add_or_drop: add, limit: 25}
 
+  - name: sleeper_players
+    group: sleeper.reference
+    capabilities: [ref.players]
+    summary: "THE player id → name table. Every other Sleeper tool speaks in player ids and nothing else; this is the only thing that resolves them. HUGE — read the caching note before calling it."
+    base: default
+    path: /players/{sport}
+    auth: default
+    params:
+      - { name: sport, in: path, type: string, default: nfl, enum: [nfl, nba, lfl], description: "Sport." }
+    # 53 fields x 12,221 players is 14.6 MB raw. Projected to the four that answer
+    # "who is this?", it is ~745 KB — still large, which is why the caching note below
+    # is not a nicety. Nested picking is not needed here: every field wanted is top-level.
+    response_fields: [full_name, team, position, status]
+    response_map: true
+    response_hint: "{player_id: {full_name, team, position, status}}  — an OBJECT keyed by player id, not an array. `team` is null for a free agent, which is how you tell one.\n\nCALL THIS AT MOST ONCE A DAY AND CACHE IT. Sleeper says so explicitly, and it is 14.6 MB before projection — 12,221 players including every retired and practice-squad name they have ever held. Projected here to four fields, it is still far too large to put in a model's context: resolve the handful of ids you actually care about and discard the rest.\n\nVERIFIED live 2026-08-24: 12,221 players, 3,250 of them on an NFL team."
+    examples:
+      - description: "The id → name table (large; cache it)"
+        params: {sport: nfl}
+
   # ─── sleeper.league ───────────────────────────────────────────────────
   - name: sleeper_user_leagues
     group: sleeper.league

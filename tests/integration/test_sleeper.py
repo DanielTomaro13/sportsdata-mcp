@@ -66,13 +66,46 @@ async def test_tools_registered(sleeper_server):
     } <= names
 
 
-def test_the_15mb_player_catalogue_is_not_exposed():
-    """/players/nfl is ~15 MB — Sleeper asks callers to fetch it at most daily. As a
-    tool it would blow the model's context and abuse a free API, so it must stay out;
-    draft picks and trending players cover player identity instead."""
-    paths = [ep["path"] for ep in _spec()["endpoints"]]
-    assert not any(p.rstrip("/").endswith("/players/{sport}") for p in paths)
+def test_the_15mb_player_catalogue_is_exposed_but_fenced():
+    """This reverses an earlier decision, and the reason is worth recording.
+
+    The catalogue was kept out because it is ~15 MB, because Sleeper asks callers to
+    fetch it at most daily, and because "draft picks and trending players cover player
+    identity instead". The first two are true. The third does not hold up, and it was the
+    load-bearing one.
+
+    Draft picks DO carry names in their metadata — but only for players drafted, in a
+    draft you can see. The two things an agent reads constantly, a ROSTER and the
+    TRENDING list, are bare ids: verified live, `sleeper_trending_players` returns
+    `[{player_id, count}]`. An agent could see that 148,925 leagues added player 13602
+    and had no way to say who that was, and could read a roster of twelve ids without
+    naming one of them.
+
+    So it is exposed, behind three fences that answer the original objections:
+      * `response_fields` + `response_map` cut 53 fields to 4 (14.6 MB -> 1.1 MB);
+      * the agent-side tool caches it for 24h, which is exactly what Sleeper asks;
+      * the bulk NEVER reaches a model — `sleeper_resolve_players` returns only the
+        handful of ids asked about.
+    """
+    spec = _spec()
+    paths = [ep["path"] for ep in spec["endpoints"]]
     assert "/players/{sport}/trending/{add_or_drop}" in paths
+
+    players = next(
+        (ep for ep in spec["endpoints"]
+         if ep["path"].rstrip("/").endswith("/players/{sport}")), None
+    )
+    assert players is not None, "the id -> name table is the only way to name a player"
+    # The fences, asserted rather than trusted: without BOTH of these the projection is
+    # a no-op on a body keyed by player id, and the tool ships 14.6 MB.
+    assert players.get("response_fields"), "must project — 53 fields x 12,221 players"
+    assert players.get("response_map") is True, (
+        "the body is keyed by player id, so response_map must be set or response_fields "
+        "does nothing"
+    )
+    assert "cache" in (players.get("response_hint") or "").lower(), (
+        "the hint must tell a caller to cache it — Sleeper asks for one fetch a day"
+    )
 
 
 def test_needs_no_credentials():

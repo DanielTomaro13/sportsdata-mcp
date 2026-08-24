@@ -361,7 +361,8 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
         # ship a slim payload.
         if ep.classify:
             result = apply_classify(result, ep.classify)
-        result = apply_projection(result, pick=ep.response_pick, fields=ep.response_fields)
+        result = apply_projection(result, pick=ep.response_pick, fields=ep.response_fields,
+                                  is_map=ep.response_map)
         if projects:
             # The raw-body cap was skipped upstream for this endpoint, so the size limit
             # is enforced here instead — on the payload the model will actually receive.

@@ -50,7 +50,7 @@ Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.
 
-**Also good — you want sport data anywhere in the world.** The other **680
+**Also good — you want sport data anywhere in the world.** The other **681
 tools across 56 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
 plus Pinnacle and the Kalshi and Polymarket prediction markets. 484 of those

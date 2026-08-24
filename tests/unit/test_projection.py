@@ -103,16 +103,26 @@ def test_projection_actually_solves_the_problem_it_was_built_for():
 # ─── against the real specs ─────────────────────────────────────────────
 
 
-def test_only_fpl_declares_projection_so_far():
-    """Not a rule of the engine, but of this catalogue: passthrough is the default and a
-    deviation should be a deliberate, noticed decision rather than a habit."""
+#: Providers allowed to project, and why. Passthrough is the default and a deviation
+#: should be a deliberate, noticed decision rather than a habit — so adding a provider
+#: here is the decision, and this comment is where it gets justified.
+PROJECTING = {
+    "fpl": "bootstrap-static is 1.4MB; fpl_players is ~58k tokens even projected",
+    "sleeper": "the player id -> name table is 14.6MB across 12,221 players",
+}
+
+
+def test_projection_is_declared_only_where_it_was_argued_for():
     declaring = {
         s.provider.id
         for s in load_all_specs()
         for ep in s.endpoints
         if ep.response_pick or ep.response_fields
     }
-    assert declaring <= {"fpl"}, f"unexpected providers projecting: {declaring}"
+    assert declaring <= set(PROJECTING), (
+        f"unexpected providers projecting: {declaring - set(PROJECTING)} — if that is "
+        "right, add it to PROJECTING with the reason"
+    )
 
 
 def test_fpl_player_tool_stays_within_a_usable_size():
@@ -122,3 +132,75 @@ def test_fpl_player_tool_stays_within_a_usable_size():
     players = next(e for e in spec.endpoints if e.name == "fpl_players")
     assert players.response_pick == ["elements"]
     assert 15 <= len(players.response_fields) <= 30, len(players.response_fields)
+
+
+# ─── nested paths, and maps of rows ─────────────────────────────────────
+
+
+def test_a_dotted_path_keeps_the_structure_and_picks_the_leaf():
+    """Flat-only picking could not reach the fields that matter on the fattest feeds.
+    SuperCoach ships 812 players with 124 stat fields each — 2.7MB — and the useful part
+    is four of them, nested one level down."""
+    item = {"id": 1, "team": {"abbrev": "ADE", "name": "Adelaide"}, "junk": "x"}
+    assert apply_projection([item], fields=["id", "team.abbrev"]) == [
+        {"id": 1, "team": {"abbrev": "ADE"}}
+    ]
+
+
+def test_a_dotted_path_maps_over_a_list_value():
+    """`positions.position` must work whether a player has one position or three."""
+    one = {"positions": [{"position": "FWD", "long": "Forward"}]}
+    three = {"positions": [{"position": "FWD", "long": "F"}, {"position": "MID", "long": "M"}]}
+    assert apply_projection([one], fields=["positions.position"]) == [
+        {"positions": [{"position": "FWD"}]}
+    ]
+    assert apply_projection([three], fields=["positions.position"]) == [
+        {"positions": [{"position": "FWD"}, {"position": "MID"}]}
+    ]
+
+
+def test_asking_for_the_whole_key_and_a_leaf_keeps_the_whole_key():
+    """The broader request wins. Narrowing it would quietly discard data the spec asked
+    for by name."""
+    item = {"team": {"abbrev": "ADE", "name": "Adelaide"}}
+    assert apply_projection([item], fields=["team", "team.abbrev"]) == [item]
+
+
+def test_a_scalar_where_a_path_was_expected_is_kept_not_dropped():
+    """The spec is then visibly wrong rather than invisibly lossy."""
+    assert apply_projection([{"a": 5}], fields=["a.b"]) == [{"a": 5}]
+
+
+def test_a_dotted_path_for_a_missing_key_is_simply_absent():
+    assert apply_projection([{"id": 1}], fields=["id", "team.abbrev"]) == [{"id": 1}]
+
+
+def test_a_map_of_rows_projects_every_value_but_only_when_declared():
+    """Sleeper's player table is keyed by player id, so every VALUE is a row. Without the
+    opt-in the projection was a no-op and the tool returned 14.6MB.
+
+    It has to be declared rather than inferred: `{"13602": {...}}` (rows) and
+    `{"league": {...}, "settings": {...}}` (sections) are indistinguishable from outside,
+    and gutting the second would be silent data loss."""
+    body = {
+        "13602": {"full_name": "A B", "team": "KC", "college": "X"},
+        "8800": {"full_name": "C D", "team": None, "college": "Y"},
+    }
+    assert apply_projection(body, fields=["full_name", "team"], is_map=True) == {
+        "13602": {"full_name": "A B", "team": "KC"},
+        "8800": {"full_name": "C D", "team": None},
+    }
+    # …and without the flag it is left exactly alone.
+    assert apply_projection(body, fields=["full_name", "team"]) == body
+
+
+def test_the_sleeper_player_table_declares_the_map_shape():
+    """The bug this pairing exists to prevent: response_fields set, response_map not, and
+    a 14.6MB tool that silently ignores its own projection."""
+    spec = next(s for s in load_all_specs() if s.provider.id == "sleeper")
+    players = next(e for e in spec.endpoints if e.name == "sleeper_players")
+    assert players.response_fields, "sleeper_players must project — it is 14.6MB raw"
+    assert players.response_map is True, (
+        "sleeper_players returns an object keyed by player id, so response_map must be "
+        "true or response_fields does nothing at all"
+    )

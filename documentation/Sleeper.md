@@ -72,7 +72,8 @@ Skipping the middle step is the single most common mistake against this API.
 |---|---|---|
 | `sleeper_state` | Current season, week, and whether scoring has started | `ref.seasons` |
 | `sleeper_user` | Resolve a username → `user_id` | — |
-| `sleeper_trending_players` | Most-added / most-dropped players platform-wide | `fantasy.free_agents` |
+| `sleeper_trending_players` | Most-added / most-dropped players platform-wide (ids only) | `fantasy.free_agents` |
+| `sleeper_players` | **The id → name table.** 14.6 MB raw; projected + cached — see below | `ref.players` |
 
 ### `sleeper.league`
 
@@ -95,20 +96,41 @@ Skipping the middle step is the single most common mistake against this API.
 | `sleeper_draft` | One draft's type, rounds and slot order | `sport.draft` |
 | `sleeper_draft_picks` | Every pick in order, **with player names** | `sport.draft` |
 
-## Why there's no player-catalogue tool
+## The player catalogue, and how to use it without regret
 
 Sleeper's `/players/nfl` returns the entire NFL player universe in one document:
-**~15 MB**. Sleeper's own documentation asks callers to fetch it at most once a day
-and cache it.
+**14.6 MB, 12,221 players, 53 fields each** (verified 2026-08-24). Sleeper's own
+documentation asks callers to fetch it at most once a day and cache it.
 
-It is deliberately **not** exposed as a tool. Handing a 15 MB blob to a model would
-blow its context window for no benefit, and calling it repeatedly abuses a free API.
-Get player identity instead from:
+It **is** exposed, as `sleeper_players`, because nothing else can name a player. That
+reverses an earlier decision which held that draft picks and trending players covered
+player identity. They do not, and the gap was the load-bearing part:
 
-- **`sleeper_draft_picks`** — each pick's `metadata` carries `first_name`,
-  `last_name`, `position` and `team`.
-- **`sleeper_trending_players`** — the waiver signal, without the catalogue.
-- **A roster** — `players[]` gives ids you can resolve against another provider.
+| source | carries names? |
+|---|---|
+| `sleeper_draft_picks` | **yes** — `metadata` has first/last name, position, team |
+| `sleeper_league_rosters` | no — bare ids |
+| `sleeper_trending_players` | no — `[{player_id, count}]` |
+| `sleeper_matchups` | no — bare ids in `starters` / `players` |
+
+So a draft is readable, and everything an agent looks at week to week is not.
+
+### The three fences
+
+`sleeper_players` is safe to ship only because of these, and the tests assert all three:
+
+1. **Projection.** `response_fields: [full_name, team, position, status]` with
+   `response_map: true` — the body is keyed by player id, so every *value* is a row.
+   Without `response_map` the projection is a silent no-op and the tool ships 14.6 MB.
+   With it: **1.1 MB, a 93% cut.**
+2. **A daily cache.** The agent-side tool writes the table to disk and refreshes it at
+   most every 24 hours — exactly what Sleeper asks for.
+3. **The bulk never reaches a model.** `sleeper_resolve_players` returns only the ids
+   asked about; `sleeper_find_players` searches the cache by name and returns matches.
+
+If you are calling the MCP tool directly rather than through an agent, do the same:
+fetch once, cache, resolve locally. A 1.1 MB payload is still far past a sane context
+budget, and the tool's description says so.
 
 ## Reading a matchup
 

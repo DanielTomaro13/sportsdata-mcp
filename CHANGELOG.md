@@ -6,6 +6,27 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## 0.29.0 — 2026-08-24
+
+### Added
+- **`sleeper_players`** — the player id → name table, which nothing else in Sleeper's
+  surface provides. This reverses an earlier decision to keep it out; that decision held
+  that "draft picks and trending players cover player identity instead", and they do not.
+  Draft picks carry names, but a ROSTER and the TRENDING list — the two things read every
+  week — are bare ids. An agent could see 148,925 leagues add player 13602 and have no
+  way to say who that was.
+- **Nested field projection.** `response_fields` now accepts dotted paths
+  (`team.abbrev`, `player_stats.price`), applied per item when the value is a list.
+  Flat-only picking could not reach the fields that matter on the fattest feeds:
+  SuperCoach ships 812 players with 124 stat fields each — 2.7 MB, of which four fields
+  are useful. Asking for both a key and a leaf beneath it keeps the whole key, because
+  narrowing it would discard data the spec asked for by name.
+- **`response_map`** — declares that a body is a map of ROWS keyed by id, so
+  `response_fields` applies to every value. Explicit rather than inferred: a table keyed
+  by player id and an object with named sections are indistinguishable from outside, and
+  projecting the second would be silent data loss. Sleeper's table needs it — without it
+  the projection is a no-op and the tool ships 14.6 MB instead of 1.1 MB.
+
 ## 0.28.1 — 2026-08-24
 
 ### Fixed

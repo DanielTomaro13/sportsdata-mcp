@@ -396,6 +396,17 @@ class Endpoint(BaseModel):
 
     name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     group: str
+    #: True when the body is a MAP OF ROWS — keyed by id, every value a record —
+    #: rather than an object with named sections. `response_fields` then applies to every
+    #: value.
+    #:
+    #: Explicit rather than inferred, because the two shapes are indistinguishable from
+    #: the outside: `{"13602": {...}, "8800": {...}}` is Sleeper's whole player table,
+    #: and `{"league": {...}, "settings": {...}}` is an object with metadata. Projecting
+    #: the second would silently gut it. Sleeper's player file is 14.6 MB, so without
+    #: this the projection was a no-op and the tool was uncallable.
+    response_map: bool = False
+
     #: Per-endpoint override of the provider's `shapes_verified`. None = inherit.
     #:
     #: Needed because verification is not uniform across a provider. ESPN Fantasy's 27
