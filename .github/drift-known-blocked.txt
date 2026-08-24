@@ -18,8 +18,15 @@ betfair
 betr
 entain
 sportsbet
+supercoach
 tab
 unibet
+#
+# ADDED 2026-08-25 (run 32762990762): supercoach. It is a News Corp property behind the
+# same Australian edge as the bookmakers above, and it FAILED THE RE-PROBE — 403 with a
+# 1,302-byte body, twice, twenty seconds apart, which is the drift job's own test for
+# "blocked rather than blipping". Verified healthy from the operator machine the same
+# morning: `doctor` returned 200 OK, 15 KB. So this is an IP block, not drift.
 #
 # NOT listed, on purpose: pinnacle. It 403'd run 30943130613 (2026-08-04) and was
 # green again from CI the next run, so it is INTERMITTENT, not blocked. Listing it
