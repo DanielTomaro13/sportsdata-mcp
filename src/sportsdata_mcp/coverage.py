@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .config import Config
+from .doctor import _pick_endpoint_probe
 from .http_client import HTTPClient
 from .registry import _build_headers, _build_query, _interpolate_path
 from .spec import Endpoint, Spec
@@ -87,22 +88,26 @@ def _name(display_name: str) -> str:
     return display_name if len(display_name) <= _NAME_W else display_name[: _NAME_W - 1] + "…"
 
 
-def _probe_endpoint(spec: Spec) -> Endpoint | None:
-    """Pick the least demanding GET to knock on the door with.
+def _pick_probe(spec: Spec) -> tuple[Endpoint | None, dict | None]:
+    """Choose an endpoint to knock on, and the args to call it with.
 
-    Endpoints with a required, undefaulted param are skipped: satisfying one means
-    inventing a race id or a fixture id, and a 404 from a made-up id says nothing about
-    whether the provider is reachable — which is the only question being asked.
+    Delegates to doctor's chooser, which prefers an endpoint's own EXAMPLE over a
+    bare call. That ordering matters more than it looks, and the first version of this
+    module got it wrong in both directions:
+
+    * "fewest params" sounds like the cheapest probe and is the exact opposite. Fewest
+      params means least FILTERED — it picked OpenF1's `/weather` with no arguments,
+      which is a 10 MB dump of every reading ever recorded and blew the timeout, while
+      the example-shaped `/meetings` answers in 2s with 77 KB.
+    * examples also unlock the providers that need an id. Six providers looked
+      unprobeable because every endpoint wanted a race or fixture key; each one ships
+      an example carrying exactly that.
+
+    Examples are rendered through `dates`, so `{{today}}` becomes a window the provider
+    still serves — a hard-coded date is how a healthy provider gets reported as broken.
     """
-    candidates = [
-        e for e in spec.endpoints
-        if e.method == "GET" and not any(p.required and p.default is None for p in e.params)
-    ]
-    if not candidates:
-        return None
-    # Fewest params wins: the smallest surface is least likely to fail for a reason that
-    # has nothing to do with reachability.
-    return min(candidates, key=lambda e: len(e.params))
+    gettable = [e for e in spec.endpoints if e.method == "GET"]
+    return _pick_endpoint_probe(gettable)
 
 
 async def _probe(spec: Spec, cfg: Config, sem: asyncio.Semaphore) -> ProviderStatus:
@@ -122,8 +127,8 @@ async def _probe(spec: Spec, cfg: Config, sem: asyncio.Semaphore) -> ProviderSta
         result.detail = "bring your own key"
         return result
 
-    ep = _probe_endpoint(spec)
-    if ep is None:
+    ep, probe_args = _pick_probe(spec)
+    if ep is None or probe_args is None:
         # Every tool here is a dispatcher, or every endpoint needs an id we would have to
         # invent. Reporting that as "down" would be a confident wrong answer of exactly
         # the kind this command exists to prevent — Betfair and ESPN are fine, they just
@@ -135,14 +140,13 @@ async def _probe(spec: Spec, cfg: Config, sem: asyncio.Semaphore) -> ProviderSta
     async with sem:
         http = HTTPClient(provider, cfg)
         try:
-            args = {p.name: p.default for p in ep.params if p.default is not None}
             r = await asyncio.wait_for(
                 http.request(
                     method=ep.method,
                     base=ep.base,
-                    url=_interpolate_path(ep, args),
-                    params=_build_query(ep, args),
-                    headers=_build_headers(ep, args),
+                    url=_interpolate_path(ep, probe_args),
+                    params=_build_query(ep, probe_args),
+                    headers=_build_headers(ep, probe_args),
                     json_body=None,
                     auth_key=ep.auth,
                 ),

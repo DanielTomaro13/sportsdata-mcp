@@ -16,13 +16,13 @@ from sportsdata_mcp.coverage import (
     CoverageReport,
     ProviderStatus,
     _name,
+    _pick_probe,
     _probe,
-    _probe_endpoint,
 )
-from sportsdata_mcp.spec import Endpoint, Param, Provider, Spec
+from sportsdata_mcp.spec import Endpoint, Example, Param, Provider, Spec
 
 
-def _ep(name: str, *, params=None, method: str = "GET") -> Endpoint:
+def _ep(name: str, *, params=None, method: str = "GET", examples=None) -> Endpoint:
     return Endpoint(
         name=name,
         group="demo.public.core",
@@ -30,6 +30,7 @@ def _ep(name: str, *, params=None, method: str = "GET") -> Endpoint:
         method=method,
         path="/thing",
         params=params or [],
+        examples=examples or [],
     )
 
 
@@ -48,28 +49,72 @@ def _spec(*endpoints: Endpoint, region=None, requires_user_key: bool = False) ->
 
 # ── probe selection ────────────────────────────────────────────────────────────
 
-def test_prefers_the_endpoint_with_fewest_params():
-    few = _ep("few")
-    many = _ep("many", params=[Param(name="a", **{"in": "query"}, type="string")])
-    assert _probe_endpoint(_spec(many, few)) is few
+def test_an_example_is_preferred_over_a_bare_call():
+    """The OpenF1 regression, in miniature.
+
+    "Fewest params" reads as the cheapest probe and is the exact opposite: fewest params
+    means least filtered. It chose OpenF1's unfiltered `/weather` — 10 MB, 7.3s, over the
+    timeout — where the example-shaped call answers in 2s. Examples win.
+    """
+    bare = _ep("bare")
+    with_example = _ep("filtered", examples=[Example(description="d", params={"year": 2024})])
+    ep, args = _pick_probe(_spec(bare, with_example))
+    assert ep is with_example
+    assert args == {"year": 2024}
 
 
-def test_skips_endpoints_needing_an_invented_id():
-    """A 404 from a made-up race id says nothing about reachability."""
+def test_an_example_unlocks_an_endpoint_that_needs_an_id():
+    """Six providers looked unprobeable for want of a race or fixture key. Each ships an
+    example carrying exactly that, so none of them was ever really unprobeable."""
+    needs_id = _ep(
+        "needs_id",
+        params=[Param(name="race_id", **{"in": "path"}, type="string", required=True)],
+        examples=[Example(description="d", params={"race_id": "abc"})],
+    )
+    ep, args = _pick_probe(_spec(needs_id))
+    assert ep is needs_id
+    assert args == {"race_id": "abc"}
+
+
+def test_no_example_and_a_required_param_stays_unprobeable():
     needs_id = _ep("needs_id", params=[Param(name="race_id", **{"in": "path"}, type="string", required=True)])
-    assert _probe_endpoint(_spec(needs_id)) is None
+    _ep_chosen, args = _pick_probe(_spec(needs_id))
+    assert args is None
 
 
-def test_a_defaulted_required_param_is_still_probeable():
+def test_optional_param_defaults_are_seeded():
+    """A probe must send the defaults the engine would send, or it tests a call nobody
+    makes — TAB 400s without its `jurisdiction`."""
     defaulted = _ep(
         "defaulted",
+        params=[Param(name="jurisdiction", **{"in": "query"}, type="string", default="NSW")],
+    )
+    ep, args = _pick_probe(_spec(defaulted))
+    assert ep is defaulted
+    assert args == {"jurisdiction": "NSW"}
+
+
+def test_required_with_a_default_and_no_example_is_left_unprobed():
+    """Conservative, and deliberately left alone.
+
+    The shared chooser rejects any endpoint carrying `required=True`, even when the param
+    has a default that would satisfy it. Arguably inconsistent — `_default_args` exists
+    precisely to fill those — but NO spec currently has a required-with-default param and
+    no example, so "fixing" it would change doctor's CI behaviour to buy nothing. Pinned
+    here so the next person meets the decision rather than the surprise.
+    """
+    defaulted_required = _ep(
+        "defaulted_required",
         params=[Param(name="jurisdiction", **{"in": "query"}, type="string", required=True, default="NSW")],
     )
-    assert _probe_endpoint(_spec(defaulted)) is defaulted
+    _ep_chosen, args = _pick_probe(_spec(defaulted_required))
+    assert args is None
 
 
 def test_non_get_endpoints_are_never_probed():
-    assert _probe_endpoint(_spec(_ep("post", method="POST"))) is None
+    """A probe must never be able to mutate anything."""
+    ep, args = _pick_probe(_spec(_ep("post", method="POST")))
+    assert ep is None and args is None
 
 
 # ── classification ─────────────────────────────────────────────────────────────
@@ -131,7 +176,8 @@ def test_byo_key_provider_is_never_probed(monkeypatch):
 
 
 def test_unprobeable_provider_is_not_reported_as_down(monkeypatch):
-    """Betfair and ESPN are dispatcher-based. Calling them broken would be a lie."""
+    """With no example and a required id there is nothing to knock on — but that is not
+    the same as broken, and saying "down" would be a confident wrong answer."""
     needs_id = _ep("needs_id", params=[Param(name="id", **{"in": "path"}, type="string", required=True)])
     r = _run(_spec(needs_id), monkeypatch, status_code=200)
     assert r.status == "unprobed"
