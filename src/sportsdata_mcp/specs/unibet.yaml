@@ -69,6 +69,28 @@ endpoints:
     auth: default
     response_hint: "[{name, steps:[{odds, converted}]}]  (top-level array — fractional + decimal ladders)"
 
+  - name: unibet_sgm_price
+    group: unibet.sport
+    capabilities: [sport.same_game_multi, sport.prices]
+    summary: "PRICE A SAME GAME MULTI you choose — give it two or more outcome ids from one Unibet/Kambi event and get the correlation-adjusted Bet Builder price, plus the list of outcomes eligible to join it. Prices combinations Unibet has not pre-built (for those, see unibet_kambi_call operation='event_prepack')."
+    base: kambi_offering
+    path: /onDemandPricing/event/{eventId}/outcome/{outcomeIds}.json
+    auth: default
+    params:
+      - { name: eventId, in: path, type: integer, required: true, description: "Kambi event id, e.g. 1028856020 — from unibet_kambi_call(operation=\"sport_matches\") or any Kambi event feed." }
+      - { name: outcomeIds, in: path, type: string, required: true, description: 'The legs, as outcome ids joined by COMMAS in one string: "4306981996,4309057043". Ids come from unibet_kambi_call(operation="event_betoffer") — `betOffers[].outcomes[].id` — and all must belong to THIS event. Give two or more: a single id returns the combinable list with NO price. Order does not matter and is not preserved in the echo.' }
+      - { name: lang, in: query, type: string, default: en_AU, description: "Locale. Leave as the default." }
+      - { name: market, in: query, type: string, default: AU, description: "Market. Leave as AU — Bet Builder availability and pricing are per market." }
+      - { name: channel_id, in: query, type: string, default: "1", description: "Kambi channel. Leave as 1 (web)." }
+    # The upstream repeats the event's whole bet-offer book (626 offers, 647 KB of a
+    # 610 KB response) which event_betoffer already serves. Keeping it would make the
+    # tool unusable under any response cap in order to return data already available.
+    response_pick: [eventId, selectedOutcomeIds, selectedOdds, combinableOutcomeIds]
+    response_hint: "{eventId, selectedOutcomeIds:[…], selectedOdds:{decimal: 3400, american, fractional}, combinableOutcomeIds:[…]}  — VERIFIED live 2026-08-27 against AFL Western Bulldogs v Collingwood (event 1028856020), unauthenticated.\n\nODDS ARE IN THOUSANDTHS. `decimal: 3400` MEANS 3.40, not 3400. Kambi does this everywhere — the `odds` and `line` on every outcome in the betoffer feed are scaled the same way (1920 = 1.92, line 1500 = +1.5) — and a price reported 1000x too large is the loudest wrong answer available. Divide by 1000.\n\nTHE PRICE IS NOT THE PRODUCT OF THE LEGS. Bulldogs head-to-head (1.92) with Over 170.5 (1.88) prices 3.40, against a naive 3.6096.\n\n1001.0 IS A CEILING, NOT A PRICE. Long multis stop moving at `decimal: 1001000` — six, eight, ten, twelve and fourteen legs all returned exactly that on the verified event while the naive product kept climbing. Treat 1001.0 as capped, never as a quote and never as an edge.\n\n`selectedOutcomeIds` IS THE ECHO, AND IT IS WHY THIS IS THE SAFE ONE. Unibet is the only book of the five that says exactly what it priced. Duplicate ids are deduplicated SILENTLY, so compare this list against what you sent before reporting anything.\n\nA SINGLE LEG RETURNS NO PRICE AT ALL — `selectedOdds` is simply ABSENT rather than an error, and the same happens when duplicates collapse to one leg. A missing key here means not priced, not zero.\n\n`combinableOutcomeIds` IS ELIGIBILITY, NOT COMPATIBILITY. It lists what can EVER appear in a bet builder on this event — 940 of the event's 1137 outcomes on the verified fixture — and does NOT drop what clashes with your current picks: both the opposite head-to-head side and the line the head-to-head already implies stayed listed, and both then failed with a 400. Its real use is separating a leg that is INELIGIBLE from one that merely CONFLICTS, which the error message does not do.\n\nREFUSALS ARE REAL HTTP 400s WITH A TYPED BODY — the only book of the five that uses status codes properly, so no error signal is needed here. Seen live: 'Combination is not supported by the selected strategy' for conflicting or mutually implied legs, 'Invalid outcomes' with an `invalidOutcomes` list naming the offending ids, and 'Unknown event'.\n\nThe upstream body also repeats the event's ENTIRE bet-offer book — 626 offers, 647 KB of a 610 KB response — which unibet_kambi_call(operation='event_betoffer') already returns. It is projected away here."
+    examples:
+      - description: "Price Bulldogs to win with over 170.5 points"
+        params: {eventId: 1028856020, outcomeIds: "4306981996,4309057043"}
+
 dispatchers:
   # ─── unibet.racing — persisted GraphQL (rsa.unibet.com.au) ─────────────
   - name: unibet_racing_call

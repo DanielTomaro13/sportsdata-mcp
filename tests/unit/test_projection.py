@@ -109,6 +109,12 @@ def test_projection_actually_solves_the_problem_it_was_built_for():
 PROJECTING = {
     "fpl": "bootstrap-static is 1.4MB; fpl_players is ~58k tokens even projected",
     "sleeper": "the player id -> name table is 14.6MB across 12,221 players",
+    # A different reason from the other two, and worth distinguishing: this payload is not
+    # merely large, it is largely a COPY. Kambi's SGM pricer answers with the event's whole
+    # bet-offer book — 626 offers, 647KB of a 610KB response — around a four-field result,
+    # and unibet_kambi_call(event_betoffer) already serves exactly that book. Keeping it
+    # would spend the entire response budget re-delivering data the caller can already get.
+    "unibet": "the SGM pricer echoes the whole 647KB event book around a 4-field answer",
 }
 
 

@@ -33,6 +33,27 @@ Full history is in `git log`; this file covers what a user would notice.
   traffic is ever captured. This is a gap in what can be OBSERVED, unlike Pinnacle, which
   simply does not sell the product.
 
+- **`unibet_sgm_price`** — the fifth and best-behaved book. Unibet runs on Kambi, so this
+  is Kambi's `onDemandPricing`, and it is the only pricer of the five that is a plain GET,
+  the only one that echoes back the exact legs it priced (`selectedOutcomeIds`), and the
+  only one that refuses with a real HTTP 400 and a typed body instead of a 200 carrying a
+  zero. Verified live: Bulldogs head-to-head (1.92) with Over 170.5 (1.88) prices 3.40
+  against a naive 3.6096.
+
+  It also has the loudest wrong answer in the catalogue: **Kambi reports odds in
+  thousandths**, so `decimal: 3400` is 3.40. A comparator that misses this reports one book
+  at 1000x the others. Two more, both pinned: 1001.0 is a payout ceiling rather than a
+  price (six through fourteen legs all returned exactly it), and `combinableOutcomeIds` is
+  bet-builder ELIGIBILITY, not compatibility with what you have already picked. The
+  endpoint declares `response_pick` because the upstream repeats the event's whole
+  bet-offer book — 647 KB of a 610 KB response — which `event_betoffer` already serves.
+- **`tests/unit/test_sgm_comparator.py`** — the five pricers pinned as a SET: that they
+  exist, that they stay findable by one capability query, that no POST among them loses
+  `read_only`, that every hint still states the price is not the product and says when it
+  was verified, and that each book declares an `error_signals` rule exactly when it fakes a
+  price on refusal. Each book's own file pins its own traps; nothing else was checking that
+  the five still work together, which is the whole reason for building them.
+
 ### Changed
 - **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The
   detail lookup was lowercase-only, so BetR's `Message` was invisible and "Same Game Multi

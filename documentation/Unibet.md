@@ -100,6 +100,7 @@ Dispatcher capabilities: `sport.competitions_list`, `sport.competition_screen`,
 |---|---|---|
 | `unibet_kambi_live_stats` | `ap1` `/statistics/api/ubau/liveStatistics/event/{eventId}.json` | Live in-event statistics. |
 | `unibet_kambi_odds_ladder` | `eu` `/offering/v2018/kambi/oddsLadder.json` | Decimal-odds increment ladder. |
+| `unibet_sgm_price` | `/onDemandPricing/event/{eventId}/outcome/{outcomeIds}.json` | **Prices a same game multi you choose.** Correlation-adjusted. See below. |
 
 ### Discovery flow (sport)
 
@@ -108,7 +109,71 @@ unibet_kambi_call(group)                                   → groupId (sport/co
 unibet_kambi_call(sport_matches, {sport:"basketball"})     → eventId
 unibet_kambi_call(event_betoffer, {eventId})               → all markets + prices
 unibet_kambi_call(inplay)                                  → live events
+  └ betOffers[].outcomes[].id                              → legs for unibet_sgm_price
 ```
+
+### Same game multi pricing
+
+`unibet_sgm_price` takes two or more outcome ids from one event and returns Unibet's
+Bet Builder price for the combination — Kambi's `onDemandPricing`. No account, no key.
+A plain **GET**, unlike every other book's pricer.
+
+```
+GET /offering/v2018/ubau/onDemandPricing/event/1028856020/outcome/4306981996,4309057043.json
+    ?lang=en_AU&market=AU&channel_id=1
+
+→ {"eventId": 1028856020,
+   "selectedOutcomeIds": [4309057043, 4306981996],
+   "selectedOdds": {"decimal": 3400, "american": "240", "fractional": "12/5"},
+   "combinableOutcomeIds": [ … 939 ids … ]}
+```
+
+Outcome ids come from `unibet_kambi_call(operation="event_betoffer")` —
+`betOffers[].outcomes[].id` — and go in the path joined by commas.
+
+> **`decimal: 3400` means 3.40.** Kambi reports odds and lines in thousandths
+> everywhere: an outcome at `odds: 1920` is 1.92 and `line: 1500` is +1.5. This is the
+> single loudest wrong answer available in this catalogue — a price reported 1000x too
+> large. Divide by 1000.
+
+**The price is not the product of the legs.** Verified live 2026-08-27 against AFL
+Western Bulldogs v Collingwood (event `1028856020`): head-to-head Bulldogs (1.92) with
+Over 170.5 (1.88) prices **3.40**, against a naive 3.6096.
+
+**Why Unibet is the best-behaved of the five.** Two properties no other book has:
+
+1. **It echoes what it priced.** `selectedOutcomeIds` names the legs the price applies
+   to. TAB tells you which legs it dropped; PointsBet tells you nothing; Unibet tells you
+   the whole set. Duplicate ids are deduplicated *silently*, so this echo is how you
+   notice.
+2. **It refuses with a real HTTP 400 and a typed body**, rather than HTTP 200 carrying a
+   zero in the price field. It is the only one of the five that needs no `error_signals`
+   declaration.
+
+| Refusal | Body |
+|---|---|
+| conflicting or mutually implied legs | `{"error":{"message":"Combination is not supported by the selected strategy.","status":400}}` |
+| an id that is not an outcome | `{"error":{"message":"Invalid outcomes","invalidOutcomes":[999999999],"status":400}}` |
+| an id that is not an event | `{"error":{"message":"Unknown event","status":400}}` |
+
+**Three things to watch.**
+
+1. **1001.0 is a ceiling, not a price.** Adding legs stops moving the number: six, eight,
+   ten, twelve and fourteen legs all returned exactly `1001000` on the verified fixture
+   while the naive product kept climbing. A capped price read as a real one looks like
+   enormous edge.
+2. **A single leg returns no price at all.** `selectedOdds` is simply *absent* — not an
+   error, not a zero. The same happens when duplicate ids collapse to one leg.
+3. **`combinableOutcomeIds` is eligibility, not compatibility.** It lists what can *ever*
+   appear in a Bet Builder on this event (940 of the event's 1137 outcomes on the verified
+   fixture, so it does filter), but it does **not** drop what clashes with your current
+   selection: both the opposite head-to-head side and the line the head-to-head already
+   implies stayed in the list, and both then 400ed. Its real use is telling an *ineligible*
+   leg apart from a merely *conflicting* one, which the error message does not do.
+
+The upstream response also repeats the event's entire bet-offer book — 626 offers, 647 KB
+of a 610 KB response — which `event_betoffer` already returns. The spec projects it away
+with `response_pick`, leaving ~11 KB.
 
 ## Cross-provider comparison
 
@@ -121,6 +186,11 @@ AU books via `list_tools_by_capability`:
   `pointsbet_racing_race`, `fanduel_racing_call`.
 - `sport.event_markets` → `unibet_kambi_call` (event_betoffer) alongside
   `tab_match`, `sportsbet_event_markets`, `pointsbet_event`.
+- `sport.same_game_multi` + `sport.prices` → `unibet_sgm_price` alongside
+  `sportsbet_sgm_price`, `tab_sgm_price`, `pointsbet_sgm_price` and `betr_sgm_price`.
+  All five price a combination you choose, so the same legs can be quoted at five books
+  and compared — see `docs/SGM-AND-PLACEMENT-SCOPE.md`. Remember to scale Unibet's
+  thousandths before comparing.
 
 ## Not modelled
 

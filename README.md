@@ -10,7 +10,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~830 tools across 64 providers in Claude Desktop,
+Free & open source (MIT). ~831 tools across 64 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -45,7 +45,7 @@ Worth being straight about, because it decides whether the first thing you ask
 works or looks broken.
 
 **Best fit — you follow or bet into Australian markets.** The cross-book edge
-above is the reason this exists, and it is built on **149 tools across eight
+above is the reason this exists, and it is built on **150 tools across eight
 Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.

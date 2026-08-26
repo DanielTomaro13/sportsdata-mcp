@@ -483,37 +483,101 @@ also be app-only. See `AUTONOMOUS-PLACEMENT.md`.
 
 ---
 
-# Where the six books leave the comparator
+# Bookmaker 7: Unibet
 
-Four books price a combination you choose, one prices the fair benchmark, and one is
-blocked:
+**SGM pricing: SOLVED**, shipped as `unibet_sgm_price`. Browser capture again, on the same
+AFL fixture as the rest. Unibet runs on **Kambi**, so this is Kambi's `onDemandPricing` and
+the same call shape should hold for any other Kambi-powered book.
 
-| Book | Tool | Correlation-adjusted? | Tells you when it drops a leg? | Silent-wrong paths |
+```
+GET /offering/v2018/ubau/onDemandPricing/event/{eventId}/outcome/{id,id,…}.json
+    ?lang=en_AU&market=AU&channel_id=1        (no auth)
+
+→ {eventId, selectedOutcomeIds:[…], selectedOdds:{decimal: 3400, …},
+   combinableOutcomeIds:[…]}
+```
+
+A plain **GET** — the only one of the five that is not a POST. Outcome ids come from
+`unibet_kambi_call(operation="event_betoffer")` and go in the path, comma-joined.
+
+Verified live 2026-08-27: Bulldogs head-to-head (1.92) with Over 170.5 (1.88) prices
+**3.40**, against a naive 3.6096.
+
+## This is the best-behaved book of the five
+
+Two properties nothing else here has:
+
+1. **It echoes what it priced.** `selectedOutcomeIds` names the exact set the price applies
+   to. TAB tells you which legs it *dropped*; PointsBet tells you nothing at all; Unibet
+   hands back the whole list. Duplicate ids are still deduplicated silently — the echo is
+   how you notice.
+2. **It refuses with a real HTTP 400 and a typed body.** Every other book answers a refusal
+   with HTTP 200 and a zero in the price field. Unibet is the only one that needs no
+   `error_signals` declaration, and its errors name what was wrong: `invalidOutcomes` lists
+   the offending ids.
+
+## …and it has the loudest possible wrong answer
+
+**Kambi reports odds in thousandths.** `decimal: 3400` is **3.40**. Every outcome in the
+betoffer feed is scaled the same way (`odds: 1920` is 1.92, `line: 1500` is +1.5). Nothing
+in the payload says so. A comparator that forgets this reports one book at 1000x the
+others, which is worse than any of the subtler traps in the previous six sections because
+it will look like the arbitrage of a lifetime.
+
+Two smaller ones. **1001.0 is a ceiling** — six, eight, ten, twelve and fourteen legs all
+returned exactly `1001000` while the naive product kept climbing, so a long multi's
+"price" is a payout cap. And **`combinableOutcomeIds` is eligibility, not compatibility**:
+it lists what can ever appear in a Bet Builder on the event (940 of 1137, so it does
+filter something) but does not drop what clashes with your current picks — both the
+opposite head-to-head side and the line the head-to-head implies stayed listed and then
+400ed. Its real use is separating an *ineligible* leg from a *conflicting* one, which the
+error message does not do.
+
+**Engine change this required:** none. But the endpoint declares `response_pick`, because
+the upstream repeats the event's entire bet-offer book — 626 offers, 647 KB of a 610 KB
+response — which `event_betoffer` already serves. Projected down to ~11 KB.
+
+**Placement:** not surveyed — see `AUTONOMOUS-PLACEMENT.md`. Worth noting that the same
+capture showed the betslip validation call (`cf-al-auth-api.kambicdn.com/.../coupon/
+validate.json`), which is placement-adjacent and deliberately not modelled.
+
+---
+
+# Where the seven books leave the comparator
+
+Five books price a combination you choose, one prices the fair benchmark, one is blocked:
+
+| Book | Tool | Verb | Echoes what it priced? | The trap that will cost you |
 |---|---|---|---|---|
-| Sportsbet | `sportsbet_sgm_price` | yes | refuses instead of dropping | — |
-| TAB | `tab_sgm_price` | yes | yes — `redundantPropositions` | — |
-| PointsBet | `pointsbet_sgm_price` | yes | **no — nothing at all** | wrong `OutcomeKey` prices another bet |
-| BetR | `betr_sgm_price` | yes | refuses instead of dropping | **`FixedWin` floor; missing `MarketType`** |
-| Pinnacle | *(none needed)* | no — the price is the product | n/a | — |
-| Dabble | *(blocked — app-only)* | yes, but unobservable | unknown | unknown |
+| Sportsbet | `sportsbet_sgm_price` | POST | refuses instead of dropping | — |
+| TAB | `tab_sgm_price` | POST | dropped legs only (`redundantPropositions`) | collapses a leg, but says so |
+| PointsBet | `pointsbet_sgm_price` | POST | **no — nothing at all** | collapses a leg silently; wrong `OutcomeKey` prices another bet |
+| BetR | `betr_sgm_price` | POST | refuses instead of dropping | **`FixedWin` is trusted as a price floor**; missing `MarketType` |
+| Unibet | `unibet_sgm_price` | **GET** | **yes — the full set** | **odds are in THOUSANDTHS**; 1001.0 is a cap |
+| Pinnacle | *(none needed)* | — | n/a | the price simply IS the product |
+| Dabble | *(blocked — app-only)* | — | unknown | unknown |
 
-Three distinct outcomes, and the distinction matters when deciding what to do next:
-Sportsbet, TAB, PointsBet and BetR are **solved**; Pinnacle needs **nothing built**
-because its parlay price is the product of its legs; Dabble is **blocked on observation**,
-not on product.
+Three distinct outcomes, and the distinction matters when deciding what to do next: five
+books are **solved**; Pinnacle needs **nothing built** because its parlay price is the
+product of its legs; Dabble is **blocked on observation**, not on product.
 
-Four solved books is enough for the thing this scope was for: quote the same legs at each,
-and compare against the independent product of Pinnacle's own straight prices. The gap is
-the book's correlation charge, and it is now measurable rather than assumed.
+Five solved books is more than enough for what this scope was for: quote the same legs at
+each, and compare against the independent product of Pinnacle's own straight prices. The
+gap is the book's correlation charge, and it is now measurable rather than assumed.
 
-**One rule the comparator must carry**, because it holds at three of the four solved books
-for three different reasons: **never report an SGM price without restating the legs that
-produced it.** TAB will tell you when it dropped one, PointsBet will not, and BetR will
-answer a malformed request with a *better* price than the real one.
+## Three rules the comparator must carry
 
-**A second rule, from the pattern across all six:** every one of these books answers a
-refusal with HTTP 200 and a zero in the price field. Four now declare `error_signals` for
-exactly that reason. Any book added later should be assumed to do the same until checked.
+1. **Never report an SGM price without restating the legs that produced it.** This holds at
+   four of the five, for four different reasons: TAB drops legs and says so, PointsBet
+   drops them and does not, BetR answers a malformed request with a *better* price than the
+   real one, and Unibet dedupes silently. Only Unibet gives you the echo needed to check —
+   everywhere else it is the caller's own bookkeeping.
+2. **Normalise the scale before comparing anything.** Unibet reports thousandths; the other
+   four report ordinary decimals. Getting this wrong does not produce a subtle error, it
+   produces a 1000x one that looks like the arbitrage of a lifetime.
+3. **A zero price is a refusal, not a quote.** Four of the seven books answer a refusal with
+   HTTP 200 and a zero in the field you asked for; PointsBet and BetR needed
+   `error_signals` for exactly that. Kambi is the only one that uses status codes properly.
+   Assume the 200-with-a-zero shape for any book added later until checked.
 
-The remaining books — Unibet and Entain — are worth doing for coverage, but the comparator
-no longer blocks on them.
+Only **Entain** is left, and the comparator does not block on it.
