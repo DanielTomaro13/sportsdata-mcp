@@ -205,3 +205,36 @@ and nothing breaches their terms — the feature exists precisely to pass a slip
 
 **Still not building autonomous placement**, for the reasons in the section above. This
 finding strengthens the alternative rather than changing the answer.
+
+
+---
+
+# Bookmaker 2: TAB
+
+**SGM pricing: SOLVED**, shipped as `tab_sgm_price`. Captured the same way Sportsbet's
+was — driving a real SGM build on a live AFL match and recording the request. Static
+analysis was not attempted this time; the browser capture took one pass.
+
+```
+POST /v1/pricing-service/enquiry     (the base url the spec already uses)
+{clientDetails:{jurisdiction, channel}, bets:[{type:FIXED_ODDS,
+ legs:[{type:SAME_GAME_MULTI, propositions:[{type:WIN, propositionId}]}]}],
+ returnValidationMatrix:true}
+→ {bets:[{status, legs:[{odds:{decimal}, redundantPropositions:[…]}]}]}
+```
+
+Verified live: H2H Bulldogs (1.95) + Naughton first goal (11.00) → **15.00**, against a
+naive product of 21.45.
+
+**The trap here is different from Sportsbet's.** Sportsbet refuses a leg it will not
+combine; TAB *silently drops* it and returns the same price. Adding the Bulldogs +1.5 line
+behind the H2H win left the price at 15.00 with the line marked `redundant` — so a
+three-leg request became a two-leg bet without erroring. `redundantPropositions` must be
+read before any price is reported.
+
+**Engine change this required:** dotted **wire** names on body params, so
+`api_name: clientDetails.jurisdiction` nests without forcing the model to hand-build the
+envelope. A dot cannot be a Python parameter name, so it had to be the wire name.
+
+**Placement:** not surveyed yet. TAB's own handoff mechanisms (bet codes / shared slips)
+should be checked when the placement work is revisited — see `AUTONOMOUS-PLACEMENT.md`.

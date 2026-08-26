@@ -346,6 +346,26 @@ endpoints:
       - { name: jurisdiction, in: query, type: string, default: NSW, description: "State jurisdiction." }
     response_hint: "{id, name, sportName, displayName, ...multi-builder markets for the sport}"
 
+  - name: tab_sgm_price
+    group: tab.sports
+    capabilities: [sport.same_game_multi, sport.prices]
+    method: POST
+    # A POST that PRICES and changes nothing — the same case as a GraphQL query.
+    read_only: true
+    auth: default
+    summary: "PRICE A SAME GAME MULTI you choose — give it propositions from one match, get the combined price and a validation matrix back. Prices combinations TAB has not pre-built."
+    base: default
+    path: /pricing-service/enquiry
+    params:
+      - { name: jurisdiction, in: body, api_name: "clientDetails.jurisdiction", type: string, default: NSW, required: true, description: "Your state: NSW, VIC, ACT, QLD, SA, NT or TAS. Prices and market availability differ by jurisdiction, so this is not cosmetic." }
+      - { name: channel, in: body, api_name: "clientDetails.channel", type: string, default: web, description: "Leave as `web`." }
+      - { name: bets, in: body, type: json, required: true, description: "The bet envelope: [{type: 'FIXED_ODDS', legs: [{type: 'SAME_GAME_MULTI', propositions: [{type: 'WIN', propositionId: 1016}, …]}]}]. `propositionId` comes from tab_match_markets — `markets[].propositions[].id`, as an INTEGER. At least two propositions, all from the SAME match." }
+      - { name: returnValidationMatrix, in: body, type: boolean, default: true, description: "Keep true: it returns which propositions actually combine, which is the difference between a refusal you understand and one you do not." }
+    response_hint: "{bets:[{status:'ok', legs:[{odds:{decimal:'15.00'}, propositions:[…], redundantPropositions:[{propositionId, status:'redundant'|'valid'}]}]}]}  — VERIFIED live 2026-08-28 against AFL Wst Bulldogs v Collingwood: H2H Bulldogs (1.95) + Naughton first goal (11.00) priced 15.00.\n\nTHE PRICE IS NOT THE PRODUCT OF THE LEGS. 1.95 x 11.00 is 21.45; TAB returns 15.00, because it applies a correlation adjustment — which is the whole reason to ask rather than multiply. Here it priced DOWN (a Bulldogs win makes a Bulldogs player scoring first likelier); other combinations price up.\n\nREDUNDANT LEGS ARE COLLAPSED, NOT REFUSED. Pick two propositions that imply one another (both sides of a line, say) and TAB drops one, marks it `redundant`, and prices what is left — so a two-leg request can come back as a one-leg price. ALWAYS check `redundantPropositions` before reporting: the odds you got may not be the bet you asked for.\n\nOnly markets with `sameGame: true` in tab_match_markets can be combined (52 of 109 on the verified match)."
+    examples:
+      - description: "Price a two-leg AFL same game multi"
+        params: {jurisdiction: NSW, bets: [{type: FIXED_ODDS, legs: [{type: SAME_GAME_MULTI, propositions: [{type: WIN, propositionId: 1016}, {type: WIN, propositionId: 8529}]}]}]}
+
   - name: tab_trending_props
     group: tab.sports
     # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best

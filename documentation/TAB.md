@@ -147,3 +147,73 @@ worked cross-book odds comparison.
 
 - **`tab_racing_runner_form`** — per-runner detailed form for one runner in a race: recent starts, times, track and distance records. Deeper than the form carried inline on a racecard.
 - **`tab_racing_futures_race`** — a single futures market (e.g. a Cup outright) with its runners and prices, as opposed to `tab_racing_futures_meetings` which lists the meetings carrying futures.
+
+
+---
+
+## Pricing a Same Game Multi you chose
+
+`tab_sgm_price` prices a combination TAB has not pre-built. `tab_multi_builder` returns
+*their* suggestions; this one takes your propositions.
+
+```
+POST https://api.beta.tab.com.au/v1/pricing-service/enquiry
+{
+  "clientDetails": {"jurisdiction": "NSW", "channel": "web"},
+  "bets": [{"type": "FIXED_ODDS", "legs": [{"type": "SAME_GAME_MULTI",
+    "propositions": [{"type": "WIN", "propositionId": 1016},
+                     {"type": "WIN", "propositionId": 8529}]}]}],
+  "returnValidationMatrix": true
+}
+→ {"bets": [{"status": "ok", "legs": [{"odds": {"decimal": "15.00"}, …}]}]}
+```
+
+Same base URL as every other TAB tool. No auth. Verified live 2026-08-28 against AFL
+Wst Bulldogs v Collingwood.
+
+### The price is not the product of the legs
+
+H2H Bulldogs is 1.95, Naughton first goal is 11.00. Multiplied that is **21.45**. TAB
+prices the pair at **15.00**, because it applies a correlation adjustment — a Bulldogs win
+makes a Bulldogs player scoring first more likely, so the combination is worth less than
+independence implies. Other combinations price *up*. This is the entire reason to ask
+rather than multiply.
+
+### ⚠ Redundant legs are collapsed, not refused
+
+This is the trap, and it is quiet. Ask for a leg that another leg already implies and TAB
+does not reject the bet — it **drops the leg, prices what is left, and returns the same
+odds**:
+
+| request | result |
+|---|---|
+| H2H Bulldogs + Naughton 1st goal | **$15.00**, nothing redundant |
+| …plus Bulldogs +1.5 line | **$15.00**, the line marked `redundant` |
+
+Both sides of a line, or a line behind the head-to-head it implies, collapse this way. So
+a three-leg request can silently become a two-leg bet at an unchanged price. **Always read
+`redundantPropositions` before reporting a price** — the odds you got may not be the bet
+you asked for.
+
+### Only some markets combine
+
+`tab_match_markets` marks each market with `sameGame` and `sameGameMultipleSelections`.
+On the verified match, **52 of 109** markets were SGM-eligible. Proposition ids come from
+`markets[].propositions[].id` and must be sent as **integers**.
+
+### Jurisdiction is not cosmetic
+
+Prices and market availability differ by state. `clientDetails.jurisdiction` is required
+and must be one of NSW, VIC, ACT, QLD, SA, NT, TAS.
+
+### Compared with Sportsbet
+
+The two books share nothing but the idea:
+
+| | Sportsbet | TAB |
+|---|---|---|
+| endpoint | `/apigw/multi-pricer/combinations/price` | `/v1/pricing-service/enquiry` |
+| ids | `externalId` (market + outcome) | `propositionId` |
+| price format | fractional `{numerator, denominator}` | decimal string |
+| a leg it dislikes | refused (`ERR-VE`) | **silently dropped** |
+| plain curl | works | blocked without browser headers |

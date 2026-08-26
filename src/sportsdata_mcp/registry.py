@@ -199,8 +199,33 @@ def _build_body(ep: Endpoint, kwargs: dict) -> dict | list | None:
     out: dict[str, object] = {}
     for p in body_params:
         value = kwargs.get(p.name)
-        if value is not None:
-            out[p.name] = value
+        if value is None:
+            continue
+        # A DOTTED WIRE NAME nests: `api_name: clientDetails.jurisdiction` becomes
+        # {"clientDetails": {"jurisdiction": …}}. Some APIs put a required scalar two
+        # levels down (TAB's pricer wants the jurisdiction inside `clientDetails`), and
+        # without this the only way to express it is to make the model hand-build the
+        # whole envelope — turning one string into a shape it can get wrong.
+        #
+        # It has to be the WIRE name, not the parameter name: a dot is illegal in a
+        # Python identifier, and the tool signature is built from real parameters.
+        wire = p.wire_name
+        head, _, rest = wire.partition(".")
+        if not rest:
+            out[wire] = value
+            continue
+        node = out.setdefault(head, {})
+        if not isinstance(node, dict):  # a plain param already claimed this key
+            out[wire] = value
+            continue
+        while True:
+            key, _, rest = rest.partition(".")
+            if not rest:
+                node[key] = value
+                break
+            node = node.setdefault(key, {})
+            if not isinstance(node, dict):
+                break
     return out
 
 
