@@ -313,3 +313,72 @@ should not imply a distinct parlay price, because today there is none.
 Not surveyed. Pinnacle is not an Australian book and its account model differs from
 Sportsbet's and TAB's; if placement is revisited, it needs its own pass rather than an
 assumption carried over.
+
+
+---
+
+# Bookmaker 4: PointsBet
+
+**SGM pricing: SOLVED**, shipped as `pointsbet_sgm_price`. Browser capture again, one
+pass, on the same AFL fixture the other two were verified against — which means the three
+books can now be quoted on comparable legs.
+
+```
+POST /api/v2/sgm/price               (api.au.pointsbet.com, no auth)
+{EventKey: "2860313",
+ SelectedOutcomes: [{MarketKey, OutcomeKey}, …]}
+→ {success, price, message, invalidSelections}
+```
+
+`MarketKey` is `fixedOddsMarkets[].key` from `pointsbet_event` and `OutcomeKey` is that
+market's own `outcomes[].key`. Both ids were already in a tool we shipped; nothing new was
+needed to resolve them.
+
+Verified live 2026-08-27: Match Result Bulldogs (1.96) + Total Over 169.5 (1.90) →
+**3.60**, against a naive product of 3.724.
+
+**The trap is TAB's, made worse.** PointsBet also collapses a leg that another leg
+implies — Bulldogs H2H plus Bulldogs +1.5 returns **1.96 flat**, the head-to-head price
+unchanged, against a naive 3.724 — but unlike TAB it echoes **nothing**. There is no
+`redundantPropositions` equivalent, no leg list, no count. A three-leg request priced as
+two is indistinguishable from an honest three-leg quote. The only defence is procedural:
+never report a PointsBet SGM price without restating the legs that were sent.
+
+Two smaller ones. `enableCorrelatedMulti` reads like an eligibility flag and is not — it
+was `true` on all 82 markets of the verified event while the pricer still refused First
+Goalscorer, so eligibility is only knowable by asking. And `OutcomeKey` is unique only
+within its market (`"11"` is a different bet in two markets on the same event), so an
+outcome key carried to the wrong market key prices something else and still returns
+success.
+
+**Engine change this required:** none to the request path — the body is flat. One change
+to the error path: a refusal is HTTP 200 with `price: 0`, a zero sitting in the field the
+caller asked for, so the provider declares an `error_signals` rule. That surfaced a
+general gap worth fixing — the error builder took only `message`, so "Selection Suspended"
+reached the caller without naming *which* selection, turning a recoverable failure into a
+dead end. `_error_evidence` now appends the non-empty sibling collections
+(`invalidSelections` here) and deliberately ignores scalars, so PointsBet's fake `price: 0`
+is never repeated back.
+
+**Placement:** not surveyed — see `AUTONOMOUS-PLACEMENT.md`.
+
+---
+
+# Where the four books leave the comparator
+
+Three books now price a combination you choose, and the fourth prices the fair benchmark:
+
+| Book | Tool | Correlation-adjusted? | Tells you when it drops a leg? |
+|---|---|---|---|
+| Sportsbet | `sportsbet_sgm_price` | yes | refuses instead of dropping |
+| TAB | `tab_sgm_price` | yes | yes — `redundantPropositions` |
+| PointsBet | `pointsbet_sgm_price` | yes | **no — nothing at all** |
+| Pinnacle | *(none needed)* | no — the price is the product | n/a |
+
+That is enough to build the thing this scope was for: quote the same legs at the three
+Australian books, and compare each against the independent product of Pinnacle's own
+straight prices. The gap is the book's correlation charge, and it is now measurable rather
+than assumed.
+
+The remaining books — betr, Dabble, Unibet, Entain — are worth doing for coverage, but the
+comparator no longer blocks on them.

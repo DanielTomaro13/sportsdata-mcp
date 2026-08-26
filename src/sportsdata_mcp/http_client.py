@@ -509,6 +509,8 @@ class HTTPClient:
                 or body.get("message")
                 or (json.dumps(value)[:160] if sig.equals is None else json.dumps(body)[:160])
             )
+            if evidence := self._error_evidence(body, sig.field):
+                detail = f"{detail} ({evidence})"
             missing = self._unset_key_envs()
             hint = (
                 f" Set {' or '.join(sorted(missing))} in your environment and restart."
@@ -520,6 +522,28 @@ class HTTPClient:
                 recoverable=False,
                 code="AUTH_REQUIRED" if missing else "UPSTREAM_ERROR",
             )
+
+    @staticmethod
+    def _error_evidence(body: dict, signal_field: str) -> str:
+        """The "which ones" that usually sits NEXT TO the error message, not in it.
+
+        A provider that says "Selection Suspended" has told you nothing you can act on
+        when you sent ten selections; the list of offending ones is in a sibling field
+        (PointsBet: `invalidSelections`). Without this, a recoverable failure — drop the
+        named leg and re-price — reaches the caller as an unrecoverable sentence.
+
+        Only NON-EMPTY lists and dicts are collected. Scalars are deliberately excluded:
+        they are the fields most likely to be ordinary payload rather than diagnosis, and
+        PointsBet's own `price: 0` on a failure is exactly the value that must never be
+        repeated as though it were a quote.
+        """
+        parts = []
+        for key, value in body.items():
+            if key in (signal_field, "reason", "message"):
+                continue
+            if isinstance(value, (list, dict)) and value:
+                parts.append(f"{key}={json.dumps(value)}")
+        return "; ".join(parts)[:200]
 
     def _unset_key_envs(self) -> set[str]:
         """Env vars this provider's auth reads that are NOT set.

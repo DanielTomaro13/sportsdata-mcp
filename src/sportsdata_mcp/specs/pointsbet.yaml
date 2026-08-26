@@ -24,6 +24,13 @@ provider:
   auth:
     default:
       type: none
+  # The SGM pricer refuses in HTTP 200: {"success":false,"price":0,"message":"..."}.
+  # `price: 0` is the reason this is declared. It sits in the field a caller asked for,
+  # so a refusal reads as a quote of zero rather than as a refusal — the silent-wrong
+  # class this mechanism exists for. Narrow on purpose: `equals` fires only on exactly
+  # false, and no other PointsBet endpoint carries a top-level `success` (checked).
+  error_signals:
+    - { field: success, equals: "False" }
 
 endpoints:
   # ─── pointsbet.sports — sportsbook sports API (api.au.pointsbet.com) ────
@@ -111,7 +118,25 @@ endpoints:
     auth: default
     params:
       - { name: eventKey, in: path, type: integer, description: 'Numeric event key (e.g. 2754627), from any events feed.' }
-    response_hint: "{key, name, competitionName, startsAt, fixedOddsMarkets:[{name, outcomes:[{name, price}]}], prePricedSgm:{}, homeTeamStats:{}}"
+    response_hint: "{key, name, competitionName, startsAt, sgmStatus, fixedOddsMarkets:[{key, name, eventClass, enableCorrelatedMulti, outcomes:[{key, name, price, isOpenForBetting}]}], sgmCollisionGroups:[], prePricedSgm:{}, homeTeamStats:{}}  — 82 markets and ~4MB on a verified AFL fixture, so ask for the markets you need rather than the whole event where you can.\n\nTHIS IS WHERE SGM LEG IDS COME FROM: `fixedOddsMarkets[].key` is the MarketKey and its own `outcomes[].key` is the OutcomeKey that pointsbet_sgm_price wants. Outcome keys repeat across markets, so only the pair identifies a leg. `sgmStatus: \"Available\"` says the event sells same game multis at all; `enableCorrelatedMulti` on a market does NOT say the market is eligible (it was true on all 82 while the pricer still refused First Goalscorer), and `sgmCollisionGroups` lists the families that overwrite one another."
+
+  - name: pointsbet_sgm_price
+    group: pointsbet.sports
+    capabilities: [sport.same_game_multi, sport.prices]
+    method: POST
+    # A POST that prices and stores nothing — the same case as a GraphQL query.
+    read_only: true
+    summary: "PRICE A SAME GAME MULTI you choose — give it selections from one PointsBet event, get the correlation-adjusted combined price. Prices combinations PointsBet has not pre-built (for the ones it has, see pointsbet_preprice_multis)."
+    base: default
+    path: /api/v2/sgm/price
+    auth: default
+    params:
+      - { name: eventKey, in: body, api_name: EventKey, type: string, required: true, description: 'Numeric event key as a STRING, e.g. "2860313" — the `key` from pointsbet_event or any events feed. Every selection must belong to this event.' }
+      - { name: selectedOutcomes, in: body, api_name: SelectedOutcomes, type: json, required: true, description: 'The legs: [{"MarketKey": "114096420", "OutcomeKey": "1"}, …]. Both come from pointsbet_event — MarketKey is `fixedOddsMarkets[].key`, OutcomeKey is that market''s own `outcomes[].key`. OutcomeKey IS ONLY UNIQUE WITHIN ITS MARKET (key "11" is a different bet in each of two markets on the verified event), so the PAIR identifies a leg and an OutcomeKey carried to the wrong MarketKey silently prices something else. Send them as strings. One leg is accepted and just returns that leg''s own price.' }
+    response_hint: "{success: true, price: 3.6, message: null, invalidSelections: null}  — VERIFIED live 2026-08-27 against AFL Western Bulldogs v Collingwood (event 2860313).\n\nTHE PRICE IS NOT THE PRODUCT OF THE LEGS, which is the entire reason to ask. Match Result Bulldogs (1.96) with Over 169.5 (1.90) returns 3.60, not 3.724. Combine that same 1.96 with Bulldogs +1.5 (1.90) and it returns 1.96 FLAT — the line leg is implied by the head-to-head, so it is worth nothing, against a naive 3.724. Never multiply PointsBet legs yourself; the error runs to tens of percent.\n\nREDUNDANT LEGS ARE SILENTLY COLLAPSED AND NOTHING SAYS SO. The response has no leg echo at all: a three-leg request priced as two comes back looking identical to a genuine three-leg quote. Unlike TAB, which marks dropped legs `redundant`, PointsBet gives you no way to detect it from the response. So STATE THE LEGS YOU SENT whenever you report a price, and treat a price that equals the shorter combination's price as evidence a leg was absorbed. Exact duplicates are deduplicated the same silent way.\n\n`enableCorrelatedMulti` ON THE MARKET IS NOT ELIGIBILITY. It was true on all 82 markets of the verified event, yet the pricer still refused with `Market ... event class First Goalscorer - Home is not allowed for Same Game Multi`. Only the pricer knows; do not pre-filter on that flag and do not promise a combination before pricing it.\n\nREFUSALS ARRIVE AS HTTP 200 with `success: false` and `price: 0` — the engine raises these rather than passing a zero off as a quote. Three kinds seen live: a suspended or unknown market names the legs in `invalidSelections`, mutually exclusive legs give `OddsFactory returned price 1 or less`, and a disallowed market names its event class. An unknown eventKey is the one that does NOT follow the pattern: it 500s."
+    examples:
+      - description: "Price Bulldogs to win with over 169.5 total points"
+        params: {eventKey: "2860313", selectedOutcomes: [{MarketKey: "114096420", OutcomeKey: "1"}, {MarketKey: "114104206", OutcomeKey: "11"}]}
 
   - name: pointsbet_event_search
     group: pointsbet.sports

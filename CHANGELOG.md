@@ -6,6 +6,35 @@ ones do not change.
 
 Full history is in `git log`; this file covers what a user would notice.
 
+## Unreleased
+
+### Added
+- **Same game multi pricing at three Australian books** — `sportsbet_sgm_price`,
+  `tab_sgm_price` and `pointsbet_sgm_price`. Each takes legs you choose from one event and
+  returns the book's own correlation-adjusted price for the combination, unauthenticated.
+  This is the number you cannot compute: on a verified AFL fixture, Bulldogs head-to-head
+  (1.96) with Bulldogs +1.5 (1.90) multiplies to 3.724 and prices at **1.96** on PointsBet,
+  because a win already implies the line. Anything that multiplies legs is wrong by tens of
+  percent. Pinnacle was surveyed too and deliberately got no tool: it prices a parlay as
+  the product of its legs, which makes it the fair-value benchmark rather than an SGM
+  venue. See `docs/SGM-AND-PLACEMENT-SCOPE.md`.
+- **Dotted wire names on body params.** `api_name: clientDetails.jurisdiction` nests a
+  scalar into an envelope, so TAB's pricer can take one string instead of making the caller
+  hand-build the whole body. It has to be the wire name — a dot cannot be a Python
+  parameter name.
+
+### Changed
+- **A 200-with-an-error-body now names what failed, not just that it failed.** The error
+  detail took `message` alone, so PointsBet's "Selection Suspended" arrived without saying
+  which of ten selections was suspended — a recoverable failure reaching the caller as a
+  dead end. Non-empty sibling collections (`invalidSelections`) are now appended. Scalars
+  are deliberately excluded: PointsBet's refusals carry `price: 0`, and that is the one
+  value that must never be repeated back as though it were a quote.
+
+### Fixed
+- README's catalogue totals were stale (801 tools / 63 providers against an actual
+  829 / 64).
+
 ## 0.29.0 — 2026-08-24
 
 ### Added

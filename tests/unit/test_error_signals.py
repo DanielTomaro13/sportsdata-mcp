@@ -117,8 +117,16 @@ async def test_list_bodies_are_not_probed(monkeypatch):
 # public call, not merely an auth failure — so the signal is not about credentials at all.
 # Marking it `requires_user_key` to satisfy the rule would have been a lie that leaks into
 # the BYO-tier UX, since its reference endpoints work with nothing configured.
+#
+# PointsBet is a THIRD shape again: exactly one endpoint does it, and the reason is not
+# that failures are invisible but that one of them is disguised. Its SGM pricer refuses
+# with {"success": false, "price": 0} at HTTP 200 — a zero sitting in the field the
+# caller asked for, which reads as a quote rather than a refusal. That is the silent-wrong
+# class this mechanism exists for, so the signal is justified by the VALUE, not by the
+# status code.
 KEYLESS_WITH_SIGNALS = {
     "myfantasyleague": "answers 200 + an error document for every failure, auth or not",
+    "pointsbet": "its SGM pricer refuses at 200 with price: 0, which reads as a quote",
 }
 
 

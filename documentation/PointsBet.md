@@ -49,6 +49,7 @@ public feeds, so it is intentionally **not** modelled.)
 | `pointsbet_event_search` | `/api/v2/sports/search` | — | Search events by `competitionKey` / `eventClassIds`; optional historic H2H stats. |
 | `pointsbet_events_nextup` | `/api/v2/events/nextup` | — | Next-up events across all codes by start time. |
 | `pointsbet_preprice_multis` | `/api/mes/v3/prepricedmulti/fivefor25s` | `sport.same_game_multi` | Pre-priced "5 for $25" multi suggestions. Top-level array. |
+| `pointsbet_sgm_price` | `POST /api/v2/sgm/price` | `sport.same_game_multi`, `sport.prices` | **Prices a same game multi you choose.** Correlation-adjusted, not the product of the legs. See below. |
 
 ### Discovery flow (sports)
 
@@ -57,7 +58,62 @@ pointsbet_sports_list                      → competitionKey (e.g. 7523 = AFL)
   └ or pointsbet_sport_competitions(sportKey="aussie-rules")
 pointsbet_competition_events(competitionKey=7523)   → event key (e.g. 2754627)
 pointsbet_event(eventKey=2754627)          → every market + selection + price
+  └ fixedOddsMarkets[].key + .outcomes[].key  → legs for pointsbet_sgm_price
 ```
+
+### Same game multi pricing
+
+`pointsbet_sgm_price` takes selections from one event and returns PointsBet's own
+correlation-adjusted price for the combination. It needs no account and no key.
+
+```
+POST https://api.au.pointsbet.com/api/v2/sgm/price
+{"EventKey": "2860313",
+ "SelectedOutcomes": [{"MarketKey": "114096420", "OutcomeKey": "1"},
+                      {"MarketKey": "114104206", "OutcomeKey": "11"}]}
+
+→ {"success": true, "price": 3.6, "message": null, "invalidSelections": null}
+```
+
+Both ids come from `pointsbet_event`: `MarketKey` is `fixedOddsMarkets[].key`, and
+`OutcomeKey` is that market's own `outcomes[].key`.
+
+**The price is not the product of the legs.** Verified live on 2026-08-27 against AFL
+Western Bulldogs v Collingwood (event `2860313`):
+
+| Combination | Naive product | PointsBet |
+|---|---|---|
+| Match Result Bulldogs (1.96) + Total Over 169.5 (1.90) | 3.724 | **3.60** |
+| Match Result Bulldogs (1.96) + Bulldogs +1.5 (1.90) | 3.724 | **1.96** |
+
+The second row is the whole point. A Bulldogs win already implies Bulldogs +1.5, so the
+line leg is worth nothing and PointsBet returns the head-to-head price unchanged. Anyone
+multiplying the legs would quote 3.724 for a bet that pays 1.96.
+
+**Four things that will bite you.**
+
+1. **Redundant legs are collapsed silently, and the response cannot tell you.** The body
+   is a bare price with no echo of the legs, so a three-leg request priced as two looks
+   identical to an honest three-leg quote. TAB marks dropped propositions `redundant`;
+   PointsBet gives you nothing. Always restate the legs you sent alongside the price, and
+   treat a price equal to the shorter combination's as evidence a leg was absorbed. Exact
+   duplicates are deduplicated the same silent way.
+2. **`enableCorrelatedMulti` on a market is not eligibility.** It was `true` on all 82
+   markets of the verified event while the pricer still refused with
+   `Market … event class First Goalscorer - Home is not allowed for Same Game Multi`.
+   Only the pricer knows. Do not pre-filter on the flag and do not promise a combination
+   before pricing it. The event-level `sgmStatus` (`"Available"`) and `sgmCollisionGroups`
+   are more informative but still not authoritative.
+3. **`OutcomeKey` is unique only within its market.** Key `"11"` is Bulldogs +1.5 in the
+   Line market and Over 169.5 in the Total market. The pair identifies a leg; an outcome
+   key carried to the wrong market key prices a different bet and still returns success.
+4. **Refusals arrive as HTTP 200** with `{"success": false, "price": 0}`. The spec
+   declares an `error_signals` rule so that zero never reaches a caller as a quote, and
+   the raised error carries `invalidSelections` so you know which leg to drop. An unknown
+   `EventKey` is the exception to the pattern — it returns HTTP 500.
+
+A single leg is accepted and simply returns that leg's own price, which makes it a cheap
+way to test whether a market is SGM-eligible at all.
 
 ---
 
@@ -126,6 +182,9 @@ directly comparable via `list_tools_by_capability`:
   `sportsbet_racing_allracing`.
 - `racing.same_race_multi` → `pointsbet_racing_srm` alongside
   `sportsbet_racing_popular_srms`.
+- `sport.same_game_multi` → `pointsbet_sgm_price` alongside `sportsbet_sgm_price` and
+  `tab_sgm_price`. All three price a combination you choose, so the same legs can be
+  quoted at three books and compared — see `docs/SGM-AND-PLACEMENT-SCOPE.md`.
 
 See [`examples/comparator-prompt.md`](../examples/comparator-prompt.md) for a
 worked cross-book odds comparison.
