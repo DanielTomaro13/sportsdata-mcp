@@ -9,6 +9,20 @@ Full history is in `git log`; this file covers what a user would notice.
 ## Unreleased
 
 ### Added
+- **Every tool now declares what question it answers.** 173 tools carried no
+  `capabilities` key at all — not waived, never considered — and since a capability tag
+  is how tools are discovered across providers, those were unreachable rather than
+  merely deprioritised. All 829 now carry a tag or an explicit `capabilities: []` with a
+  comment saying why nothing fits, and a test makes omitting the key a build failure, so
+  the decision gets made when a tool is written. `list_tools_by_capability` covers the
+  catalogue for the first time.
+- **Ten capability tags** for questions that had none: `ref.rounds`, `ref.officials`,
+  `sport.lineups`, `sport.awards`, `sport.cash_out`, `racing.form_guide`, `racing.pools`,
+  `racing.price_history`, `racing.track_conditions`, `content.photo`. Chosen on
+  substitutability — a tag means "these tools answer the same question", so provider
+  plumbing (navigation, CMS copy, a provider's own id decoders, one book's editorial
+  tips) is deliberately left untagged rather than grouped by topic.
+
 - **Same game multi pricing at three Australian books** — `sportsbet_sgm_price`,
   `tab_sgm_price` and `pointsbet_sgm_price`. Each takes legs you choose from one event and
   returns the book's own correlation-adjusted price for the combination, unauthenticated.
@@ -24,6 +38,9 @@ Full history is in `git log`; this file covers what a user would notice.
   parameter name.
 
 ### Changed
+- **`racing.form_guide` retags three tools** that sat on `racing.race_card`. A card says
+  who is in the race at what price; a form guide says how each runner has been going —
+  different questions, so different tags.
 - **A 200-with-an-error-body now names what failed, not just that it failed.** The error
   detail took `message` alone, so PointsBet's "Selection Suspended" arrived without saying
   which of ten selections was suspended — a recoverable failure reaching the caller as a
