@@ -23,6 +23,16 @@ Full history is in `git log`; this file covers what a user would notice.
   it turns a correct 2.20 into 21. Both are documented at the parameter, not just in the
   provider page.
 
+- **Dabble was surveyed and deliberately got no SGM tool.** It sells same game multis and
+  the fixture payload carries the machinery around them — `isSgmAllowed` marks the eligible
+  legs, and every fixture declares an SGM market group that `marketGroupMappings` never
+  fills — but Dabble has no web betting UI, so the browser capture that solved the other
+  four books has nothing to drive. ~40 candidate routes were probed against a clean 404
+  baseline; all 404. Documented in `documentation/Dabble.md` and
+  `docs/SGM-AND-PLACEMENT-SCOPE.md`, including the one request worth saving if the app's
+  traffic is ever captured. This is a gap in what can be OBSERVED, unlike Pinnacle, which
+  simply does not sell the product.
+
 ### Changed
 - **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The
   detail lookup was lowercase-only, so BetR's `Message` was invisible and "Same Game Multi

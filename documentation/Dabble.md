@@ -139,6 +139,9 @@ replace it.
   surfaces) — out of scope for a read-only data provider.
 - The Pick'em **placement** flow — only the `playerProps` *data* is read (in
   `dabble_fixture_details`).
+- **The SGM combination pricer.** It exists and is reachable only from the native
+  app; see "Same game multi — the legs, not the price" below for what was ruled
+  out and what would unblock it.
 
 ## Cross-provider comparison
 
@@ -152,4 +155,52 @@ books via `list_tools_by_capability`:
 - **`sport.fixtures_by_date`** → `dabble_competition_fixtures` alongside the
   league data feeds (NRL Champion Data, AFL) to line up odds with the official
   fixture.
-- **`sport.same_game_multi`** → Dabble's `marketGroups` next to Sportsbet/TAB SGMs.
+- **`sport.same_game_multi`** → Dabble's SGM-flagged markets next to
+  `sportsbet_sgm_price`, `tab_sgm_price`, `pointsbet_sgm_price` and
+  `betr_sgm_price` — but see the section below: Dabble contributes the LEGS, not
+  a combination price.
+
+## Same game multi — the legs, not the price
+
+Dabble sells SGMs (its own site advertises "We've got SGMs! ... SGM Tracker") and
+this provider surfaces the eligible legs, but **not Dabble's combination price**.
+That is a gap in what can be observed, not a gap in Dabble's product. Verified
+live 2026-08-27.
+
+**Why there is no `dabble_sgm_price`.** The other Australian books were each
+solved by opening their SGM builder in a browser and recording the request it
+fires. **Dabble has no web betting UI** — dabble.com.au is a marketing site whose
+call to action is "Install Dabble Today!", and the only client that builds an SGM
+is the native app. There is no page to drive and no bundle to read. Around forty
+candidate routes were probed against a clean 404 baseline (`/sgm/price`,
+`/frontend-api/same-game-multi`, `/frontend-api/market-groups/{id}` and the
+fixture- and group-id variants); all 404. There is no swagger document, and
+`/health` is the only other 200 on the host.
+
+**What the payload does tell you:**
+
+- `isSgmAllowed` marks the eligible legs, and it means different things per
+  sport. On EPL Crystal Palace v Man City, 76 of 503 markets are SGM-allowed and
+  **all 76 have `isSingleAllowed: false`** — a separate feed with its own naming
+  (`MatchWinner`, `TeamOverUnder_Goal_Home`) and its own id batch, distinct from
+  the fixture's first-party markets (`match_winner`). On AFL Western Bulldogs v
+  Collingwood, 175 of 203 are SGM-allowed *and* single-allowed: one set of
+  markets serving both products.
+- Every fixture declares an SGM market **group** that is never populated —
+  `"Popular SGMs"` on EPL, `"Same Game Multi's"` on AFL. Both appear in
+  `marketGroups`; neither has an entry in `marketGroupMappings`. Something else
+  fills that group, which is the clearest sign a separate SGM endpoint exists.
+- `selfMultiExtension.allowSelfMulti` was `false` on every fixture sampled across
+  eight competitions, so it is not the flag that gates the feature.
+
+**What this means in practice.** Dabble can contribute the naive product of its
+own leg prices to a comparison; it cannot contribute its correlation-adjusted
+number, which is the only interesting one. Keep it out of SGM price comparisons
+until the pricer is captured — see `docs/SGM-AND-PLACEMENT-SCOPE.md`.
+
+**The `product` tag has held through a vendor change.** It keys off Dabble's own
+`isSgmAllowed` / `isSingleAllowed` flags rather than the SGM vendor's naming,
+which was a deliberate choice in June against the risk of a vendor swap. That
+swap appears to have happened — the `sportcast_` prefixes recorded then are gone
+— and the tagger still returns 76 `sgm` markets on the EPL fixture and no false
+positives on AFL.

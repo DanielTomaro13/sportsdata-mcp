@@ -411,9 +411,82 @@ matched case-insensitively, in priority order rather than body order.
 
 ---
 
-# Where the five books leave the comparator
+# Bookmaker 6: Dabble
 
-Four books now price a combination you choose, and the fifth prices the fair benchmark:
+**SGM pricing: BLOCKED, and not for want of a product.** Recommend building nothing yet.
+This is a different negative from Pinnacle's: Pinnacle does not sell a correlated same
+game multi, so there was nothing to fetch. Dabble sells them and advertises them — the
+pricer exists, and it is simply not observable from outside the app.
+
+## Why the technique that solved the other five does not apply
+
+Sportsbet, TAB, PointsBet and BetR were each solved the same way in one pass: open the
+book's own SGM builder in a browser, record the request it makes, verify it
+unauthenticated. **Dabble has no web betting UI.** dabble.com.au is a marketing site whose
+call to action is "Install Dabble Today!"; there is no web app behind a login. The only
+client that builds an SGM is the native iOS/Android app, so there is no page to drive and
+no bundle to read.
+
+## What was established anyway (verified live 2026-08-27)
+
+Dabble does sell the product — its own site advertises "We've got SGMs! ... SGM Tracker" —
+and the fixture payload carries the machinery around it:
+
+- **`isSgmAllowed` identifies the eligible legs**, and it means different things on
+  different sports. On EPL Crystal Palace v Man City, 76 of 503 markets are SGM-allowed
+  and **every one of them has `isSingleAllowed: false`** — a separate feed with its own
+  naming vocabulary (`MatchWinner`, `TeamOverUnder_Goal_Home`, `MatchWinnerOverUnderDouble`)
+  and its own id-generation batch, distinct from the fixture's first-party markets
+  (`match_winner`, ids sharing the fixture's own prefix). On AFL Western Bulldogs v
+  Collingwood, 175 of 203 are SGM-allowed *and* single-allowed — the same markets serve
+  both products.
+- **Every fixture declares an SGM market GROUP that is never populated.** EPL has
+  `"Popular SGMs"`, AFL has `"Same Game Multi's"`; both appear in `marketGroups` and
+  neither has an entry in `marketGroupMappings`. The group is filled by a call the fixture
+  payload does not make — which is the clearest evidence that a separate SGM endpoint
+  exists.
+- **`selfMultiExtension.allowSelfMulti` is `false`** on every fixture sampled across eight
+  competitions, so it is not the flag that gates the feature.
+- **Roughly forty candidate pricer routes were probed** against a clean 404 baseline
+  (`/sgm/price`, `/frontend-api/same-game-multi`, `/frontend-api/market-groups/{id}`, the
+  group-id and fixture-id variants, and so on). Every one returned 404. There is no
+  swagger or openapi document; `/health` is the only additional 200 on the host.
+
+Route guessing is the approach that already cost a day on Sportsbet before a browser
+capture solved it in one pass, so it was stopped rather than continued.
+
+## What would unblock it
+
+Only observing the app itself: proxying the phone's traffic, or reading the shipped app
+binary. Both are decisions for the account holder on their own device rather than
+something to set up from here — the first needs a root certificate installed on the
+phone, and the second means pulling apart a third-party binary. If you ever run that
+capture yourself, the single request to save is the one the app fires when a **second**
+leg is added to an SGM; that alone is enough to ship the tool, and everything else in this
+document is already in place.
+
+## What Dabble gives you today, without the pricer
+
+The legs and their prices, correctly separated by product. `dabble_fixture_details` tags
+every market with an engine-derived `product` ∈ {single, sgm, pickem, srm, racing}, keyed
+off Dabble's OWN capability flags rather than the SGM vendor's naming — a decision made in
+June specifically so a vendor swap could not break it, and it has since been vindicated:
+the `sportcast_` prefixes that were there in June are gone, and the tagger still returns
+76 `sgm` markets on the EPL fixture and 0 false positives on AFL.
+
+So Dabble can already contribute the **naive** product of its own leg prices to a
+comparison. What it cannot contribute is its correlation-adjusted number, which is the
+only interesting one — so it stays out of the comparator until the pricer is captured.
+
+**Placement:** not surveyed, and further away than any other book here — placement would
+also be app-only. See `AUTONOMOUS-PLACEMENT.md`.
+
+---
+
+# Where the six books leave the comparator
+
+Four books price a combination you choose, one prices the fair benchmark, and one is
+blocked:
 
 | Book | Tool | Correlation-adjusted? | Tells you when it drops a leg? | Silent-wrong paths |
 |---|---|---|---|---|
@@ -422,16 +495,25 @@ Four books now price a combination you choose, and the fifth prices the fair ben
 | PointsBet | `pointsbet_sgm_price` | yes | **no — nothing at all** | wrong `OutcomeKey` prices another bet |
 | BetR | `betr_sgm_price` | yes | refuses instead of dropping | **`FixedWin` floor; missing `MarketType`** |
 | Pinnacle | *(none needed)* | no — the price is the product | n/a | — |
+| Dabble | *(blocked — app-only)* | yes, but unobservable | unknown | unknown |
 
-That is enough to build the thing this scope was for: quote the same legs at the four
-Australian books, and compare each against the independent product of Pinnacle's own
-straight prices. The gap is the book's correlation charge, and it is now measurable rather
-than assumed.
+Three distinct outcomes, and the distinction matters when deciding what to do next:
+Sportsbet, TAB, PointsBet and BetR are **solved**; Pinnacle needs **nothing built**
+because its parlay price is the product of its legs; Dabble is **blocked on observation**,
+not on product.
 
-**One rule the comparator must carry**, because it now holds at three of the four books
+Four solved books is enough for the thing this scope was for: quote the same legs at each,
+and compare against the independent product of Pinnacle's own straight prices. The gap is
+the book's correlation charge, and it is now measurable rather than assumed.
+
+**One rule the comparator must carry**, because it holds at three of the four solved books
 for three different reasons: **never report an SGM price without restating the legs that
 produced it.** TAB will tell you when it dropped one, PointsBet will not, and BetR will
-answer a malformed request with a better price than the real one.
+answer a malformed request with a *better* price than the real one.
 
-The remaining books — Dabble, Unibet, Entain — are worth doing for coverage, but the
-comparator no longer blocks on them.
+**A second rule, from the pattern across all six:** every one of these books answers a
+refusal with HTTP 200 and a zero in the price field. Four now declare `error_signals` for
+exactly that reason. Any book added later should be assumed to do the same until checked.
+
+The remaining books — Unibet and Entain — are worth doing for coverage, but the comparator
+no longer blocks on them.
