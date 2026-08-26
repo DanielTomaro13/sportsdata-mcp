@@ -127,6 +127,7 @@ async def test_list_bodies_are_not_probed(monkeypatch):
 KEYLESS_WITH_SIGNALS = {
     "myfantasyleague": "answers 200 + an error document for every failure, auth or not",
     "pointsbet": "its SGM pricer refuses at 200 with price: 0, which reads as a quote",
+    "betr": "its SGM pricer refuses at 200 with Price: 0, which reads as a quote",
 }
 
 
@@ -176,3 +177,49 @@ async def test_presence_mode_still_catches_real_failures(monkeypatch, value):
     c = _client(_provider("isportsapi"), monkeypatch, {"code": value, "message": "Invalid [api_key]"})
     with pytest.raises(ToolError):
         await c.request_json(method="GET", base="default", url="/x", auth_key="default")
+
+# ─── the human-readable half, whatever the vendor calls it ──────────────
+
+
+def test_the_detail_is_found_regardless_of_casing():
+    """`reason` (cricketdata), `message` (PointsBet) and `Message` (BetR, a .NET stack)
+    are the same field wearing three cases. A lowercase-only lookup reduced BetR's
+    "Same Game Multi must have at least two legs" to a bare error number — technically an
+    error, practically unactionable."""
+    from sportsdata_mcp.http_client import HTTPClient
+
+    for field in ("reason", "message", "Message", "ErrorMessage"):
+        assert HTTPClient._error_detail({field: "the thing that went wrong"}) == (
+            "the thing that went wrong"), field
+
+
+def test_reason_still_beats_message_when_a_body_has_both():
+    """Priority is the ORDER OF DETAIL_FIELDS, not the order the provider serialised. A
+    body-order lookup would hand that choice to the vendor."""
+    from sportsdata_mcp.http_client import HTTPClient
+
+    assert HTTPClient._error_detail({"message": "generic", "reason": "specific"}) == "specific"
+
+
+def test_an_empty_detail_does_not_count_as_one():
+    """`{"message": ""}` must fall through to the raw body rather than raising an error
+    whose text is nothing at all."""
+    from sportsdata_mcp.http_client import HTTPClient
+
+    assert HTTPClient._error_detail({"message": "   ", "ErrorNo": 4500}) == ""
+
+
+def test_evidence_collects_the_which_ones_and_skips_the_scalars():
+    """PointsBet names the offending legs in a sibling list. Its `price: 0` sits right
+    next to them and must never be carried into the message — a fake quote repeated inside
+    an error is still a fake quote someone can read out."""
+    from sportsdata_mcp.http_client import HTTPClient
+
+    ev = HTTPClient._error_evidence(
+        {"success": False, "price": 0, "message": "Selection Suspended",
+         "invalidSelections": [{"marketKey": "999999999"}], "empty": []},
+        "success")
+    assert "999999999" in ev
+    assert "price" not in ev, "scalars are payload, not diagnosis"
+    assert "message" not in ev, "the detail is already the sentence"
+    assert "empty" not in ev, "an empty collection diagnoses nothing"

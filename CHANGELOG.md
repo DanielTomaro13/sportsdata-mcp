@@ -8,6 +8,28 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+### Added
+- **`betr_sgm_price`** — the fourth Australian book that will price a same game multi you
+  choose, joining `sportsbet_sgm_price`, `tab_sgm_price` and `pointsbet_sgm_price`.
+  Verified live with the correlation adjustment running both ways: Bulldogs (1.95) with
+  Under 139.5 (6.25) prices 11.00 against a naive 12.19, while the same 1.95 with Under
+  201.5 (1.10) prices 2.25 against a naive 2.145.
+
+  BetR is the best-behaved of the four on redundancy — it *refuses* a leg another leg
+  implies rather than silently dropping it — and the worst on everything else. It takes a
+  `FixedWin` from the client and uses it as a FLOOR on the answer, so sending 99.0 returns
+  `{Price: 99.0, ErrorNo: 0}`: a fabricated quote reported as a clean success. The spec
+  does not expose the field. `MarketType` is likewise required but unvalidated — dropping
+  it turns a correct 2.20 into 21. Both are documented at the parameter, not just in the
+  provider page.
+
+### Changed
+- **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The
+  detail lookup was lowercase-only, so BetR's `Message` was invisible and "Same Game Multi
+  must have at least two legs" would have reached the caller as a bare error number.
+  `reason` / `message` / `errormessage` are matched case-insensitively now, in that
+  priority order rather than in whatever order the provider serialised.
+
 ## 0.30.0 — 2026-08-27
 
 ### Added

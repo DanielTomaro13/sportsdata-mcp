@@ -505,8 +505,7 @@ class HTTPClient:
                 # presence-mode: `errors: []` / `""` / null / 0 is the SUCCESS case
                 continue
             detail = (
-                body.get("reason")
-                or body.get("message")
+                self._error_detail(body)
                 or (json.dumps(value)[:160] if sig.equals is None else json.dumps(body)[:160])
             )
             if evidence := self._error_evidence(body, sig.field):
@@ -522,6 +521,27 @@ class HTTPClient:
                 recoverable=False,
                 code="AUTH_REQUIRED" if missing else "UPSTREAM_ERROR",
             )
+
+    #: Field names that carry the human-readable half of a 200-with-an-error body.
+    #: Matched case-INSENSITIVELY, because the casing is the vendor's stack rather than a
+    #: meaningful choice: cricketdata sends `reason`, betr's .NET API sends `Message`, and
+    #: a lowercase-only lookup silently downgrades the second to a bare error number.
+    DETAIL_FIELDS = ("reason", "message", "errormessage", "error_message")
+
+    @classmethod
+    def _error_detail(cls, body: dict) -> str:
+        """The first DETAIL_FIELDS entry present, in that order — not body order.
+
+        A body carrying both `reason` and `message` should answer with `reason`, which is
+        what the lookup this replaced did. Iterating the body instead would hand that
+        choice to whatever order the provider happened to serialise.
+        """
+        folded = {k.lower(): v for k, v in body.items()}
+        for name in cls.DETAIL_FIELDS:
+            value = folded.get(name)
+            if isinstance(value, str) and value.strip():
+                return value
+        return ""
 
     @staticmethod
     def _error_evidence(body: dict, signal_field: str) -> str:
@@ -539,7 +559,7 @@ class HTTPClient:
         """
         parts = []
         for key, value in body.items():
-            if key in (signal_field, "reason", "message"):
+            if key == signal_field or key.lower() in HTTPClient.DETAIL_FIELDS:
                 continue
             if isinstance(value, (list, dict)) and value:
                 parts.append(f"{key}={json.dumps(value)}")

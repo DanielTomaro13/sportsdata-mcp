@@ -27,6 +27,13 @@ provider:
   auth:
     default:
       type: none
+  # The SGM pricer refuses in HTTP 200: {"Price":0,"ErrorNo":4527,"Message":"..."}.
+  # `Price: 0` is the reason this is declared — it sits in the field a caller asked for,
+  # so a refusal reads as a quote of zero rather than as a refusal. Presence mode is
+  # exactly right here: ErrorNo is 0 on every success, so the falsy case IS the success
+  # case, and no other BetR endpoint carries a top-level ErrorNo (checked).
+  error_signals:
+    - { field: ErrorNo }
 
 endpoints:
   # ─── betr.racing — web20-api.bluebet.com.au ────────────────────────────
@@ -194,6 +201,24 @@ endpoints:
       - { name: CategoryId, in: query, type: integer, description: "Category (competition) id." }
       - { name: SortOrder, in: query, type: integer, default: 1, description: "Sort order." }
     response_hint: "{PopSGMBetItems:[{legs:[{selectionName, price}], price}]}"
+
+  - name: betr_sgm_price
+    group: betr.sport
+    capabilities: [sport.same_game_multi, sport.prices]
+    method: POST
+    # A POST that prices and stores nothing — the same case as a GraphQL query.
+    read_only: true
+    summary: "PRICE A SAME GAME MULTI you choose — give it two or more selections from one BetR match, get the correlation-adjusted combined price. Prices combinations BetR has not pre-built (for the ones it has, see betr_pop_sgm_bet_data)."
+    base: default
+    path: /SameGameMultiPrice
+    auth: default
+    params:
+      - { name: Markets, in: body, type: json, required: true, description: 'The legs, AT LEAST TWO, all from the same match: [{"EventId": 91686300, "OutcomeId": 1, "MarketType": "WIN"}, …]. All three come from betr_master_event: EventId is `Events[].EventId` (a MARKET GROUP, not the match), OutcomeId is `Events[].Outcomes[].OutcomeId`, and MarketType is that outcome''s `MarketTypeCode`. MARKETTYPE IS LOAD-BEARING AND FAILS SILENTLY — dropping it from a verified pair turned a correct 2.20 into 21 with ErrorNo 0, so a leg missing it is quoted wrong rather than rejected. Copy the outcome''s own three fields and nothing else; in particular do NOT add `FixedWin`, which the server trusts as a floor on the answer.' }
+      - { name: MasterEventID, in: body, type: integer, description: 'The match id. IGNORED BY THE SERVER — omitting it, sending 0, and misspelling the key all returned the same price — so it neither scopes nor validates the legs; cross-match legs are caught by the leg resolver instead, as a 4527. Send it for symmetry with the site, but never rely on it to constrain anything.' }
+    response_hint: "{Price: 2.2, ErrorNo: 0}  — that is the WHOLE body on success; there is no echo of the legs. VERIFIED live 2026-08-27 against AFL Western Bulldogs v Collingwood (MasterEventId 2255977), unauthenticated.\n\nTHE PRICE IS NOT THE PRODUCT OF THE LEGS. Measured on that fixture, BetR's adjustment ran from -9.7% to +4.9% and went BOTH ways: Bulldogs (1.95) with Under 139.5 (6.25) priced 11.00 against a naive 12.19, while the same 1.95 with Under 201.5 (1.10) priced 2.25 against a naive 2.145. Never multiply the legs.\n\nDO NOT SEND `FixedWin`. The site does, and the server treats the value you send as a FLOOR on the answer: send 99.0 on any leg and the response is {Price: 99.0, ErrorNo: 0} — a fabricated quote reported as a clean success. Omitting it returned the true price in every case tested, so the field is pure downside.\n\nBETR REFUSES A REDUNDANT LEG INSTEAD OF DROPPING IT (ErrorNo 4527), which is the safe behaviour and the opposite of TAB's and PointsBet's — you cannot end up holding a shorter bet than you asked for. But 4527 IS A CATCH-ALL and its wording names only one of its three causes: a leg that another leg implies, the SAME leg twice, and legs from DIFFERENT matches all come back as 'redundant leg in bet'.\n\nOther codes seen live: 4500 = fewer than two legs (unlike Sportsbet and PointsBet, BetR will not price a single one), 4526 = impossible combination (Over 139.5 with Under 139.5), 4503 = a leg could not be resolved, usually a missing EventId or OutcomeId. All arrive as HTTP 200; the engine raises them rather than passing Price: 0 off as a quote."
+    examples:
+      - description: "Price Bulldogs to win with over 139.5 total points"
+        params: {MasterEventID: 2255977, Markets: [{EventId: 91686300, OutcomeId: 1, MarketType: "WIN"}, {EventId: 91712212, OutcomeId: 13910, MarketType: "WIN"}]}
 
   - name: betr_statwars_events
     group: betr.sport

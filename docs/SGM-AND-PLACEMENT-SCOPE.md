@@ -364,21 +364,74 @@ is never repeated back.
 
 ---
 
-# Where the four books leave the comparator
+# Bookmaker 5: BetR
 
-Three books now price a combination you choose, and the fourth prices the fair benchmark:
+**SGM pricing: SOLVED**, shipped as `betr_sgm_price`. Browser capture again, one pass, on
+the same AFL fixture as the other three.
 
-| Book | Tool | Correlation-adjusted? | Tells you when it drops a leg? |
-|---|---|---|---|
-| Sportsbet | `sportsbet_sgm_price` | yes | refuses instead of dropping |
-| TAB | `tab_sgm_price` | yes | yes — `redundantPropositions` |
-| PointsBet | `pointsbet_sgm_price` | yes | **no — nothing at all** |
-| Pinnacle | *(none needed)* | no — the price is the product | n/a |
+```
+POST /SameGameMultiPrice             (web20-api.bluebet.com.au, no auth)
+{MasterEventID: 2255977,
+ Markets: [{EventId, OutcomeId, MarketType}, …]}
+→ {Price: 2.2, ErrorNo: 0}
+```
 
-That is enough to build the thing this scope was for: quote the same legs at the three
+Leg ids come from `betr_master_event`, already shipped. Note `EventId` is a MARKET GROUP,
+not the match — the most confusable thing in BetR's id space.
+
+Verified live 2026-08-27, with the adjustment running both directions: Bulldogs (1.95) +
+Under 139.5 (6.25) → **11.00** against a naive 12.19 (−9.7%), while Bulldogs (1.95) +
+Under 201.5 (1.10) → **2.25** against a naive 2.145 (+4.9%).
+
+**BetR is the best-behaved of the four on redundancy and the worst on everything else.**
+It *refuses* a leg another leg implies (`ErrorNo 4527`) rather than silently dropping it,
+so you can never end up holding a shorter bet than you asked for — the failure TAB and
+PointsBet both have. Against that, it has two silent-wrongness paths neither of them does:
+
+1. **It trusts a price you send it.** The site puts `FixedWin` on every leg, and the
+   server uses it as a *floor* on the answer. Send 99.0 and the response is
+   `{Price: 99.0, ErrorNo: 0}` — a fabricated quote reported as a clean success. Omitting
+   the field returns the true price in every case tested, so the spec does not expose it.
+   This is the only endpoint of the four where a malformed request produces a *better*
+   quote rather than an error.
+2. **`MarketType` is required but unvalidated.** Drop it from a verified pair and 2.20
+   becomes 21, again with `ErrorNo 0`.
+
+Two smaller ones. `MasterEventID` looks like the field that scopes legs to one match and
+is **ignored entirely** — omitted, zeroed and misspelled all returned the same price. And
+`4527` is a catch-all whose wording names one of its three causes: an implied leg, a
+duplicate leg, and legs from two *different matches* all report "redundant leg in bet".
+
+**Engine change this required:** the 200-with-an-error detail lookup was case-sensitive
+and lowercase-only, so BetR's `Message` was invisible and "Same Game Multi must have at
+least two legs" would have reached the caller as a bare `4500`. `DETAIL_FIELDS` is now
+matched case-insensitively, in priority order rather than body order.
+
+**Placement:** not surveyed — see `AUTONOMOUS-PLACEMENT.md`.
+
+---
+
+# Where the five books leave the comparator
+
+Four books now price a combination you choose, and the fifth prices the fair benchmark:
+
+| Book | Tool | Correlation-adjusted? | Tells you when it drops a leg? | Silent-wrong paths |
+|---|---|---|---|---|
+| Sportsbet | `sportsbet_sgm_price` | yes | refuses instead of dropping | — |
+| TAB | `tab_sgm_price` | yes | yes — `redundantPropositions` | — |
+| PointsBet | `pointsbet_sgm_price` | yes | **no — nothing at all** | wrong `OutcomeKey` prices another bet |
+| BetR | `betr_sgm_price` | yes | refuses instead of dropping | **`FixedWin` floor; missing `MarketType`** |
+| Pinnacle | *(none needed)* | no — the price is the product | n/a | — |
+
+That is enough to build the thing this scope was for: quote the same legs at the four
 Australian books, and compare each against the independent product of Pinnacle's own
 straight prices. The gap is the book's correlation charge, and it is now measurable rather
 than assumed.
 
-The remaining books — betr, Dabble, Unibet, Entain — are worth doing for coverage, but the
+**One rule the comparator must carry**, because it now holds at three of the four books
+for three different reasons: **never report an SGM price without restating the legs that
+produced it.** TAB will tell you when it dropped one, PointsBet will not, and BetR will
+answer a malformed request with a better price than the real one.
+
+The remaining books — Dabble, Unibet, Entain — are worth doing for coverage, but the
 comparator no longer blocks on them.
