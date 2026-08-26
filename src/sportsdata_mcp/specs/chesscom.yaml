@@ -102,6 +102,8 @@ endpoints:
 
   - name: chesscom_archives
     group: chesscom.chess
+    # Deliberately untagged. A catalogue of what historical data THIS provider holds — an
+    # index of its own archive, not a comparable feed.
     capabilities: []
     summary: "The list of monthly game archives available for a player — call this before asking for a month's games."
     base: default
@@ -132,6 +134,8 @@ endpoints:
 
   - name: chesscom_club
     group: chesscom.chess
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
     capabilities: []
     summary: "A Chess.com club: description, membership count, admins and average rating."
     base: default

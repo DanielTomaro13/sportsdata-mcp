@@ -59,6 +59,9 @@ endpoints:
 
   - name: oddsapiio_bookmakers
     group: oddsapiio.odds
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
     capabilities: []
     summary: "The 274 bookmakers indexed, and whether each is currently active. VERIFIED live — works without a key."
     base: default

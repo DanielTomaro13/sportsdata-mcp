@@ -75,6 +75,10 @@ endpoints:
 
   - name: pointsbet_sport_featured_events
     group: pointsbet.sports
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Featured (highlighted) events for one sport (event headers; call pointsbet_event for markets)."
     base: default
     path: /api/v2/sports/{sportKey}/events/all-featured
@@ -111,6 +115,10 @@ endpoints:
 
   - name: pointsbet_event_search
     group: pointsbet.sports
+    # Deliberately untagged. Free-text search over THIS provider's own catalogue. Scopes
+    # and result shapes are not comparable, so a shared tag would promise substitutability
+    # that does not hold.
+    capabilities: []
     summary: "Search sport events by class / competition, optionally with historic head-to-head stats."
     base: default
     path: /api/v2/sports/search
@@ -127,6 +135,7 @@ endpoints:
 
   - name: pointsbet_events_nextup
     group: pointsbet.sports
+    capabilities: [sport.fixtures_by_date]
     summary: "Next-up sport events across all codes, ordered by start time (homepage feed)."
     base: default
     path: /api/v2/events/nextup
@@ -162,6 +171,10 @@ endpoints:
 
   - name: pointsbet_racing_featured
     group: pointsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Featured races across codes with a preview of their top runners."
     base: default
     path: /api/racing/v4/races/featured
@@ -173,6 +186,7 @@ endpoints:
 
   - name: pointsbet_racing_meeting
     group: pointsbet.racing
+    capabilities: [racing.meetings_by_date]
     summary: "One race meeting by id: venue, conditions, and the full list of its races."
     base: default
     path: /api/racing/v3/meetings/{meetingId}
@@ -225,6 +239,7 @@ endpoints:
 
   - name: pointsbet_racing_hourly_quaddie
     group: pointsbet.racing
+    capabilities: [racing.pools]
     summary: "Hourly Quaddie schedule — the four-leg quaddie races grouped by hour."
     base: default
     path: /api/racing/hourlyquaddie/v1
@@ -233,6 +248,10 @@ endpoints:
 
   - name: pointsbet_racing_tips
     group: pointsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Tipster selections for a racing code + country for today, grouped by venue."
     base: default
     path: /api/racing-tips/v1/{racingType}/{country}/today
@@ -247,6 +266,10 @@ endpoints:
 
   - name: pointsbet_racing_insights
     group: pointsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Editorial form insights for one race (may be empty / 204 before they are published)."
     base: default
     path: /api/racing-tips/v1/insights/{raceId}
@@ -257,6 +280,7 @@ endpoints:
 
   - name: pointsbet_racing_form
     group: pointsbet.racing
+    capabilities: [racing.form_guide]
     summary: "Detailed form guide for one race: tips, predicted order and per-runner history."
     base: default
     path: /api/v2/racing-form/{country}/{venue}/{meetingNumber}/{date}/{raceNumber}
@@ -304,6 +328,9 @@ dispatchers:
   - name: pointsbet_content_call
     group: pointsbet.content
     kind: templated_rest
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: |
       Fetch one of PointsBet's static CMS / navigation JSON assets from
       pointsbet.com.au by operation name (no params). These drive the site's

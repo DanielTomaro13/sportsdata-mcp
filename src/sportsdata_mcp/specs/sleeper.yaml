@@ -66,6 +66,8 @@ endpoints:
 
   - name: sleeper_user
     group: sleeper.reference
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
     capabilities: []
     summary: "Look up a Sleeper user by username (or user id) — the first step to finding someone's leagues."
     base: default
@@ -117,7 +119,7 @@ endpoints:
   # ─── sleeper.league ───────────────────────────────────────────────────
   - name: sleeper_user_leagues
     group: sleeper.league
-    capabilities: []
+    capabilities: [fantasy.league_settings]
     summary: "Every league a user is in for one sport and season — how you get a league_id from a username."
     base: default
     path: /user/{user_id}/leagues/{sport}/{season}
@@ -161,7 +163,7 @@ endpoints:
 
   - name: sleeper_league_users
     group: sleeper.league
-    capabilities: []
+    capabilities: [fantasy.rosters]
     summary: "The people in a league — display names and team names, keyed by user_id."
     base: default
     path: /league/{league_id}/users

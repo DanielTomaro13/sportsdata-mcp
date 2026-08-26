@@ -132,6 +132,10 @@ endpoints:
 
   - name: pinnacle_carousel
     group: pinnacle.sports
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Featured matchups carousel across all sports (homepage highlights)."
     base: default
     path: /matchups/carousel
@@ -151,6 +155,9 @@ endpoints:
 
   - name: pinnacle_matchup_related
     group: pinnacle.sports
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
+    capabilities: []
     summary: "Matchups related to one matchup (the same event's sub-matchups / alternative lines)."
     base: default
     path: /matchups/{matchupId}/related
@@ -184,6 +191,10 @@ endpoints:
   # ─── pinnacle.reference — enums, teasers, status ───────────────────────
   - name: pinnacle_enums
     group: pinnacle.reference
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Reference enums (countries, currencies, occupations, etc.) used across the API."
     base: default
     path: /enums
@@ -192,6 +203,10 @@ endpoints:
 
   - name: pinnacle_labels
     group: pinnacle.reference
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Per-sport market-label dictionary — decodes market keys/types into human names (moneyline → 'Match Odds', etc.)."
     base: default
     path: /labels
@@ -200,6 +215,9 @@ endpoints:
 
   - name: pinnacle_teasers
     group: pinnacle.reference
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
+    capabilities: []
     summary: "Teaser bet definitions (point teasers by sport group and team count)."
     base: default
     path: /teasers
@@ -208,6 +226,9 @@ endpoints:
 
   - name: pinnacle_status
     group: pinnacle.reference
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
+    capabilities: []
     summary: "API system status (online/offline + per-service health)."
     base: default
     path: /status

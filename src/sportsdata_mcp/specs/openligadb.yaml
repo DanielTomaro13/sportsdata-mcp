@@ -71,7 +71,7 @@ endpoints:
 
   - name: openligadb_matchdays
     group: openligadb.football
-    capabilities: []
+    capabilities: [ref.rounds]
     summary: "The matchdays ('groups') in a season — OpenLigaDB calls a Spieltag a 'group'."
     base: default
     path: /getavailablegroups/{league}/{season}
@@ -86,7 +86,7 @@ endpoints:
 
   - name: openligadb_current_matchday
     group: openligadb.football
-    capabilities: []
+    capabilities: [ref.rounds]
     summary: "Which matchday a league is currently on — resolve 'this week' without guessing."
     base: default
     path: /getcurrentgroup/{league}

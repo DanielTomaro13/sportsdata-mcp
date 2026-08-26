@@ -125,6 +125,7 @@ endpoints:
 
   - name: twitter_retweeted_by
     group: twitter.tweets
+    capabilities: [social.post_detail]
     summary: "Users who reposted a given post."
     base: default
     path: /2/tweets/{id}/retweeted_by
@@ -137,6 +138,7 @@ endpoints:
 
   - name: twitter_liking_users
     group: twitter.tweets
+    capabilities: [social.post_detail]
     summary: "Users who liked a given post."
     base: default
     path: /2/tweets/{id}/liking_users
@@ -251,6 +253,9 @@ endpoints:
 
   - name: twitter_usage
     group: twitter.trends
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
+    capabilities: []
     summary: "This project's post-read usage against its monthly cap — check before burning quota."
     base: default
     path: /2/usage/tweets

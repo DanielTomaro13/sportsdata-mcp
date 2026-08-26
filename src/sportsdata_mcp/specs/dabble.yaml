@@ -81,6 +81,7 @@ endpoints:
 
   - name: dabble_sports
     group: dabble.sport
+    capabilities: [sport.competitions_list]
     summary: "The 24 sports Dabble offers (Rugby League, Australian Rules, Football, Basketball, Cricket, Tennis, Horse Racing, …), each with id + name. Join sportId from a competition back to its sport here."
     base: default
     path: /sports

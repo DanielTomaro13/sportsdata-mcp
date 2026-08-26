@@ -99,3 +99,33 @@ endpoints:
     params:
       - { name: matchId, in: path, type: string }
 """
+
+
+def test_every_shipped_tool_declares_a_capability_decision():
+    """A tool must carry a capability tag OR an explicit `capabilities: []` waiver.
+
+    THE POINT IS THE ABSENCE OF A THIRD STATE. 173 tools once had no `capabilities`
+    key at all — not waived, just never considered — so no agent spec could reach them
+    and nothing reported them missing. They were invisible rather than deprioritised.
+
+    Omitting the key is now a build failure, so the decision gets made when the tool is
+    written, by the person who knows what it answers. `capabilities: []` is always
+    available and always fine; it just has to be deliberate, and the specs pair it with
+    a comment saying why (see fpl_set_piece_notes for the canonical example — a tag was
+    tried there, and rejected because it would have offered false alternatives).
+    """
+    import yaml
+
+    missing: list[str] = []
+    for path in sorted(packaged_specs_dir().glob("*.yaml")):
+        if path.name.startswith("_"):
+            continue
+        doc = yaml.safe_load(path.read_text()) or {}
+        for section in ("endpoints", "dispatchers"):
+            for entry in doc.get(section) or []:
+                if "capabilities" not in entry:
+                    missing.append(f"{path.name}:{entry.get('name')}")
+    assert not missing, (
+        f"{len(missing)} tool(s) declare no capability decision. Add a tag, or "
+        f"`capabilities: []` with a comment saying why nothing fits: {missing[:10]}"
+    )

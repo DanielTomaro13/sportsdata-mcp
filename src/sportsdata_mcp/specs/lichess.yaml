@@ -57,6 +57,8 @@ endpoints:
 
   - name: lichess_users_status
     group: lichess.chess
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
     capabilities: []
     summary: "Online/playing status for up to 50 users in one call — who is available right now."
     base: default

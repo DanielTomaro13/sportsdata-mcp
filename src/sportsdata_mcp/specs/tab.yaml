@@ -67,6 +67,7 @@ endpoints:
   # ─── tab.racing — racing info-service ──────────────────────────────────
   - name: tab_racing_dates
     group: tab.racing
+    capabilities: [racing.meetings_by_date]
     summary: "Racing dates that have meetings (today, tomorrow, future), each linking to its meetings."
     base: default
     path: /tab-info-service/racing/dates
@@ -94,6 +95,7 @@ endpoints:
 
   - name: tab_racing_meeting_races
     group: tab.racing
+    capabilities: [racing.meetings_by_date]
     summary: "The races for one meeting (by race type + venue code), each linking to its full racecard."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races
@@ -125,6 +127,7 @@ endpoints:
 
   - name: tab_racing_race_form
     group: tab.racing
+    capabilities: [racing.form_guide]
     summary: "Detailed form guide for one race (past performances, ratings, comments per runner)."
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}/form
@@ -169,6 +172,7 @@ endpoints:
 
   - name: tab_racing_jackpots
     group: tab.racing
+    capabilities: [racing.pools]
     summary: "Current racing jackpot / carryover pools across meetings."
     base: default
     path: /tab-info-service/racing/jackpots
@@ -304,6 +308,7 @@ endpoints:
 
   - name: tab_sports_next_to_go
     group: tab.sports
+    capabilities: [sport.fixtures_by_date]
     summary: "Sport events about to close, ordered by close time (next-to-go sports feed)."
     base: default
     path: /tab-info-service/sports/nextToGo
@@ -320,6 +325,7 @@ endpoints:
 
   - name: tab_sports_results
     group: tab.sports
+    capabilities: [sport.match_score]
     summary: "Recently resulted sport events with final scores / settled markets."
     base: default
     path: /tab-info-service/sports/results
@@ -342,6 +348,10 @@ endpoints:
 
   - name: tab_trending_props
     group: tab.sports
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Trending sports propositions / bets across the book."
     base: default
     path: /trending-bets-service/propositions-sports
@@ -353,6 +363,10 @@ endpoints:
   # ─── tab.discovery — recommendation + CMS content ──────────────────────
   - name: tab_featured_events
     group: tab.discovery
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Editorially featured events across racing + sports for the homepage carousel."
     base: default
     path: /recommendation-service/featured-events
@@ -377,6 +391,10 @@ endpoints:
 
   - name: tab_recommendation_featured
     group: tab.discovery
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Featured items for one recommendation category (e.g. Jockey Challenge, Racing Extras). 404s when the category isn't currently featured."
     base: default
     path: /recommendation-service/{category}/featured

@@ -94,6 +94,9 @@ endpoints:
 
   - name: sportsgameodds_bookmakers
     group: sportsgameodds.odds
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
     capabilities: []
     summary: "The bookmakers indexed, with the ids used in `byBookmaker`."
     base: default
@@ -137,6 +140,9 @@ endpoints:
 
   - name: sportsgameodds_stats
     group: sportsgameodds.odds
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
     capabilities: []
     summary: "The statistics catalogue — the statIDs that form the first segment of every prop oddID."
     base: default

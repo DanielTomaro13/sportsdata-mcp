@@ -45,6 +45,9 @@ endpoints:
 
   - name: racingandsports_match_list
     group: racingandsports.racing
+    # Deliberately untagged. Raw dispatcher / escape hatch — it can reach many questions,
+    # so tagging it with any one of them would misdescribe it.
+    capabilities: []
     summary: "Sports match list (the site's non-racing fixtures feed). Cloudflare-challenged from datacenter IPs."
     base: default
     path: /match-list-json
@@ -53,6 +56,9 @@ endpoints:
 
   - name: racingandsports_race_odds
     group: racingandsports.racing
+    # Deliberately untagged. Raw dispatcher / escape hatch — it can reach many questions,
+    # so tagging it with any one of them would misdescribe it.
+    capabilities: []
     summary: "Bookmaker odds for one race. Needs a per-race `token` (issued by the form-guide page); raceId + token come from the form-guide view."
     base: default
     path: /FormGuide/GetOdds

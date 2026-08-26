@@ -64,6 +64,7 @@ endpoints:
 
   - name: pl_competition
     group: premierleague.core
+    capabilities: [sport.competitions_list]
     summary: "One competition by id (8 = Premier League)."
     base: default
     path: /api/v1/competitions/{cid}
@@ -74,6 +75,7 @@ endpoints:
 
   - name: pl_structure
     group: premierleague.core
+    capabilities: [ref.rounds]
     summary: "Season structure — current phase + phase/matchweek layout for one season."
     base: default
     path: /api/v1/competitions/{cid}/seasons/{sid}/structure
@@ -85,6 +87,7 @@ endpoints:
 
   - name: pl_awards
     group: premierleague.core
+    capabilities: [sport.awards]
     summary: "Season awards — Player/Manager of the Month and other honours for a season."
     base: default
     path: /api/v1/competitions/{cid}/seasons/{sid}/awards
@@ -112,6 +115,7 @@ endpoints:
 
   - name: pl_current_gameweek
     group: premierleague.core
+    capabilities: [ref.rounds]
     summary: "The current matchweek number (static config blob)."
     base: resources
     path: /premierleague25/config/current-gameweek.json
@@ -120,6 +124,10 @@ endpoints:
 
   - name: pl_country
     group: premierleague.core
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Echoes the caller's detected country (used by the site for content geo-gating)."
     base: content
     path: /country
@@ -246,6 +254,7 @@ endpoints:
 
   - name: pl_clubs_metadata
     group: premierleague.teams
+    capabilities: [ref.teams]
     summary: "Club metadata (names, stadiums, websites, colours) for theming — static config blob."
     base: resources
     path: /premierleague25/config/clubs-metadata.json
@@ -314,6 +323,7 @@ endpoints:
 
   - name: pl_match_lineups
     group: premierleague.matches
+    capabilities: [sport.lineups]
     summary: "Match lineups — home_team/away_team players[] with formation and subs."
     base: default
     path: /api/v3/matches/{id}/lineups
@@ -335,6 +345,7 @@ endpoints:
 
   - name: pl_match_officials
     group: premierleague.matches
+    capabilities: [ref.officials]
     summary: "Match officials — referee, assistants, fourth official, VAR."
     base: default
     path: /api/v1/matches/{id}/officials
@@ -449,6 +460,10 @@ endpoints:
 
   - name: pl_metadata
     group: premierleague.players
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Generic entity metadata (external/fantasy profile links). type ∈ SDP_FOOTBALL_PLAYER, SDP_FOOTBALL_TEAM."
     base: default
     path: /api/v1/metadata/{type}/{mid}
@@ -519,6 +534,7 @@ endpoints:
 
   - name: pl_content_item
     group: premierleague.content
+    capabilities: [content.news]
     summary: "One content item by type + id (TEXT/VIDEO/PHOTO/PLAYLIST/PROMO/AUDIO)."
     base: content
     path: /content/premierleague/{type}/{lang}/{contentId}

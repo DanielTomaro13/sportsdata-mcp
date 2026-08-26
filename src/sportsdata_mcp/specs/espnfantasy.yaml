@@ -328,7 +328,7 @@ endpoints:
 
   - name: espnfantasy_status
     group: espnfantasy.league
-    capabilities: []
+    capabilities: [fantasy.league_settings]
     summary: "League lifecycle status — current matchup period, latest scoring period, whether the season is active, waiver process dates."
     base: default
     path: /{game}/seasons/{seasonId}/segments/0/leagues/{leagueId}
@@ -345,6 +345,8 @@ endpoints:
 
   - name: espnfantasy_nav
     group: espnfantasy.league
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
     capabilities: []
     summary: "Lightweight nav payload — league name, size and the current user's team, for cheap orientation before a heavy call."
     base: default

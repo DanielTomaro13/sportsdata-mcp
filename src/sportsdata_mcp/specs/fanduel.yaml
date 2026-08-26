@@ -43,6 +43,9 @@ endpoints:
   # ─── fanduel.racing — service.racing.fanduel.com (REST aux) ────────────
   - name: fanduel_racing_messages
     group: fanduel.racing
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Site message strings (disclaimers, informational copy) for a namespace."
     base: racing_service
     path: /capi/v1/messages/namespace
@@ -56,6 +59,9 @@ endpoints:
 
   - name: fanduel_racing_quicklinks
     group: fanduel.racing
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Homepage quick-link tiles for the racing site."
     base: racing_service
     path: /pes/v1/homepage/quicklinks

@@ -57,6 +57,7 @@ endpoints:
   # and per-sport year guidance never drift.
   - name: supercoach_settings
     group: supercoach.fantasy
+    capabilities: [fantasy.league_settings]
     summary: "Competition state for one game+season: competition.current_round (last round scored), next_round (the one to project), is_lockout / lockout_start / lockout_end, is_closed, num_users, num_leagues. Call this FIRST to learn which round to pass to supercoach_players. Tiny (~15 KB)."
     base: default
     path: /{year}/api/{sport}/{mode}/v1/settings
@@ -165,6 +166,7 @@ endpoints:
   # ─── reference: the game's leagues ────────────────────────────────────
   - name: supercoach_leagues
     group: supercoach.fantasy
+    capabilities: [fantasy.league_settings]
     summary: "The game's public/featured leagues for one sport+season+mode — each with name, code, type, competition_id, experience, description and sponsor metadata. Useful to discover competition_ids and the league types on offer."
     base: default
     path: /{year}/api/{sport}/{mode}/v1/leagues

@@ -34,6 +34,7 @@ endpoints:
 
   - name: sportsbet_racing_event_meeting
     group: sportsbet.racing
+    capabilities: [racing.meetings_by_date]
     summary: "Meeting context for one racing event (parent meeting + sibling races)."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/Events/{eventId}/Meeting
@@ -82,6 +83,7 @@ endpoints:
 
   - name: sportsbet_racing_competition
     group: sportsbet.racing
+    capabilities: [racing.meetings_by_date]
     summary: "Racing competition (meeting) detail by competition id."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/Competitions/{competitionId}
@@ -114,6 +116,10 @@ endpoints:
 
   - name: sportsbet_racing_best_bets
     group: sportsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Editorially-selected best bets across racing."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/BestBets
@@ -122,6 +128,10 @@ endpoints:
 
   - name: sportsbet_racing_best_bets_with_events
     group: sportsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Best bets with their full parent event objects inlined."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/BestBetsWithEvents
@@ -130,6 +140,10 @@ endpoints:
 
   - name: sportsbet_racing_top_jockeys
     group: sportsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Top jockeys hub (leading jockeys and their rides today)."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/JockeyHub/TopJockeys
@@ -138,6 +152,10 @@ endpoints:
 
   - name: sportsbet_racing_challenges
     group: sportsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "All racing challenges / promotions feed."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/Challenges/All
@@ -146,6 +164,10 @@ endpoints:
 
   - name: sportsbet_racing_megabets
     group: sportsbet.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Racing Megabets (large multi suggestions across races)."
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/Megabets
@@ -180,6 +202,7 @@ endpoints:
   # ─── sportsbet.sports (14) — sportsbook-sports service ─────────────────
   - name: sportsbet_upcoming_events
     group: sportsbet.sports
+    capabilities: [sport.fixtures_by_date]
     summary: "Upcoming sport events across all codes (homepage upcoming feed)."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/UpComingEvents
@@ -208,6 +231,9 @@ endpoints:
 
   - name: sportsbet_nav_hierarchy
     group: sportsbet.sports
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Sports navigation hierarchy (class → competition tree for menus)."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/NavHierarchy
@@ -278,6 +304,7 @@ endpoints:
 
   - name: sportsbet_event_results
     group: sportsbet.sports
+    capabilities: [sport.match_score]
     summary: "Results for a finished sport event (final score + settled markets)."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/Events/{eventId}/Results
@@ -304,6 +331,7 @@ endpoints:
 
   - name: sportsbet_competition_matches
     group: sportsbet.sports
+    capabilities: [sport.fixtures_by_date]
     summary: "Match-type events for a sport competition."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}/Events/Matches
@@ -314,6 +342,7 @@ endpoints:
 
   - name: sportsbet_competition_outrights
     group: sportsbet.sports
+    capabilities: [sport.event_markets]
     summary: "Outright (futures) events for a sport competition."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}/Events/Outrights
@@ -324,6 +353,7 @@ endpoints:
 
   - name: sportsbet_sport_resulted_events
     group: sportsbet.sports
+    capabilities: [sport.match_score]
     summary: "Resulted (finished) events for a sport competition + class + date."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/Competitions/{competitionId}/ResultedEvents
@@ -336,6 +366,9 @@ endpoints:
 
   - name: sportsbet_class_coupon
     group: sportsbet.sports
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Coupon (grouped markets) for a whole sport class."
     base: default
     path: /sportsbook-sports/Sportsbook/Sports/Class/{classId}/Coupon
@@ -347,6 +380,7 @@ endpoints:
   # ─── sportsbet.results (2) — sportsbook-results service ────────────────
   - name: sportsbet_results_classes
     group: sportsbet.results
+    capabilities: [sport.competitions_list]
     summary: "Sport classes that have results available for a date."
     base: default
     path: /sportsbook-results/Sportsbook/Results/Classes
@@ -360,6 +394,7 @@ endpoints:
 
   - name: sportsbet_results_competitions
     group: sportsbet.results
+    capabilities: [sport.competitions_list]
     summary: "Competitions with results for a sport class on a date."
     base: default
     path: /sportsbook-results/Sportsbook/Results/Sports/Classes/{classId}/Competitions
@@ -372,6 +407,7 @@ endpoints:
   # ─── sportsbet.cross (12) — sports-form / media / cms / misc services ──
   - name: sportsbet_event_status
     group: sportsbet.cross
+    capabilities: [sport.in_play]
     summary: "Live status flags for a sport event (suspended, in-play, settled)."
     base: default
     path: /sports-form/event-status/{eventId}
@@ -393,6 +429,7 @@ endpoints:
 
   - name: sportsbet_track_report
     group: sportsbet.cross
+    capabilities: [racing.track_conditions]
     summary: "Track report (going, rail, weather) for a racing meeting on a date."
     base: default
     path: /media/nomad/trackreport
@@ -479,6 +516,9 @@ endpoints:
 
   - name: sportsbet_page_content
     group: sportsbet.cross
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Homepage tab content (sports or racing landing modules)."
     base: default
     path: /page-content/homepage/{tab}
@@ -491,6 +531,9 @@ endpoints:
 
   - name: sportsbet_safer_gambling_message
     group: sportsbet.cross
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Current safer-gambling message block for the site."
     base: default
     path: /page-content/safer_gambling_message
@@ -512,6 +555,9 @@ endpoints:
 
   - name: sportsbet_cms_settings
     group: sportsbet.cross
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Global CMS settings / feature flags for the app."
     base: default
     path: /cms/app/settings
@@ -520,6 +566,9 @@ endpoints:
 
   - name: sportsbet_cms_messages
     group: sportsbet.cross
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Sitewide CMS messages (banners, notices)."
     base: default
     path: /cms/app/messages
@@ -531,6 +580,9 @@ dispatchers:
   - name: sportsbet_graphql_call
     group: sportsbet.graphql
     kind: graphql_persisted
+    # Deliberately untagged. Raw dispatcher / escape hatch — it can reach many questions,
+    # so tagging it with any one of them would misdescribe it.
+    capabilities: []
     summary: |
       Call any of Sportsbet's persisted GraphQL operations against
       www.sportsbet.com.au/apigw/sportsbook/graph by name + variables. Hashes

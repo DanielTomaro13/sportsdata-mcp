@@ -76,6 +76,7 @@ endpoints:
   # ─── datagolf.predictions — rankings, model preds, live stats ─────────
   - name: datagolf_rankings
     group: datagolf.predictions
+    capabilities: [sport.rankings]
     summary: "Data Golf player rankings (top ~500) with skill estimate and OWGR rank."
     base: default
     path: /preds/get-dg-rankings
@@ -86,6 +87,7 @@ endpoints:
 
   - name: datagolf_pre_tournament
     group: datagolf.predictions
+    capabilities: [stats.model_predictions]
     summary: "Pre-tournament model predictions — win / top-5/10/20 / make-cut probabilities per player."
     base: default
     path: /preds/pre-tournament
@@ -162,6 +164,7 @@ endpoints:
 
   - name: datagolf_pre_tournament_archive
     group: datagolf.predictions
+    capabilities: [stats.model_predictions]
     summary: "Archived pre-tournament predictions for a past event (what the model said beforehand)."
     base: default
     path: /preds/pre-tournament-archive
@@ -257,6 +260,9 @@ endpoints:
   # ─── datagolf.historical — raw data, historical odds, DFS results ──────
   - name: datagolf_hist_event_list
     group: datagolf.historical
+    # Deliberately untagged. A catalogue of what historical data THIS provider holds — an
+    # index of its own archive, not a comparable feed.
+    capabilities: []
     summary: "List of historical events that have raw round-level data available (event_id + year to pass to the rounds feed)."
     base: default
     path: /historical-raw-data/event-list
@@ -283,6 +289,9 @@ endpoints:
 
   - name: datagolf_hist_results_event_list
     group: datagolf.historical
+    # Deliberately untagged. A catalogue of what historical data THIS provider holds — an
+    # index of its own archive, not a comparable feed.
+    capabilities: []
     summary: "List of tournaments with historical event-level results data (finishes/earnings/points) — the id lookup for datagolf_hist_results."
     base: default
     path: /historical-event-data/event-list
@@ -294,6 +303,9 @@ endpoints:
 
   - name: datagolf_hist_results
     group: datagolf.historical
+    # Deliberately untagged. A catalogue of what historical data THIS provider holds — an
+    # index of its own archive, not a comparable feed.
+    capabilities: []
     summary: "Historical event-level results for a past tournament — finish position, earnings, FedExCup points and DG Points per player."
     base: default
     path: /historical-event-data/events
@@ -307,6 +319,9 @@ endpoints:
 
   - name: datagolf_hist_odds_event_list
     group: datagolf.historical
+    # Deliberately untagged. A catalogue of what historical data THIS provider holds — an
+    # index of its own archive, not a comparable feed.
+    capabilities: []
     summary: "List of historical events that have archived bookmaker odds available."
     base: default
     path: /historical-odds/event-list
@@ -318,6 +333,7 @@ endpoints:
 
   - name: datagolf_hist_outrights
     group: datagolf.historical
+    capabilities: [stats.closing_odds]
     summary: "Historical opening/closing outright odds for a past event from one sportsbook."
     base: default
     path: /historical-odds/outrights
@@ -334,6 +350,7 @@ endpoints:
 
   - name: datagolf_hist_matchups
     group: datagolf.historical
+    capabilities: [stats.closing_odds]
     summary: "Historical matchup / 3-ball odds for a past event from one sportsbook."
     base: default
     path: /historical-odds/matchups
@@ -349,6 +366,9 @@ endpoints:
 
   - name: datagolf_hist_dfs_event_list
     group: datagolf.historical
+    # Deliberately untagged. A catalogue of what historical data THIS provider holds — an
+    # index of its own archive, not a comparable feed.
+    capabilities: []
     summary: "List of historical events with DFS salary/ownership/points data for a site."
     base: default
     path: /historical-dfs-data/event-list

@@ -140,6 +140,9 @@ endpoints:
 
   - name: yahoo_game_stat_categories
     group: yahoo.reference
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
     capabilities: []
     summary: "Every stat category a game scores, with its id — the lookup that makes scoring settings and player stats readable."
     base: default
@@ -155,6 +158,9 @@ endpoints:
 
   - name: yahoo_game_roster_positions
     group: yahoo.reference
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
     capabilities: []
     summary: "The roster positions a game defines (QB, RB, FLEX, BN, IR…) — needed to build a valid lineup write."
     base: default

@@ -90,7 +90,7 @@ endpoints:
 
   - name: motogp_sessions
     group: motogp.racing
-    capabilities: []
+    capabilities: [ref.rounds]
     summary: "The sessions for one class at one event — practice, qualifying, sprint and race."
     base: default
     path: /results/sessions

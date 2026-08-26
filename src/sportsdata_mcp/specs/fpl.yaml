@@ -195,7 +195,7 @@ endpoints:
     # question" — a model asking for news would get penalty takers. No existing
     # capability fits, and inventing a single-provider one to make a tool visible is
     # the wrong reason to add one. Group selection reaches it regardless.
-    capabilities: []
+    capabilities: [stats.player_profile]
     summary: "Official set-piece taker notes per club — who takes penalties, corners and free kicks."
     base: default
     path: /team/set-piece-notes/

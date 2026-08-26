@@ -185,6 +185,9 @@ endpoints:
 
   - name: kalshi_milestones
     group: kalshi.events
+    # Deliberately untagged. Kalshi's own entity registry (the ids its markets resolve
+    # against). No other venue publishes a comparable registry.
+    capabilities: []
     summary: "Milestones — dated catalysts (data releases, games, decisions) linked to the event tickers they resolve."
     base: default
     path: /milestones
@@ -223,6 +226,9 @@ endpoints:
 
   - name: kalshi_structured_targets
     group: kalshi.events
+    # Deliberately untagged. Kalshi's own entity registry (the ids its markets resolve
+    # against). No other venue publishes a comparable registry.
+    capabilities: []
     summary: "Structured targets — Kalshi's entity registry (players, companies, people) that markets resolve against. Paginated by cursor; page size via page_size."
     base: default
     path: /structured_targets
@@ -235,6 +241,9 @@ endpoints:
 
   - name: kalshi_structured_target
     group: kalshi.events
+    # Deliberately untagged. Kalshi's own entity registry (the ids its markets resolve
+    # against). No other venue publishes a comparable registry.
+    capabilities: []
     summary: "One structured target (entity) by id."
     base: default
     path: /structured_targets/{id}
@@ -246,6 +255,9 @@ endpoints:
   # ─── kalshi.exchange — status / schedule / announcements ─────────────
   - name: kalshi_exchange_status
     group: kalshi.exchange
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
+    capabilities: []
     summary: "Is the exchange up and trading right now."
     base: default
     path: /exchange/status
@@ -254,6 +266,9 @@ endpoints:
 
   - name: kalshi_exchange_schedule
     group: kalshi.exchange
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
+    capabilities: []
     summary: "Standard trading hours + maintenance windows."
     base: default
     path: /exchange/schedule
@@ -262,6 +277,9 @@ endpoints:
 
   - name: kalshi_exchange_announcements
     group: kalshi.exchange
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
+    capabilities: []
     summary: "Active exchange-wide announcements."
     base: default
     path: /exchange/announcements

@@ -44,6 +44,7 @@ endpoints:
   # ─── openf1.reference — calendar, sessions, drivers ───────────────────
   - name: openf1_meetings
     group: openf1.reference
+    capabilities: [sport.fixtures_by_date]
     summary: "Grand Prix weekends (meetings). Filter by year/country, or pass meeting_key=latest for the current event."
     base: default
     path: /meetings
@@ -104,6 +105,7 @@ endpoints:
 
   - name: openf1_starting_grid
     group: openf1.results
+    capabilities: [stats.player_match]
     summary: "Race starting grid — per-driver grid position and lap time. (Sparse feed: OpenF1 returns a 404 'No results found' for sessions where no grid is published, which is currently most of them.)"
     base: default
     path: /starting_grid
@@ -171,6 +173,7 @@ endpoints:
 
   - name: openf1_pit
     group: openf1.timing
+    capabilities: [stats.player_match]
     summary: "Pit stops — lap, total time in pit lane and stationary stop duration per driver."
     base: default
     path: /pit
@@ -184,6 +187,7 @@ endpoints:
 
   - name: openf1_stints
     group: openf1.timing
+    capabilities: [stats.player_match]
     summary: "Tyre stints — compound and tyre age per driving period (lap_start → lap_end)."
     base: default
     path: /stints
@@ -281,6 +285,9 @@ endpoints:
 
   - name: openf1_weather
     group: openf1.live
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
+    capabilities: []
     summary: "Track weather, updated ~once a minute — air/track temperature, humidity, pressure, wind, rainfall."
     base: default
     path: /weather

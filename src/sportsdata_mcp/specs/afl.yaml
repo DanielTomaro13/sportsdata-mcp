@@ -94,6 +94,7 @@ endpoints:
 
   - name: afl_rounds_list
     group: afl.public.core
+    capabilities: [ref.rounds]
     summary: "List rounds for a comp season (incl. byes, start/end times)."
     base: public
     path: /afl/v2/compseasons/{compSeasonId}/rounds
@@ -143,6 +144,7 @@ endpoints:
 
   - name: afl_clubs_list
     group: afl.public.core
+    capabilities: [ref.teams]
     summary: "List AFL/AFLW clubs (32)."
     base: public
     path: /afl/v2/clubs
@@ -154,6 +156,7 @@ endpoints:
 
   - name: afl_club_get
     group: afl.public.core
+    capabilities: [ref.teams]
     summary: "Get a single club by id."
     base: public
     path: /afl/v2/clubs/{clubId}
@@ -276,6 +279,9 @@ endpoints:
 
   - name: afl_matches_idmap
     group: afl.public.core
+    # Deliberately untagged. Cross-reference between this provider's own id systems.
+    # Meaningless anywhere else.
+    capabilities: []
     summary: "Map every match providerId (CD_M*) to its integer id (~48 KB)."
     base: public
     path: /afl/v2/matches/idmap
@@ -284,6 +290,9 @@ endpoints:
 
   - name: afl_players_idmap
     group: afl.public.core
+    # Deliberately untagged. Cross-reference between this provider's own id systems.
+    # Meaningless anywhere else.
+    capabilities: []
     summary: "Map every player providerId (CD_I*) to its integer id (~98 KB, 17k+)."
     base: public
     path: /afl/v2/players/idmap
@@ -293,6 +302,7 @@ endpoints:
   # ─── afl.public.broadcasting (9) ───────────────────────────────────
   - name: afl_broadcast_regions
     group: afl.public.broadcasting
+    capabilities: [broadcast.channels]
     summary: "List broadcast regions (26) with timezones."
     base: public
     path: /broadcasting/regions
@@ -304,6 +314,7 @@ endpoints:
 
   - name: afl_broadcast_region_get
     group: afl.public.broadcasting
+    capabilities: [broadcast.channels]
     summary: "Get a single broadcast region by id."
     base: public
     path: /broadcasting/regions/{regionId}
@@ -463,6 +474,7 @@ endpoints:
 
   - name: afl_content_photo_list
     group: afl.public.content
+    capabilities: [content.photo]
     summary: "List photo content."
     base: public
     path: /content/afl/photo/EN
@@ -477,6 +489,7 @@ endpoints:
 
   - name: afl_content_photo_get
     group: afl.public.content
+    capabilities: [content.photo]
     summary: "Get a single photo content item by id."
     base: public
     path: /content/afl/photo/EN/{id}

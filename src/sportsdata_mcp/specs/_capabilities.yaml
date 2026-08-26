@@ -193,6 +193,36 @@ capabilities:
     description: "Trending topics by location."
     single_provider: true
 
+  # ─── Structure, officials, honours ───────────────────────────────────
+  - id: ref.rounds
+    description: "Round / matchweek / session structure within a season, and which one is current."
+  - id: ref.officials
+    description: "Match officials — umpires, referees, assistants and official scorers."
+  - id: sport.lineups
+    description: "Confirmed or projected starting lineups for a fixture, with formation and bench."
+  - id: sport.awards
+    description: "Award and honour recipients (player of the month, MVP, hall of fame)."
+  - id: sport.cash_out
+    description: "Cash-out availability and valuation for open positions."
+    single_provider: true
+
+  # ─── Racing depth ────────────────────────────────────────────────────
+  - id: racing.form_guide
+    description: "Per-runner form history for one race — past runs, ratings and comments."
+  - id: racing.pools
+    description: "Tote pool sizes, jackpots and carryovers."
+  - id: racing.price_history
+    description: "Fixed-odds fluctuation history per runner (price movements over time)."
+    single_provider: true
+  - id: racing.track_conditions
+    description: "Track report for a meeting — going, rail position and weather."
+    single_provider: true
+
+  # ─── Media ───────────────────────────────────────────────────────────
+  - id: content.photo
+    description: "Editorial photo and image content items."
+    single_provider: true
+
   # ─── Meta (used by the template/example only) ────────────────────────
   - id: sport.example
     description: "Placeholder capability for the template spec and tests; not a real question."

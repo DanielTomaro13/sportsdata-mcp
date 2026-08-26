@@ -132,6 +132,10 @@ endpoints:
 
   - name: polymarket_tags
     group: polymarket.gamma
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Tag catalogue (Sports, Politics, Crypto, NBA, …) — tag ids feed the tag_id filters."
     base: default
     path: /tags
@@ -170,6 +174,7 @@ endpoints:
 
   - name: polymarket_sports
     group: polymarket.gamma
+    capabilities: [sport.competitions_list]
     summary: "Sports metadata catalogue — each sport with its tag ids, league/resolution links and series, the entry point for sports markets (feed tag_id into polymarket_markets/polymarket_events)."
     base: default
     path: /sports
@@ -178,6 +183,10 @@ endpoints:
 
   - name: polymarket_search
     group: polymarket.gamma
+    # Deliberately untagged. Free-text search over THIS provider's own catalogue. Scopes
+    # and result shapes are not comparable, so a shared tag would promise substitutability
+    # that does not hold.
+    capabilities: []
     summary: "Site-wide search over events/markets/profiles by free-text query."
     base: default
     path: /public-search
@@ -278,6 +287,7 @@ endpoints:
 
   - name: polymarket_holders
     group: polymarket.data
+    capabilities: [prediction.trades]
     summary: "Top holders of a market's outcome tokens."
     base: data
     path: /holders

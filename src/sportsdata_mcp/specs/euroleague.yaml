@@ -93,7 +93,7 @@ endpoints:
 
   - name: euroleague_rounds
     group: euroleague.basketball
-    capabilities: []
+    capabilities: [ref.rounds]
     summary: "The rounds (matchdays) in a season, with their date windows."
     base: default
     path: /competitions/{competition}/seasons/{season}/rounds

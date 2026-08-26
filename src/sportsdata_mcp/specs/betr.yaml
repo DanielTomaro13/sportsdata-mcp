@@ -44,6 +44,7 @@ endpoints:
 
   - name: betr_todays_races
     group: betr.racing
+    capabilities: [sport.fixtures_by_date]
     summary: "Today's races grouped by code (Thoroughbred / Greyhound / Harness), for the homepage."
     base: default
     path: /TodaysRacesForHomePageV2
@@ -79,6 +80,7 @@ endpoints:
 
   - name: betr_race_form
     group: betr.racing
+    capabilities: [racing.form_guide]
     summary: "Detailed form guide for one race (runner history, comments, ratings)."
     base: default
     path: /RaceForm
@@ -90,6 +92,7 @@ endpoints:
 
   - name: betr_race_flucs
     group: betr.racing
+    capabilities: [racing.price_history]
     summary: "Price fluctuation history per runner for one race (fixed-odds movements)."
     base: default
     path: /flucs
@@ -100,6 +103,7 @@ endpoints:
 
   - name: betr_market_movers
     group: betr.racing
+    capabilities: [racing.price_history]
     summary: "Racing market movers — runners whose fixed prices are shortening/drifting."
     base: default
     path: /MarketMovers
@@ -108,6 +112,10 @@ endpoints:
 
   - name: betr_fav4
     group: betr.racing
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Featured 'Fav 4' upcoming races for a race-type filter."
     base: default
     path: /Fav4
@@ -189,6 +197,10 @@ endpoints:
 
   - name: betr_statwars_events
     group: betr.sport
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Statwars master events (head-to-head stats promo events)."
     base: default
     path: /StatwarsMasterEvents
@@ -216,6 +228,10 @@ endpoints:
 
   - name: betr_featured_racing
     group: betr.content
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Editorially featured racing events (carousel order, promo titles)."
     base: default
     path: /ContentfulFeaturedEventRacing
@@ -224,6 +240,9 @@ endpoints:
 
   - name: betr_popular_market_links
     group: betr.content
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Popular market quick-links (specials, featured competitions) for navigation."
     base: default
     path: /PopularMarketLinks

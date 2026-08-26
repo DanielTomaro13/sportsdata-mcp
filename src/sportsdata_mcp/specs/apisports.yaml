@@ -72,6 +72,8 @@ endpoints:
   # ─── account ──────────────────────────────────────────────────────────
   - name: apisports_status
     group: apisports.account
+    # Deliberately untagged. Health, quota or trading-window state for this provider's own
+    # API. Operational, not a sports question.
     capabilities: []
     summary: "Your subscription and how much of today's quota is left. Costs no quota — call it first when something returns empty."
     base: football

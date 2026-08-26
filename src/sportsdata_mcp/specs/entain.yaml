@@ -32,6 +32,9 @@ endpoints:
   # ─── entain.rest (13) — go-micro JSON gateway on api.ladbrokes.com.au ──
   - name: entain_quicklinks_list
     group: entain.rest
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "Navigation quick-links (racing/sports nav tiles)."
     base: default
     path: /v2/domain-featured/domain-featured-v2/ListQuickLinks
@@ -45,6 +48,10 @@ endpoints:
 
   - name: entain_featured_slider
     group: entain.rest
+    # Deliberately untagged. Editorial opinion from ONE book (tips, featured picks, best
+    # bets). Not interchangeable with another book's opinion — asking for "tips" should
+    # return a named source, never a blend of them.
+    capabilities: []
     summary: "Featured slider events (homepage hero carousel)."
     base: default
     path: /v2/domain-featured/DomainFeatured/featured-slider-events
@@ -95,6 +102,10 @@ endpoints:
 
   - name: entain_racing_search
     group: entain.rest
+    # Deliberately untagged. Free-text search over THIS provider's own catalogue. Scopes
+    # and result shapes are not comparable, so a shared tag would promise substitutability
+    # that does not hold.
+    capabilities: []
     summary: "Racing search facets (barrier/country/jockey/trainer buckets); optional full-text."
     base: default
     path: /v2/racing/search
@@ -143,6 +154,7 @@ endpoints:
 
   - name: entain_event_market_rules
     group: entain.rest
+    capabilities: [sport.event_markets]
     summary: "Settlement rules for every named market, indexed by rule id."
     base: default
     path: /v2/event/MarketRules
@@ -151,6 +163,7 @@ endpoints:
 
   - name: entain_event_market_type_groups
     group: entain.rest
+    capabilities: [sport.event_markets]
     summary: "Market-tab group definitions for a sport category (lower priority renders first)."
     base: default
     path: /v2/event/MarketTypeGroupsByCategoryID
@@ -161,6 +174,7 @@ endpoints:
 
   - name: entain_event_market_type_group_maps
     group: entain.rest
+    capabilities: [sport.event_markets]
     summary: "Join table between market types and market-type groups (dedup by pair)."
     base: default
     path: /v2/event/MarketTypeGroupMapsByCategoryID
@@ -171,6 +185,9 @@ endpoints:
 
   - name: entain_metadata_by_url
     group: entain.rest
+    # Deliberately untagged. Site chrome — navigation trees, CMS copy and feature flags.
+    # Provider-specific by nature: no other book answers "what is in this one's menu".
+    capabilities: []
     summary: "SEO metadata (page title) for a given URL path."
     base: default
     path: /v2/metadata/GetByURL

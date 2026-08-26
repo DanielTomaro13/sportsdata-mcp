@@ -135,6 +135,7 @@ endpoints:
 
   - name: seriea_match_lineups
     group: seriea.season
+    capabilities: [sport.lineups]
     summary: "Lineups for one match — per side: tacticalFormation, the fielded XI (with average pitch positions, captain/GK flags, per-player events), the bench, and staff. Discover the matchId from seriea_matches."
     base: default
     path: /seasons/{seasonId}/matches/{matchId}/lineups

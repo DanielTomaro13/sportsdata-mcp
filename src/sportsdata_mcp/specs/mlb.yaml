@@ -37,6 +37,7 @@ endpoints:
   # ─── mlb.reference — catalogues (sports, leagues, teams, players, venues) ─
   - name: mlb_sports
     group: mlb.reference
+    capabilities: [sport.competitions_list]
     summary: "Sport catalogue — the sportId lookup (1 = Major League Baseball; others are MiLB levels, college, international)."
     base: default
     path: /sports
@@ -60,6 +61,7 @@ endpoints:
 
   - name: mlb_divisions
     group: mlb.reference
+    capabilities: [sport.competitions_list]
     summary: "Division catalogue (AL/NL East, Central, West) with their league + sport links."
     base: default
     path: /divisions
@@ -311,6 +313,10 @@ endpoints:
 
   - name: mlb_awards_list
     group: mlb.extra
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Award definitions catalogue — every awardId with name, description and sport (the id lookup for mlb_awards)."
     base: default
     path: /awards
@@ -322,6 +328,7 @@ endpoints:
 
   - name: mlb_awards
     group: mlb.extra
+    capabilities: [sport.awards]
     summary: "Recipients of an award — e.g. MLBHOF (Hall of Fame), ALMVP/NLMVP, ALCY/NLCY (Cy Young), ALROY/NLROY (Rookie of the Year). Discover awardIds with mlb_awards_list."
     base: default
     path: /awards/{awardId}/recipients
@@ -334,6 +341,9 @@ endpoints:
 
   - name: mlb_attendance
     group: mlb.extra
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
+    capabilities: []
     summary: "Attendance figures for a team or league/season — per-game and aggregate home/away/total gate."
     base: default
     path: /attendance
@@ -374,6 +384,7 @@ endpoints:
 
   - name: mlb_team_personnel
     group: mlb.reference
+    capabilities: [ref.coaches]
     summary: "A team's front-office / non-uniformed personnel."
     base: default
     path: /teams/{teamId}/personnel
@@ -398,6 +409,7 @@ endpoints:
 
   - name: mlb_teams_history
     group: mlb.reference
+    capabilities: [ref.teams]
     summary: "Franchise history (name/league/division changes over time) for one or more teams."
     base: default
     path: /teams/history
@@ -423,6 +435,7 @@ endpoints:
 
   - name: mlb_team_uniforms
     group: mlb.reference
+    capabilities: [ref.teams]
     summary: "Uniform assets / descriptions for one or more teams."
     base: default
     path: /uniforms/team
@@ -434,6 +447,7 @@ endpoints:
 
   - name: mlb_conferences
     group: mlb.reference
+    capabilities: [sport.competitions_list]
     summary: "Conference catalogue (used by some leagues / amateur levels)."
     base: default
     path: /conferences
@@ -509,6 +523,7 @@ endpoints:
 
   - name: mlb_schedule_postseason_series
     group: mlb.schedule
+    capabilities: [sport.fixtures_by_date]
     summary: "Postseason series view — games grouped by series (e.g. ALDS, NLCS, World Series)."
     base: default
     path: /schedule/postseason/series
@@ -520,6 +535,7 @@ endpoints:
 
   - name: mlb_schedule_postseason_tunein
     group: mlb.schedule
+    capabilities: [broadcast.schedule, sport.fixtures_by_date]
     summary: "Postseason broadcast 'tune-in' info (where/when to watch playoff games)."
     base: default
     path: /schedule/postseason/tuneIn
@@ -531,6 +547,7 @@ endpoints:
 
   - name: mlb_schedule_tied
     group: mlb.schedule
+    capabilities: [sport.fixtures_by_date]
     summary: "Tie-breaker / tied games for a season."
     base: default
     path: /schedule/games/tied
@@ -591,6 +608,7 @@ endpoints:
 
   - name: mlb_game_changes
     group: mlb.game
+    capabilities: [sport.fixtures_by_date]
     summary: "Games changed since a timestamp — a polling helper to detect updated games."
     base: default
     path: /game/changes
@@ -603,6 +621,7 @@ endpoints:
 
   - name: mlb_game_uniforms
     group: mlb.game
+    capabilities: [ref.teams]
     summary: "Uniforms worn in one or more games."
     base: default
     path: /uniforms/game
@@ -660,6 +679,9 @@ endpoints:
 
   - name: mlb_game_pace
     group: mlb.stats
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
+    capabilities: []
     summary: "Game-pace / tempo metrics for a season (pitches per game, time of game, etc.), optionally by team."
     base: default
     path: /gamePace
@@ -672,6 +694,9 @@ endpoints:
 
   - name: mlb_high_low
     group: mlb.stats
+    # Deliberately untagged. Provider-specific detail with no cross-provider counterpart
+    # in the catalogue.
+    capabilities: []
     summary: "High / low stat records for an org level — top and bottom performances for a sortStat in a season."
     base: default
     path: /highLow/{orgType}
@@ -703,6 +728,7 @@ endpoints:
 
   - name: mlb_free_agents
     group: mlb.extra
+    capabilities: [sport.transactions]
     summary: "Free agents for a season — players and their from/to-team signing info."
     base: default
     path: /people/freeAgents
@@ -715,6 +741,7 @@ endpoints:
 
   - name: mlb_draft_prospects
     group: mlb.extra
+    capabilities: [sport.draft]
     summary: "Draft prospects for a year (the pre-draft prospect board)."
     base: default
     path: /draft/prospects/{year}
@@ -727,6 +754,7 @@ endpoints:
 
   - name: mlb_jobs
     group: mlb.extra
+    capabilities: [ref.officials]
     summary: "People holding a job type for a season — jobType e.g. UMPR (umpires), SCORER, DATACASTER, BROADCASTER, COACH."
     base: default
     path: /jobs
@@ -739,6 +767,7 @@ endpoints:
 
   - name: mlb_umpires
     group: mlb.extra
+    capabilities: [ref.officials]
     summary: "Current umpire crew list."
     base: default
     path: /jobs/umpires
@@ -750,6 +779,7 @@ endpoints:
 
   - name: mlb_datacasters
     group: mlb.extra
+    capabilities: [ref.officials]
     summary: "Datacaster (official scorer-adjacent stringer) assignments."
     base: default
     path: /jobs/datacasters
@@ -761,6 +791,7 @@ endpoints:
 
   - name: mlb_official_scorers
     group: mlb.extra
+    capabilities: [ref.officials]
     summary: "Official scorer assignments."
     base: default
     path: /jobs/officialScorers
@@ -772,6 +803,9 @@ endpoints:
 
   - name: mlb_home_run_derby
     group: mlb.extra
+    # Deliberately untagged. One-off league events with no equivalent at any other
+    # provider.
+    capabilities: []
     summary: "Home Run Derby bracket + results for a derby gamePk."
     base: default
     path: /homeRunDerby/{gamePk}
@@ -782,6 +816,9 @@ endpoints:
 
   - name: mlb_allstar_ballot
     group: mlb.extra
+    # Deliberately untagged. One-off league events with no equivalent at any other
+    # provider.
+    capabilities: []
     summary: "All-Star Game ballot candidates for a league + season."
     base: default
     path: /league/{leagueId}/allStarBallot
@@ -793,6 +830,9 @@ endpoints:
 
   - name: mlb_allstar_writeins
     group: mlb.extra
+    # Deliberately untagged. One-off league events with no equivalent at any other
+    # provider.
+    capabilities: []
     summary: "All-Star write-in candidates for a league + season."
     base: default
     path: /league/{leagueId}/allStarWriteIns
@@ -804,6 +844,9 @@ endpoints:
 
   - name: mlb_allstar_final_vote
     group: mlb.extra
+    # Deliberately untagged. One-off league events with no equivalent at any other
+    # provider.
+    capabilities: []
     summary: "All-Star 'Final Vote' candidates for a league + season."
     base: default
     path: /league/{leagueId}/allStarFinalVote
@@ -816,6 +859,10 @@ endpoints:
   # ─── mlb.meta — the {type} lookup endpoint (enums used by other calls) ──
   - name: mlb_meta
     group: mlb.meta
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Meta lookup — fetch the valid values for a parameter used elsewhere (stat types, positions, game types, pitch codes, etc.). One tool over the API's /{type} endpoint."
     base: default
     path: /{type}

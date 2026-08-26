@@ -70,7 +70,7 @@ endpoints:
 
   - name: footballdataorg_areas
     group: footballdataorg.football
-    capabilities: []
+    capabilities: [sport.competitions_list]
     summary: "Countries and regions, used to filter competitions. VERIFIED live — works without a key."
     base: default
     path: /areas

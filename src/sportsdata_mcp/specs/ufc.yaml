@@ -192,6 +192,9 @@ endpoints:
 
   - name: ufc_jsonapi_index
     group: ufc.records
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
     capabilities: []
     summary: "The JSON:API resource index — all 291 resource types ufc.com exposes, for discovering surfaces this spec does not wrap yet."
     base: default

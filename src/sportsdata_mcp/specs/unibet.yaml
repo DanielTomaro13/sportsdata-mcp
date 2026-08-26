@@ -45,6 +45,7 @@ endpoints:
   # ─── unibet.sport — Kambi statistics + odds ladder (other hosts) ───────
   - name: unibet_kambi_live_stats
     group: unibet.sport
+    capabilities: [sport.in_play]
     summary: "Live in-event statistics (scores, match summary) for one Kambi event."
     base: kambi_stats
     path: /statistics/api/ubau/liveStatistics/event/{eventId}.json
@@ -58,6 +59,10 @@ endpoints:
 
   - name: unibet_kambi_odds_ladder
     group: unibet.sport
+    # Deliberately untagged. A decoder for THIS provider's own ids and market keys.
+    # Another provider's decoder answers a different question, so a shared tag would offer
+    # false alternatives.
+    capabilities: []
     summary: "Kambi odds-ladder reference (the decimal-odds increments the book uses)."
     base: kambi_eu
     path: /offering/v2018/kambi/oddsLadder.json
