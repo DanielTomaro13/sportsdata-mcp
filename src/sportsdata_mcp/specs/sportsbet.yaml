@@ -442,6 +442,27 @@ endpoints:
       - { name: id, in: query, type: integer, required: true, description: "Sport event id." }
     response_hint: "{sgms:[{legs:[{selectionName}], price:{winPrice}}]}"
 
+  - name: sportsbet_sgm_price
+    group: sportsbet.cross
+    capabilities: [sport.same_game_multi, sport.prices]
+    method: POST
+    # A POST that PRICES and changes nothing — the same case as a GraphQL query. Declaring
+    # it read-only keeps clients from demanding confirmation for what is a quote request.
+    read_only: true
+    summary: "PRICE A SAME GAME MULTI you choose — give it legs from one event, get the combined price back. The only tool here that prices a combination the book has not already built."
+    base: default
+    path: /multi-pricer/combinations/price
+    auth: default
+    params:
+      - { name: classExternalId, in: body, type: integer, required: true, description: "The SPORT's external id (AFL = 103). From sportsbet_nav_hierarchy: the class node's `classExternalId`, NOT its `id`." }
+      - { name: competitionExternalId, in: body, type: integer, required: true, description: "The competition's external id (AFL = 17131). From sportsbet_nav_hierarchy: the competition node's `competitionExternalId`, NOT its `id`." }
+      - { name: eventExternalId, in: body, type: integer, required: true, description: "The match's external id. From sportsbet_competition_matches: the event's `externalId`, NOT its `id`." }
+      - { name: outcomesExternalIds, in: body, type: json, required: true, description: "The legs, at least two: [{marketExternalId, outcomeExternalId}]. BOTH are `externalId` values from sportsbet_event_markets — the market's `externalId` and the selection's `externalId`, never their `id`s. All legs must belong to the SAME event." }
+    response_hint: "{price:{quoteId, numerator, denominator}}  — VERIFIED live 2026-08-25 against AFL Western Bulldogs v Collingwood: two legs returned 7/5.\n\nTHE PRICE IS FRACTIONAL. Decimal = 1 + numerator/denominator, so 7/5 is $2.40. It is NOT the product of the legs — Sportsbet applies a correlation adjustment, which is the entire point of asking.\n\n`quoteId` is a per-request token with a short life. Treat the price as a quote, not a cached fact: re-request rather than reusing one from minutes ago.\n\nERRORS COME BACK 400 WITH A CODE: `ERR-MP-001` means fewer than two outcomes; `ERR-VE` means the body failed schema validation (usually an `id` passed where an `externalId` was wanted). Legs the book will not combine are refused rather than priced."
+    examples:
+      - description: "Price a two-leg AFL same game multi"
+        params: {classExternalId: 103, competitionExternalId: 17131, eventExternalId: 16374542, outcomesExternalIds: [{marketExternalId: 602153262, outcomeExternalId: 2870628965}, {marketExternalId: 602153262, outcomeExternalId: 2870628954}]}
+
   - name: sportsbet_popular_promotions
     group: sportsbet.cross
     capabilities: [content.promo]

@@ -2364,7 +2364,8 @@ services; this is the lookup from a tool name to what it does.
 | `sportsbet_race_preview` | Editorial race preview (text + video) for one race. |
 | `sportsbet_safer_gambling_message` | Current safer-gambling message block for the site. |
 | `sportsbet_track_report` | Track report (going, rail, weather) for a racing meeting on a date. |
-| `sportsbet_trending_sgm` | Trending Same Game Multi (SGM) combinations for one sport event. |
+| `sportsbet_sgm_price` | **Prices a Same Game Multi you choose** — legs in, correlated price out. See below. |
+| `sportsbet_trending_sgm` | Trending Same Game Multi (SGM) combinations for one sport event (pre-built by the book). |
 
 ### `sportsbet.graphql`
 
@@ -2419,3 +2420,69 @@ are managed… |
 | `sportsbet_sports_card` | Full sport event card (all markets + selections) or the resulted event if finished. |
 | `sportsbet_sports_classes` | Sport classes (sports) with their competitions for a date window. |
 | `sportsbet_upcoming_events` | Upcoming sport events across all codes (homepage upcoming feed). |
+
+
+---
+
+## Pricing a Same Game Multi you chose
+
+`sportsbet_sgm_price` is the only tool in this catalogue that prices a combination the
+book has not already built. `sportsbet_trending_sgm` and the equivalents at other books
+return *their* suggestions; this one takes your legs.
+
+```
+POST /apigw/multi-pricer/combinations/price
+{
+  "classExternalId": 103,          // Australian Rules
+  "competitionExternalId": 17131,  // AFL
+  "eventExternalId": 16374542,
+  "outcomesExternalIds": [
+    {"marketExternalId": 602153262, "outcomeExternalId": 2870628965},
+    {"marketExternalId": 602153262, "outcomeExternalId": 2870628954}
+  ]
+}
+→ {"price": {"quoteId": "…", "numerator": 7, "denominator": 5}}
+```
+
+Verified live 2026-08-25 against AFL Western Bulldogs v Collingwood: two legs 7/5, three
+legs 10/3, one leg refused. **No authentication** — it answers a plain unauthenticated
+POST.
+
+### It wants EXTERNAL ids, and this is the trap
+
+Sportsbet exposes **two id spaces**, and every other tool in this spec speaks the internal
+one. The pricer speaks the other. Passing an internal id returns a bare `ERR-VE` that
+names no field.
+
+| the pricer wants | where it comes from | ⚠ not this |
+|---|---|---|
+| `classExternalId` | `sportsbet_nav_hierarchy` → class node `classExternalId` (103) | the node's `id` (50) |
+| `competitionExternalId` | `sportsbet_nav_hierarchy` → competition node `competitionExternalId` (17131) | the node's `id` (4165) |
+| `eventExternalId` | `sportsbet_competition_matches` → event `externalId` (16374542) | the event's `id` (10850856) |
+| `marketExternalId` | `sportsbet_event_markets` → market `externalId` (602153262) | market `id` (251983151) |
+| `outcomeExternalId` | `sportsbet_event_markets` → selection `externalId` (2870628954) | selection `id` (1244168027) |
+
+### The price is fractional
+
+`{numerator: 7, denominator: 5}` is **$2.40** — decimal is `1 + numerator/denominator`.
+Reading it as 1.4, or as 7.5, reports a price well under the real one and would make a
+poor SGM look good.
+
+It is **not** the product of the legs. Sportsbet applies a correlation adjustment, which
+is the whole reason to ask rather than multiply.
+
+### Quotes expire
+
+`quoteId` is a per-request token with a short life. Treat the answer as a quote, not a
+cached fact — re-request rather than reusing one from minutes ago.
+
+### Errors
+
+Both observed live, both HTTP 400:
+
+| code | meaning |
+|---|---|
+| `ERR-MP-001` | fewer than two outcomes — the pricer refuses a single leg |
+| `ERR-VE` | body failed schema validation, usually an `id` where an `externalId` belongs |
+
+Legs the book will not combine are refused rather than priced.
