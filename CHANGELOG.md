@@ -8,6 +8,8 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+## 0.30.0 — 2026-08-27
+
 ### Added
 - **Every tool now declares what question it answers.** 173 tools carried no
   `capabilities` key at all — not waived, never considered — and since a capability tag
