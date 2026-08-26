@@ -1,14 +1,19 @@
-"""The five same-game-multi pricers, as a set.
+"""The six same-game-multi pricers, as a set.
 
 Each book's own test file pins that book's traps. This one pins the thing none of them
-can: that the five tools exist together, agree on how they are tagged, and stay findable
-by one capability query. The entire point of building five of these was to quote the same
-legs at every book and compare — a pricer that ships untagged is invisible to that, and
-nothing else in the suite would notice.
+can: that the six tools exist together, agree on how they are tagged, and stay findable by
+one capability query. The entire point of building six of these was to quote the same legs
+at every book and compare — a pricer that ships untagged is invisible to that, and nothing
+else in the suite would notice.
 
-Verified live 2026-08-27, all five on the same AFL fixture (Western Bulldogs v
-Collingwood), all unauthenticated. Each returns a correlation-adjusted price that is NOT
-the product of its legs.
+Verified live 2026-08-27, all six unauthenticated, five of them on the same AFL fixture
+(Western Bulldogs v Collingwood) and Entain on Melbourne v Carlton. Each returns a
+correlation-adjusted price that is NOT the product of its legs.
+
+They do not agree on units. Four quote ordinary decimals, Unibet quotes THOUSANDTHS
+(3400 = 3.40) and Entain quotes FRACTIONS needing a +1 (27/10 = 3.70). Normalising is the
+comparator's job and there is nothing in any payload that announces the scale, so
+SCALE is pinned per book below.
 """
 
 from __future__ import annotations
@@ -27,6 +32,19 @@ PRICERS = {
     "pointsbet": "pointsbet_sgm_price",
     "betr": "betr_sgm_price",
     "unibet": "unibet_sgm_price",
+    "entain": "entain_sgm_price",
+}
+
+#: How each book expresses a price, and therefore what a comparator must do before
+#: comparing anything. Nothing in any payload announces this — it is knowledge that only
+#: exists because someone checked each book against its own displayed odds.
+SCALE = {
+    "sportsbet": "decimal",
+    "tab": "decimal",
+    "pointsbet": "decimal",
+    "betr": "decimal",
+    "unibet": "thousandths — divide by 1000 (3400 = 3.40)",
+    "entain": "fractional — numerator/denominator PLUS ONE (27/10 = 3.70)",
 }
 
 #: Books surveyed and deliberately given no pricer, with the reason. Kept here so a later
@@ -107,6 +125,7 @@ REFUSAL_STYLE = {
     "sportsbet": "none",
     "tab": "none",           # per-leg `status` in a validation matrix, no fake price
     "unibet": "none",        # real HTTP 400 with a typed body
+    "entain": "none",        # real HTTP 400, and a refusal carries no `odds` key at all
 }
 
 
@@ -126,6 +145,20 @@ def test_each_book_declares_a_signal_exactly_when_it_fakes_a_price(tools_by_name
                 "a signal here fires on a legitimate falsy field sooner or later")
 
 
-def test_every_pricer_has_an_entry_in_the_refusal_table(tools_by_name):
-    """So the table cannot quietly fall behind the set of books."""
+def test_every_pricer_has_an_entry_in_both_tables(tools_by_name):
+    """So neither table can quietly fall behind the set of books."""
     assert set(REFUSAL_STYLE) == set(PRICERS)
+    assert set(SCALE) == set(PRICERS)
+
+
+def test_a_book_that_is_not_plain_decimal_says_so_in_its_hint(tools_by_name):
+    """The two odd ones out. Unibet reported as 3400 instead of 3.40 is a 1000x error that
+    looks like the arbitrage of a lifetime; Entain reported as 2.7 instead of 3.70 is the
+    quiet direction, where the book merely looks worse than it is. Both have to be stated
+    in the hint, because neither payload carries a unit."""
+    for provider, scale in SCALE.items():
+        if scale == "decimal":
+            continue
+        hint = tools_by_name[PRICERS[provider]][1].response_hint or ""
+        assert "1000" in hint or "+ 1" in hint, (
+            f"{provider} quotes {scale} and its hint no longer says how to convert")

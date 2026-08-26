@@ -152,6 +152,26 @@ endpoints:
       - { name: category_ids, in: query, type: json, required: true, description: "JSON array of sport category UUIDs." }
     response_hint: "{events:{}, markets:{}, prices:{}, entrants:{}, next_events:[], regions:{}}"
 
+  - name: entain_sgm_price
+    group: entain.rest
+    capabilities: [sport.same_game_multi, sport.prices]
+    summary: "PRICE A SAME GAME MULTI you choose — give it selections from one Entain (Ladbrokes/Neds) event, get the correlation-adjusted combined price. Prices combinations the book has not pre-built (for those, see entain_graphql_call SportingEventPopularSameGameMultis). Several events can be priced in one call."
+    base: default
+    path: /v2/same-game-multi/GetOdds
+    auth: default
+    params:
+      - { name: same_game_multies, in: query, type: json, required: true, description: 'The whole request envelope: a MAP KEYED BY EVENT ID whose value repeats that id. {"<eventId>": {"event_id": "<eventId>", "selections": [{"market_id": "…", "entrant_id": "…"}, …]}}. THE KEY AND THE INNER `event_id` MUST BE THE SAME STRING — they are not redundant, a mismatch is a 400 saying so. Both ids per selection come from entain_sport_event_card: `market_id` is a key of `markets`, `entrant_id` a key of `entrants` (whose own `market_id` must be that market). More than one event may be priced in a single call — that is what the map is for — and each is answered independently under its own key.' }
+    response_hint: "{prices:{<eventId>:{available: true, odds:{numerator: 27, denominator: 10}}}}  — keyed by event id, one entry per event you asked about. VERIFIED live 2026-08-27 against AFL Melbourne v Carlton (event eccdc4f5-e01e-4aca-afab-570869b53702), unauthenticated.\n\nODDS ARE FRACTIONAL AND DECIMAL = numerator/denominator + 1. `27/10` is 3.70 — not 2.7, and not 27. Confirmed against the site's own displayed prices on the same event: Melbourne showed 2.15 and returns 23/20, Over showed 1.88 and returns 22/25. Every price in entain_sport_event_card is the same shape, so the conversion is the provider's convention rather than this endpoint's quirk. FORGETTING THE +1 UNDERSTATES EVERY PRICE.\n\nTHE PRICE IS NOT THE PRODUCT OF THE LEGS. Melbourne (2.15) with Over 173.5 (1.88) prices 3.70, against a naive 4.042.\n\nIT SILENTLY COLLAPSES A REDUNDANT LEG AND STILL SAYS `available: true`. Melbourne to win plus Melbourne on the line returned 23/20 — 2.15, the SINGLE-LEG price — with no echo of the legs and nothing marking the drop. Repeating one selection twice does the same. There is no leg list in the response, so RESTATE THE SELECTIONS YOU SENT whenever you report a price, and treat a price equal to a shorter combination's as a collapse.\n\nSOME IMPOSSIBLE COMBINATIONS ARE QUOTED RATHER THAN REFUSED, AT BIG PRICES. The conflict detector is good but not complete: on a sample of 22 two-entrant markets from the verified event, FOUR had their mutually exclusive pair priced as available — Match Betting (both teams to win, 146.51), 1st Half / 2nd Quarter / 4th Quarter Match Betting (70-110) and Highest Scoring Half. A bet that cannot win, quoted at 146.51, looks exactly like a longshot with enormous edge. Never trust `available: true` as proof a combination is coherent; check the legs yourself.\n\nWHEN IT DOES DETECT A CLASH IT IS THE BEST DIAGNOSTIC OF ANY BOOK HERE: `{available: false, conflicting_selections:[{market_id, entrant_id}, …]}` names the exact pair. It correctly refused Over with Under, both line sides, two margin bands, and cross-market impossibilities like `Melbourne to win` with `Carlton by 1-39`.\n\n`available: false` WITH NO `odds` KEY is also what an unknown event returns, quietly and alongside the events that did price. Unlike the other Australian books there is no fake zero to guard against — a refusal simply has no number — but a missing `odds` must never be read as 0.\n\nMalformed requests are real HTTP 400s naming the problem: a selection missing `market_id` or `entrant_id`, and `event id must match key` when the map key and the inner `event_id` disagree."
+    examples:
+      - description: "Price Melbourne to win with over 173.5 points"
+        params:
+          same_game_multies:
+            "eccdc4f5-e01e-4aca-afab-570869b53702":
+              event_id: "eccdc4f5-e01e-4aca-afab-570869b53702"
+              selections:
+                - { market_id: "c73591e5-b00e-4c92-abfb-b3737acbdd30", entrant_id: "49475673-c7b8-4b49-8c87-e14637ebfa5c" }
+                - { market_id: "2bc6b298-4fce-4545-93cd-ed232a9c69a0", entrant_id: "8ada7d51-2a67-4bcb-9593-f9fcbbbd5188" }
+
   - name: entain_event_market_rules
     group: entain.rest
     capabilities: [sport.event_markets]

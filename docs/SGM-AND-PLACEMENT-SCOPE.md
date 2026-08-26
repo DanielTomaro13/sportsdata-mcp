@@ -543,41 +543,138 @@ validate.json`), which is placement-adjacent and deliberately not modelled.
 
 ---
 
-# Where the seven books leave the comparator
+# Bookmaker 8: Entain (Ladbrokes / Neds)
 
-Five books price a combination you choose, one prices the fair benchmark, one is blocked:
+**SGM pricing: SOLVED**, shipped as `entain_sgm_price`. Captured on Ladbrokes' own SGM tab.
+Worth noting where it was NOT: Entain's persisted-GraphQL registry already carries
+`SportingEventPopularSameGameMultis`, so the obvious guess was another GraphQL operation.
+It is not one — the pricer is on the plain REST gateway.
 
-| Book | Tool | Verb | Echoes what it priced? | The trap that will cost you |
+```
+GET /v2/same-game-multi/GetOdds          (api.ladbrokes.com.au, no auth)
+    ?same_game_multies={"<eventId>":{"event_id":"<eventId>",
+                        "selections":[{"market_id","entrant_id"},…]}}
+→ {prices:{"<eventId>":{available:true, odds:{numerator:27, denominator:10}}}}
+```
+
+Ids come from `entain_sport_event_card`, already shipped. The map key and the inner
+`event_id` are **not** redundant — a mismatch is a 400 — and the map shape is the batch:
+several events price in one call, each answered under its own key. That is unique among
+the six and the reason the raw envelope is exposed rather than a friendlier single-event
+parameter.
+
+Verified live 2026-08-27 on AFL Melbourne v Carlton: Melbourne (2.15) with Over 173.5
+(1.88) prices **3.70**, against a naive 4.042.
+
+## `27/10` is 3.70
+
+Prices are fractional, and **decimal = numerator/denominator + 1**. Confirmed against the
+site's own displayed odds on the same event — Melbourne shows 2.15 and returns `23/20`,
+Over shows 1.88 and returns `22/25` — and every price in `sport/event-card` uses the same
+shape, so this is Entain's convention rather than the endpoint's quirk.
+
+This is the mirror image of Unibet's trap and the more insidious of the two. Forgetting
+Unibet's ÷1000 gives a number so large it demands attention. Forgetting Entain's +1 gives
+2.70 where the truth is 3.70: nothing looks wrong, the book simply appears to be pricing
+worse than it is, and it silently loses every comparison it should have won.
+
+## It has the best refusal in the catalogue — and the worst hole
+
+When Entain detects a clash it returns `{available: false, conflicting_selections:
+[{market_id, entrant_id}, …]}`, naming the exact offending pair. Nothing else here comes
+close; PointsBet says "Selection Suspended", BetR says "redundant leg in bet" for three
+different causes. It correctly refused Over with Under, both line sides, two margin bands,
+and cross-market impossibilities like *Melbourne to win* with *Carlton by 1-39*.
+
+**But the detector is not complete.** On a sample of 22 two-entrant markets from the
+verified event, four had their mutually exclusive pair priced as `available: true`:
+
+| Market | Impossible pair | Quoted |
+|---|---|---|
+| Match Betting | Melbourne + Carlton | **146.51** |
+| 1st Half Match Betting | Melbourne + Carlton | 110.18 |
+| Highest Scoring Half | 1st Half + 2nd Half | 143.65 |
+| 4th Quarter Match Betting | Carlton + Melbourne | 81.67 |
+| 2nd Quarter Match Betting | Carlton + Melbourne | 70.78 |
+
+A bet that cannot win, quoted at 146.51 with an availability flag saying yes, is
+indistinguishable from a longshot with enormous edge — which is precisely what an
+automated value screener hunts for. This is the single most dangerous behaviour found
+across all eight books, because every other trap makes a real bet mispriced, and this one
+makes an impossible bet look like the best opportunity on the board.
+
+**It also silently collapses a redundant leg** with `available` still true and no leg echo:
+Melbourne to win plus Melbourne on the line returned `23/20`, the single-leg price.
+
+**Engine change this required:** none. And no `error_signals` — malformed requests are real
+400s, and a refusal carries no `odds` key at all rather than a fake zero.
+
+**Placement:** not surveyed — see `AUTONOMOUS-PLACEMENT.md`.
+
+---
+
+# Where the eight books leave it
+
+Every Australian book in the catalogue has now been surveyed. Six price a combination you
+choose, one prices the fair benchmark, one is blocked.
+
+| Book | Tool | Units | Echoes what it priced? | The trap that will cost you |
 |---|---|---|---|---|
-| Sportsbet | `sportsbet_sgm_price` | POST | refuses instead of dropping | — |
-| TAB | `tab_sgm_price` | POST | dropped legs only (`redundantPropositions`) | collapses a leg, but says so |
-| PointsBet | `pointsbet_sgm_price` | POST | **no — nothing at all** | collapses a leg silently; wrong `OutcomeKey` prices another bet |
-| BetR | `betr_sgm_price` | POST | refuses instead of dropping | **`FixedWin` is trusted as a price floor**; missing `MarketType` |
-| Unibet | `unibet_sgm_price` | **GET** | **yes — the full set** | **odds are in THOUSANDTHS**; 1001.0 is a cap |
-| Pinnacle | *(none needed)* | — | n/a | the price simply IS the product |
+| Sportsbet | `sportsbet_sgm_price` | decimal | refuses instead of dropping | — |
+| TAB | `tab_sgm_price` | decimal | dropped legs only | collapses a leg, but says so |
+| PointsBet | `pointsbet_sgm_price` | decimal | **nothing at all** | collapses a leg silently |
+| BetR | `betr_sgm_price` | decimal | refuses instead of dropping | **`FixedWin` is trusted as a price floor** |
+| Unibet | `unibet_sgm_price` | **thousandths** | **the full set** | ÷1000; 1001.0 is a cap |
+| Entain | `entain_sgm_price` | **fractional +1** | nothing at all | **quotes bets that cannot win** |
+| Pinnacle | *(none needed)* | american | n/a | the price simply IS the product |
 | Dabble | *(blocked — app-only)* | — | unknown | unknown |
 
-Three distinct outcomes, and the distinction matters when deciding what to do next: five
-books are **solved**; Pinnacle needs **nothing built** because its parlay price is the
-product of its legs; Dabble is **blocked on observation**, not on product.
+Three outcomes, and the difference decides what to do next: six are **solved**, Pinnacle
+needs **nothing built** because its parlay price is the product of its legs, and Dabble is
+**blocked on observation** rather than on product — its pricer exists and is only reachable
+from the app.
 
-Five solved books is more than enough for what this scope was for: quote the same legs at
-each, and compare against the independent product of Pinnacle's own straight prices. The
-gap is the book's correlation charge, and it is now measurable rather than assumed.
+## Four rules the comparator must carry
 
-## Three rules the comparator must carry
+Each one is here because a specific book behaves this way, not on principle.
 
-1. **Never report an SGM price without restating the legs that produced it.** This holds at
-   four of the five, for four different reasons: TAB drops legs and says so, PointsBet
-   drops them and does not, BetR answers a malformed request with a *better* price than the
-   real one, and Unibet dedupes silently. Only Unibet gives you the echo needed to check —
-   everywhere else it is the caller's own bookkeeping.
-2. **Normalise the scale before comparing anything.** Unibet reports thousandths; the other
-   four report ordinary decimals. Getting this wrong does not produce a subtle error, it
-   produces a 1000x one that looks like the arbitrage of a lifetime.
-3. **A zero price is a refusal, not a quote.** Four of the seven books answer a refusal with
-   HTTP 200 and a zero in the field you asked for; PointsBet and BetR needed
-   `error_signals` for exactly that. Kambi is the only one that uses status codes properly.
-   Assume the 200-with-a-zero shape for any book added later until checked.
+1. **Normalise the scale first.** Four books quote plain decimals, Unibet quotes
+   thousandths (`3400` = 3.40) and Entain quotes fractions needing a `+1` (`27/10` = 3.70).
+   No payload announces its units. The two errors fail differently and both matter: Unibet
+   un-scaled is 1000x too large and screams; Entain un-adjusted is 2.70 instead of 3.70,
+   looks perfectly reasonable, and quietly loses every comparison it should have won.
+2. **Never report a price without restating the legs that produced it.** Four of the six
+   can hand back a price for a different bet than you asked for — TAB and PointsBet and
+   Entain by collapsing a redundant leg, BetR by honouring a `FixedWin` you supplied. Only
+   Unibet echoes the full set back; everywhere else it is the caller's own bookkeeping.
+3. **`available: true` is not proof the bet is coherent.** Entain quoted four impossible
+   combinations at 70–146 on a 22-market sample. Every other trap here makes a real bet
+   mispriced; this one makes an unwinnable bet look like the best opportunity on the board,
+   which is exactly what an automated screener would select for.
+4. **A zero price is a refusal, not a quote.** PointsBet and BetR answer refusals with
+   HTTP 200 and a zero in the field you asked for; both needed `error_signals`. Unibet and
+   Entain use real status codes. Assume the 200-with-a-zero shape for any book added later
+   until checked.
 
-Only **Entain** is left, and the comparator does not block on it.
+## What this is now enough to build
+
+Quote the same legs at six books, normalise the units, and compare each against the
+independent product of Pinnacle's own straight prices. The gap between a book's
+correlation-adjusted number and that independent product is the book's correlation charge
+— measurable now rather than assumed, and comparable across books for the first time.
+
+The five capability-tagged pricers plus Entain answer one query
+(`sport.same_game_multi` + `sport.prices`), and `tests/unit/test_sgm_comparator.py` pins
+them as a set: that they exist, stay tagged, keep `read_only` on every POST, still state
+that the price is not the product with a dated worked example, declare an error signal
+exactly when the book fakes a price, and — for the two that are not plain decimal — still
+say how to convert.
+
+## Placement
+
+Deliberately not surveyed for any of the eight. `AUTONOMOUS-PLACEMENT.md` covers the
+architecture and the safety machinery an autonomous placement agent would need;
+`PLACEMENT-TAB.md` works it through for one book. The operational last mile — capturing
+authenticated placement calls, storing gambling credentials, evading bot detection — is
+deliberately absent from both, and none of the six pricers above can move money: they are
+all `read_only`, and a test asserts it.

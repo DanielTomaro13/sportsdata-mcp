@@ -515,6 +515,86 @@ markets, markets_allow_cashout, prices, regions
 
 `prices` is keyed by `<entrant_id>:<product_type_id>:` (trailing colon present even when there is no third segment).
 
+### `same-game-multi/GetOdds`
+
+Prices a same game multi you build yourself. No auth, no key.
+
+| | |
+|---|---|
+| **Method / Path** | `GET /v2/same-game-multi/GetOdds` |
+
+| Parameter | Type | Description |
+|---|---|---|
+| `same_game_multies` | JSON | Map keyed by event id — see below. |
+
+```jsonc
+// same_game_multies (URL-encoded into the query string)
+{"eccdc4f5-e01e-4aca-afab-570869b53702": {
+   "event_id": "eccdc4f5-e01e-4aca-afab-570869b53702",   // MUST equal the key
+   "selections": [
+     {"market_id": "c73591e5-…", "entrant_id": "49475673-…"},
+     {"market_id": "2bc6b298-…", "entrant_id": "8ada7d51-…"}]}}
+
+→ {"prices": {"eccdc4f5-e01e-4aca-afab-570869b53702":
+     {"available": true, "odds": {"numerator": 27, "denominator": 10}}}}
+```
+
+Both ids per selection come from `sport/event-card`: `market_id` is a key of `markets`,
+`entrant_id` a key of `entrants`. The map key and the inner `event_id` are **not**
+redundant — a mismatch returns `400 event id must match key`. The map shape is also the
+batch: several events price in one call and each is answered independently under its own
+key.
+
+> **`27/10` is 3.70.** Prices are fractional and **decimal = numerator/denominator + 1**.
+> Confirmed against the site's own displayed odds on the verified event: Melbourne showed
+> 2.15 and returns `23/20`; Over showed 1.88 and returns `22/25`. Every price in
+> `sport/event-card` uses the same shape, so this is the provider's convention rather than
+> this endpoint's quirk. Dropping the `+1` understates every price — the quiet direction to
+> be wrong in, because nothing looks alarming; the book just appears to price worse than it
+> does.
+
+**The price is not the product of the legs.** Verified live 2026-08-27 against AFL
+Melbourne v Carlton: Melbourne (2.15) with Over 173.5 (1.88) prices **3.70**, against a
+naive 4.042.
+
+**The best refusal diagnostics of any book here.** When Entain detects a clash it names
+the exact pair:
+
+```jsonc
+{"available": false,
+ "conflicting_selections": [{"entrant_id": "49475673-…", "market_id": "c73591e5-…"},
+                            {"entrant_id": "b7eeb49e-…", "market_id": "947b8133-…"}]}
+```
+
+It correctly refused Over with Under, both line sides, two margin bands, and cross-market
+impossibilities such as *Melbourne to win* with *Carlton by 1-39*.
+
+**…but the detector is not complete, and the gap is expensive.** On a sample of 22
+two-entrant markets from the verified event, **four had their mutually exclusive pair
+priced as `available: true`**:
+
+| Market | Impossible pair | Quoted |
+|---|---|---|
+| Match Betting | Melbourne + Carlton | 146.51 |
+| 1st Half Match Betting | Melbourne + Carlton | 110.18 |
+| 4th Quarter Match Betting | Carlton + Melbourne | 81.67 |
+| 2nd Quarter Match Betting | Carlton + Melbourne | 70.78 |
+| Highest Scoring Half | 1st Half + 2nd Half | 143.65 |
+
+A bet that cannot win, quoted at 146.51, is indistinguishable from a longshot with
+enormous edge — which is exactly what a value screener is looking for. **Never treat
+`available: true` as proof a combination is coherent.**
+
+**Two more.** A redundant leg is **silently collapsed** with `available` still true and no
+echo of the legs: *Melbourne to win* plus *Melbourne on the line* returned `23/20` — 2.15,
+the single-leg price. Repeating one selection does the same. And an unknown event returns
+`available: false` with **no `odds` key at all**, quietly, alongside the events that did
+price; there is no fake zero to guard against here, but a missing `odds` must not be read
+as one.
+
+Malformed requests are real HTTP 400s that name the problem — a selection missing
+`market_id` or `entrant_id`, or the key/`event_id` mismatch above.
+
 ### `sport/event-request`
 
 Bulk fetch for one or more sport categories — events, markets, prices and entities all returned in a single response.
@@ -1520,6 +1600,7 @@ server-side;… |
 | `entain_racing_next_races` | Next races about to jump, grouped per racing category. |
 | `entain_racing_racecard` | Full priced racecard for one race — entrants, fixed-odds fluctuations, form. |
 | `entain_racing_search` | Racing search facets (barrier/country/jockey/trainer buckets); optional full-text. |
+| `entain_sgm_price` | **Prices a same game multi you choose** — correlation-adjusted, several events per call. |
 | `entain_sport_event_card` | Complete event card — every market, selection and price for one sport event. |
 | `entain_sport_event_request` | Bulk events + markets + prices for one or more sport categories. |
 | `entain_video_channels` | Racing live-video channels (HLS .m3u8 URLs; verify token expires within minutes). |

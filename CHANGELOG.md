@@ -47,12 +47,33 @@ Full history is in `git log`; this file covers what a user would notice.
   bet-builder ELIGIBILITY, not compatibility with what you have already picked. The
   endpoint declares `response_pick` because the upstream repeats the event's whole
   bet-offer book — 647 KB of a 610 KB response — which `event_betoffer` already serves.
-- **`tests/unit/test_sgm_comparator.py`** — the five pricers pinned as a SET: that they
+- **`tests/unit/test_sgm_comparator.py`** — the six pricers pinned as a SET: that they
   exist, that they stay findable by one capability query, that no POST among them loses
   `read_only`, that every hint still states the price is not the product and says when it
   was verified, and that each book declares an `error_signals` rule exactly when it fakes a
   price on refusal. Each book's own file pins its own traps; nothing else was checking that
   the five still work together, which is the whole reason for building them.
+
+- **`entain_sgm_price`** — the sixth and last Australian book, completing the set. Not a
+  GraphQL operation despite Entain's persisted-query registry already carrying
+  `SportingEventPopularSameGameMultis`; the pricer is on the plain REST gateway, and its
+  envelope is a map keyed by event id, so several events price in one call. Verified live:
+  Melbourne (2.15) with Over 173.5 (1.88) prices 3.70 against a naive 4.042.
+
+  Entain has the best refusal in the catalogue and the worst hole. `conflicting_selections`
+  names the exact clashing pair, where other books manage a sentence — but on a sample of
+  22 two-entrant markets, **four had their mutually exclusive pair quoted as `available:
+  true`, at 70 to 146**. A bet that cannot win, priced at 146.51, is indistinguishable from
+  a longshot with enormous edge, which is exactly what an automated screener hunts for.
+  Prices are also fractional with **decimal = numerator/denominator + 1** — the quiet
+  mirror of Unibet's thousandths, since forgetting it makes the book merely look worse than
+  it is rather than raising an alarm.
+
+  With this, every Australian book in the catalogue has been surveyed: six price a
+  combination you choose, Pinnacle needs nothing built because its parlay price is the
+  product of its legs, and Dabble is blocked on observation. See
+  `docs/SGM-AND-PLACEMENT-SCOPE.md` for the four rules a cross-book comparator has to
+  carry, each traceable to a specific book's behaviour.
 
 ### Changed
 - **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The
