@@ -186,7 +186,7 @@ endpoints:
     auth: default
     params:
       - { name: matchupId, in: path, type: integer, description: "Matchup id (needs hasMarkets=true)." }
-    response_hint: "[{key, matchupId, period, cutoffAt, limits:[{amount, type}], prices:[{designation, points, price}]}]  (top-level array; price is American odds)"
+    response_hint: "Same shape as pinnacle_matchup_markets: [{key, type, period, prices:[{designation, price}], limits, status, cutoffAt}]. Prices are AMERICAN odds.\n\n⚠ VERIFIED 2026-08-30: this returns data IDENTICAL to pinnacle_matchup_markets — same markets, same prices, same limits, byte-for-byte on every matchup tested. Pinnacle does NOT apply a correlation adjustment to parlays, so a combination's price is simply the PRODUCT of its legs and there is nothing extra to fetch. Do not present this as a distinct 'parlay price'.\n\nBefore offering any combination, read `parlayRestriction` on the matchup itself (from pinnacle_sport_matchups): `unique_matchups` means legs must come from DIFFERENT games, `forbidden` means no parlay, and only `allowed` permits a same-game multi — 42 of 16,040 matchups surveyed."
 
   # ─── pinnacle.reference — enums, teasers, status ───────────────────────
   - name: pinnacle_enums

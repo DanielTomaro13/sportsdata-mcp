@@ -238,3 +238,78 @@ envelope. A dot cannot be a Python parameter name, so it had to be the wire name
 
 **Placement:** not surveyed yet. TAB's own handoff mechanisms (bet codes / shared slips)
 should be checked when the placement work is revisited — see `AUTONOMOUS-PLACEMENT.md`.
+
+
+---
+
+# Bookmaker 3: Pinnacle
+
+**Recommendation: build nothing.** Pinnacle does not have the product the other two do,
+and adding an `sgm_price` tool here would be a tool that lies about what the book offers.
+
+Probed live 2026-08-30 across 16,040 matchups in four sports.
+
+## Pinnacle prices a parlay as the product of its legs
+
+The other two books apply a correlation adjustment — that is the entire reason to ask them
+rather than multiply. Pinnacle does not:
+
+| matchup | shared markets | identical prices | identical limits |
+|---|---|---|---|
+| 1634606564 (CFL) | 26 | **26/26** | 26/26 |
+| 1630889899 (NFL) | 25 | **25/25** | 25/25 |
+| 1634691036 (NFL) | 3 | **3/3** | 3/3 |
+| 1634691035 (NFL) | 3 | **3/3** | 3/3 |
+
+`/markets/related/parlay` and `/markets/related/straight` are different URLs returning
+**byte-identical payloads** — normalised SHA-1 of both responses matches on every matchup
+tested.
+
+So the price of a Pinnacle combination is computable locally: **multiply the leg prices**.
+There is no server-side quote to request, and a tool that pretended otherwise would be
+inventing an endpoint.
+
+## Same-game parlays are mostly not offered at all
+
+`parlayRestriction` on each matchup, across 16,040 of them:
+
+| value | count | meaning |
+|---|---|---|
+| `None` | 14,949 | unstated |
+| `unique_matchups` | 1,007 | **legs must come from DIFFERENT games** — no SGM |
+| `forbidden` | 42 | no parlay at all |
+| `allowed` | **42** | same-game legs permitted |
+
+Forty-two matchups out of sixteen thousand allow a same-game parlay, and even on those the
+price is the product. Pinnacle is a low-margin sharp book; correlated same-game pricing is
+a recreational product and it largely does not sell one.
+
+## What to do instead
+
+1. **Read `parlayRestriction` before offering a Pinnacle combination.** It is already on
+   every matchup object from `pinnacle_sport_matchups` — no new call needed. Offering an
+   SGM on a `unique_matchups` or `forbidden` matchup is an error the data already prevents.
+2. **Compute the combination price locally** as the product of the leg prices, converting
+   from American odds first.
+3. **Use Pinnacle as the fair-price benchmark, not as an SGM venue.** This is the more
+   valuable role: Pinnacle's straight prices are the sharpest on the board, so a
+   correlation-adjusted SGM quoted by Sportsbet or TAB can be compared against the
+   *independent* product of Pinnacle's own legs. The gap between those two numbers is the
+   book's correlation charge, which is exactly the thing a cross-book SGM comparator should
+   surface.
+
+Point 3 is the real prize and it needs no new endpoint — only the existing
+`pinnacle_matchup_markets` plus arithmetic.
+
+## Note on the existing tool
+
+`pinnacle_matchup_parlay_markets` currently returns the same data as
+`pinnacle_matchup_markets`. It is not wrong to keep — Pinnacle's authenticated API may
+differentiate where the guest API does not, and the endpoint is real — but its description
+should not imply a distinct parlay price, because today there is none.
+
+## Placement
+
+Not surveyed. Pinnacle is not an Australian book and its account model differs from
+Sportsbet's and TAB's; if placement is revisited, it needs its own pass rather than an
+assumption carried over.
