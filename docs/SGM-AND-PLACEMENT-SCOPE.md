@@ -586,22 +586,53 @@ close; PointsBet says "Selection Suspended", BetR says "redundant leg in bet" fo
 different causes. It correctly refused Over with Under, both line sides, two margin bands,
 and cross-market impossibilities like *Melbourne to win* with *Carlton by 1-39*.
 
-**But the detector is not complete.** On a sample of 22 two-entrant markets from the
-verified event, four had their mutually exclusive pair priced as `available: true`:
+**But the detector is not complete.** Every exactly-two-entrant SGM-available market on the
+verified event was tested — 41 of them. Thirty-five refused their mutually exclusive pair
+correctly. Five priced it:
 
 | Market | Impossible pair | Quoted |
 |---|---|---|
 | Match Betting | Melbourne + Carlton | **146.51** |
-| 1st Half Match Betting | Melbourne + Carlton | 110.18 |
-| Highest Scoring Half | 1st Half + 2nd Half | 143.65 |
 | 4th Quarter Match Betting | Carlton + Melbourne | 81.67 |
+| 3rd Quarter Match Betting | Carlton + Melbourne | 74.50 |
+| 1st Quarter Match Betting | Carlton + Melbourne | 72.29 |
 | 2nd Quarter Match Betting | Carlton + Melbourne | 70.78 |
 
+The failing set is the win-market family with two entrants and an *implicit* draw. The
+three-entrant version that lists `Tie` as an entrant (`1st Half Betting`) is refused
+correctly, which is what makes the pattern legible rather than random.
+
 A bet that cannot win, quoted at 146.51 with an availability flag saying yes, is
-indistinguishable from a longshot with enormous edge — which is precisely what an
-automated value screener hunts for. This is the single most dangerous behaviour found
-across all eight books, because every other trap makes a real bet mispriced, and this one
-makes an impossible bet look like the best opportunity on the board.
+indistinguishable from a longshot with enormous edge — precisely what an automated value
+screener hunts for. This is the single most dangerous behaviour found across all eight
+books, because every other trap makes a real bet mispriced, and this one makes an
+impossible bet look like the best opportunity on the board.
+
+## Can it be defended against? Partly, and the honest answer is worth stating
+
+**No field in the payload marks mutual exclusivity.** `num_winners` looks like it should
+and does not, in either direction: `Melbourne Alternate Handicaps` is `num_winners: 1` with
+96 nested lines that legitimately combine, while `Race To 15` is `num_winners: 3` with two
+mutually exclusive entrants. It is a settlement field. That hypothesis was tested and
+discarded; it is written down so the next person does not spend the same afternoon on it.
+
+So there is no complete rule that also keeps every legitimate same-market pair. There are
+two client-side defences that between them remove the class:
+
+1. **Honour `same_game_multi_available` — the pricer ignores its own flag.** Of 14 markets
+   the event card marks unavailable, 12 priced anyway when paired with an ordinary Match
+   Betting leg. The two worst impossible quotes live exactly there: `Highest Scoring Half`
+   at 143.65 and `1st Half Match Betting` at 110.18 are both flagged unavailable and both
+   priced. Filtering on the flag before building is free.
+2. **Never combine two legs from the same `market_id`** unless you understand that market.
+   Every hole found is a same-market pair. Legitimate same-market pairs exist — nested
+   Alternate lines, multi-winner props like Anytime Goal Kicker — so a blanket rule costs
+   some coverage. For a cross-book comparator, which combines different markets anyway,
+   that cost is near zero.
+
+One near-miss recorded so it is not re-flagged: `To Win Either Half` for both teams prices
+at 1.80 and that is **correct** — one team can win each half. The impossible ones all came
+back long (70–146); short prices on same-market pairs are usually legitimate.
 
 **It also silently collapses a redundant leg** with `available` still true and no leg echo:
 Melbourne to win plus Melbourne on the line returned `23/20`, the single-leg price.

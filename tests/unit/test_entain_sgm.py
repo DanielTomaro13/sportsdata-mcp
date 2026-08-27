@@ -8,10 +8,16 @@ Two things make this book unlike the other five.
 
 When it detects a clash it is the most informative refusal in the catalogue —
 `{available: false, conflicting_selections: [...]}` names the exact offending pair, where
-every other book gives a sentence at best. But the detector is not complete: on a sample
-of 22 two-entrant markets from the verified event, four had their mutually exclusive pair
-priced as AVAILABLE, at 70 to 146. A bet that cannot win, quoted at 146.51, is
+every other book gives a sentence at best. But the detector is not complete. All 41
+exactly-two-entrant SGM-available markets on the verified event were tested: 35 refused
+their mutually exclusive pair, and FIVE priced it — Match Betting at 146.51 and each of the
+four Quarter Match Betting markets at 70-82. A bet that cannot win, quoted at 146.51, is
 indistinguishable from a longshot with enormous edge.
+
+Nothing in the payload marks mutual exclusivity — `num_winners` was tested for it and means
+neither thing reliably — so the defences are procedural, and the hint carries both: honour
+`same_game_multi_available` (the pricer ignores its own flag) and do not combine two legs
+from one market. Those are asserted below so they cannot be edited out of the hint.
 
 And its prices are FRACTIONAL, where decimal = numerator/denominator + 1. Dropping the
 +1 understates every price, which is the quiet direction to be wrong in — nothing looks
@@ -66,12 +72,30 @@ def test_the_hint_says_the_price_is_not_the_product(sgm):
 
 
 def test_the_hint_warns_that_impossible_bets_get_quoted(sgm):
-    """The finding that makes this book dangerous. Four of 22 two-entrant markets sampled
-    priced their mutually exclusive pair as available, at 70 to 146."""
+    """The finding that makes this book dangerous. Measured exhaustively rather than
+    sampled: all 41 exactly-two-entrant SGM-available markets on the verified event were
+    tested, 35 refused their mutually exclusive pair and 5 priced it."""
     hint = sgm.response_hint or ""
     assert "IMPOSSIBLE COMBINATIONS ARE QUOTED" in hint
     assert "146.51" in hint, "the number is what stops this reading as a theoretical risk"
-    assert "22 two-entrant markets" in hint, "the sample size keeps the claim honest"
+    assert "41 of them" in hint and "FIVE priced" in hint, "the denominator keeps it honest"
+
+
+def test_the_hint_gives_both_client_side_defences(sgm):
+    """A warning without a defence just moves the problem. Both of these are things the
+    caller CAN do, and between them they remove the class."""
+    hint = sgm.response_hint or ""
+    assert "THE PRICER IGNORES ITS OWN FLAG" in hint, (
+        "honouring same_game_multi_available is the cheap half of the fix")
+    assert "SAME `market_id`" in hint, "the conservative rule is the complete half"
+
+
+def test_the_hint_records_that_num_winners_was_tried_and_rejected(sgm):
+    """It looks exactly like an exclusivity flag and is not, in either direction. Without
+    this written down the next person spends the same afternoon rediscovering it."""
+    hint = sgm.response_hint or ""
+    assert "DO NOT USE `num_winners`" in hint
+    assert "Alternate Handicaps" in hint and "Race To 15" in hint
 
 
 def test_the_hint_warns_about_silent_collapse(sgm):

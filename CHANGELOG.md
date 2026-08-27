@@ -61,10 +61,16 @@ Full history is in `git log`; this file covers what a user would notice.
   Melbourne (2.15) with Over 173.5 (1.88) prices 3.70 against a naive 4.042.
 
   Entain has the best refusal in the catalogue and the worst hole. `conflicting_selections`
-  names the exact clashing pair, where other books manage a sentence — but on a sample of
-  22 two-entrant markets, **four had their mutually exclusive pair quoted as `available:
-  true`, at 70 to 146**. A bet that cannot win, priced at 146.51, is indistinguishable from
-  a longshot with enormous edge, which is exactly what an automated screener hunts for.
+  names the exact clashing pair, where other books manage a sentence — but of the 41
+  exactly-two-entrant SGM-available markets on the verified event, **five priced their
+  mutually exclusive pair as `available: true`, at 70 to 146**: Match Betting and all four
+  Quarter Match Betting markets. A bet that cannot win, priced at 146.51, is
+  indistinguishable from a longshot with enormous edge, which is exactly what an automated
+  screener hunts for. Two client-side defences are documented, since nothing in the payload
+  marks exclusivity — honour `same_game_multi_available` (the pricer ignores its own flag:
+  12 of 14 unavailable markets priced anyway), and never combine two legs from the same
+  `market_id`. `num_winners` was tried as an exclusivity signal and rejected; that is
+  written down too.
   Prices are also fractional with **decimal = numerator/denominator + 1** — the quiet
   mirror of Unibet's thousandths, since forgetting it makes the book merely look worse than
   it is rather than raising an alarm.

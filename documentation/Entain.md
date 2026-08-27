@@ -569,21 +569,55 @@ the exact pair:
 It correctly refused Over with Under, both line sides, two margin bands, and cross-market
 impossibilities such as *Melbourne to win* with *Carlton by 1-39*.
 
-**…but the detector is not complete, and the gap is expensive.** On a sample of 22
-two-entrant markets from the verified event, **four had their mutually exclusive pair
-priced as `available: true`**:
+**…but the detector is not complete, and the gap is expensive.** Every exactly-two-entrant
+SGM-available market on the verified event was tested — 41 of them. Thirty-five correctly
+refused their mutually exclusive pair. **Five priced it:**
 
 | Market | Impossible pair | Quoted |
 |---|---|---|
-| Match Betting | Melbourne + Carlton | 146.51 |
-| 1st Half Match Betting | Melbourne + Carlton | 110.18 |
+| Match Betting | Melbourne + Carlton | **146.51** |
 | 4th Quarter Match Betting | Carlton + Melbourne | 81.67 |
+| 3rd Quarter Match Betting | Carlton + Melbourne | 74.50 |
+| 1st Quarter Match Betting | Carlton + Melbourne | 72.29 |
 | 2nd Quarter Match Betting | Carlton + Melbourne | 70.78 |
-| Highest Scoring Half | 1st Half + 2nd Half | 143.65 |
 
-A bet that cannot win, quoted at 146.51, is indistinguishable from a longshot with
-enormous edge — which is exactly what a value screener is looking for. **Never treat
-`available: true` as proof a combination is coherent.**
+The failing set is the **win-market family with two entrants and an implicit draw**. The
+three-entrant version that lists `Tie` as an entrant (`1st Half Betting`) is refused
+correctly, which is what makes the pattern legible.
+
+A bet that cannot win, quoted at 146.51 with availability saying yes, is indistinguishable
+from a longshot with enormous edge — exactly what an automated value screener hunts for.
+**Never treat `available: true` as proof a combination is coherent.**
+
+#### Two client-side defences
+
+Nothing in the payload marks mutual exclusivity, so there is no complete rule that keeps
+every legitimate same-market pair. There are two things a caller can do, and together they
+remove the class:
+
+1. **Honour `same_game_multi_available`, because the pricer ignores its own flag.** The
+   event card marks 21 of this event's markets as not SGM-available; pairing 14 of them
+   with an ordinary Match Betting leg, **12 priced anyway**. Two of the worst impossible
+   quotes come from exactly there — `Highest Scoring Half` at 143.65 and `1st Half Match
+   Betting` at 110.18 are both flagged unavailable and both priced. Filtering on the flag
+   before you build is free and catches them.
+2. **Do not combine two legs from the same `market_id`** unless you understand that market.
+   Every hole found is a same-market pair. Legitimate same-market pairs do exist — nested
+   `Alternate Handicaps` / `Alternate Total Points` lines, and multi-winner props like
+   `Player Goals - Anytime Goal Kicker` — so a blanket rule costs a little coverage. For a
+   cross-book comparator, which combines *different* markets anyway, that cost is close to
+   zero.
+
+> **`num_winners` is not the answer — it was tried.** It looks exactly like an exclusivity
+> flag and means neither thing reliably: `Melbourne Alternate Handicaps` is `num_winners: 1`
+> with 96 nested lines that legitimately combine, while `Race To 15` is `num_winners: 3`
+> with two mutually exclusive entrants. It appears to be a settlement field, not a logical
+> one.
+
+One near-miss worth recording so it is not re-flagged later: `To Win Either Half` with both
+teams prices at 1.80 and that is **correct** — Melbourne can win the first half and Carlton
+the second. Short prices on same-market pairs are usually legitimate; the impossible ones
+all came back long (70–146).
 
 **Two more.** A redundant leg is **silently collapsed** with `available` still true and no
 echo of the legs: *Melbourne to win* plus *Melbourne on the line* returned `23/20` — 2.15,
