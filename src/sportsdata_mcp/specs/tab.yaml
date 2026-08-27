@@ -23,6 +23,9 @@ provider:
   base_urls:
     default: https://api.beta.tab.com.au/v1
     cms: https://cmsapi.tab.com.au
+    # Placement lives on a DIFFERENT host from everything else. Pricing (including the
+    # account-tier enquiry that issues decoTokens) is api.beta; the betslip is webapi.
+    webapi: https://webapi.tab.com.au/v1
   default_headers:
     User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     Accept: "application/json, text/plain, */*"
@@ -49,6 +52,26 @@ provider:
       token_url: https://api.beta.tab.com.au/oauth/token
       client_id_env: TAB_CLIENT_ID
       client_secret_env: TAB_CLIENT_SECRET
+      optional: true
+    # THE ACCOUNT TIER — a different identity provider from the `oauth` key above.
+    #
+    # `oauth` is TAB's DATA tier: client-credentials against api.beta, for the public
+    # feeds. It has nothing to do with a person's account.
+    #
+    # An account authenticates through AUTH0 at login.tab.com.au. Verified from public
+    # OIDC discovery: refresh_token is a supported grant and "none" is among
+    # token_endpoint_auth_methods_supported, so it is a PUBLIC client with no secret —
+    # the refresh token is the whole credential. The browser's Auth0 SPA cache requests
+    # `offline_access`, which is what causes a refresh token to be issued at all.
+    #
+    # Unlike Sportsbet, that cache lives in localStorage rather than an HttpOnly cookie,
+    # so a future `connect tab` can read it. The client id below is the PUBLIC SPA client
+    # id, not a secret; it is in every page load.
+    account:
+      type: oauth_refresh
+      token_url: https://login.tab.com.au/oauth/token
+      grant: refresh_token
+      refresh_token_env: TAB_REFRESH_TOKEN
       optional: true
   # Akamai throttles bursts (RST-drops) and the engine can't retry a transport
   # reset — so keep the sustained rate low and retry the HTTP-status transients.
@@ -365,6 +388,43 @@ endpoints:
     examples:
       - description: "Price a two-leg AFL same game multi"
         params: {jurisdiction: NSW, bets: [{type: FIXED_ODDS, legs: [{type: SAME_GAME_MULTI, propositions: [{type: WIN, propositionId: 1016}, {type: WIN, propositionId: 8529}]}]}]}
+
+  # ─── tab.account — YOUR REAL ACCOUNT (auth: account) ───────────────────
+  # These need TAB_REFRESH_TOKEN. Every other TAB tool works anonymously or on the
+  # public data tier.
+  - name: tab_price_slip
+    group: tab.account
+    capabilities: [sport.prices]
+    method: POST
+    # A POST that prices and places nothing — but it MINTS the decoTokens placement needs.
+    read_only: true
+    summary: "PRICE A BET SLIP on your own account and get the decoTokens that tab_place_bet requires. The account-tier twin of tab_sgm_price: same envelope, but only this version issues the tokens that bind a bet to a quoted price."
+    base: default
+    path: /pricing-service/accounts/{accountNumber}/enquiry
+    auth: account
+    params:
+      - { name: accountNumber, in: path, type: integer, required: true, description: "Your own TAB account number. This only ever prices against YOUR account." }
+      - { name: uuid, in: body, type: string, required: true, description: "A fresh UUID identifying this enquiry." }
+      - { name: clientVersion, in: body, type: string, description: "Client version string the site sends; cosmetic." }
+      - { name: jurisdiction, in: body, api_name: "clientDetails.jurisdiction", type: string, default: NSW, required: true, description: "Your state: NSW, VIC, ACT, QLD, SA, NT or TAS. Prices and availability differ by jurisdiction, so this is not cosmetic." }
+      - { name: channel, in: body, api_name: "clientDetails.channel", type: string, default: web, description: "Leave as `web`." }
+      - { name: bets, in: body, type: json, required: true, description: 'The slip: [{"type": "FIXED_ODDS", "stake": "1.00", "legs": [{"type": "WIN", "propositionId": 1016, "odds": "2.00"}], "enableToteGuarantee": false, "enableMultiplier": false, "source": "…"}]. `propositionId` comes from tab_match_markets — markets[].propositions[].id as an INTEGER. Stake and odds are STRINGS.' }
+    response_hint: "{uuid, clientDetails:{accountNumber, customerId, channel, jurisdiction, homeState}, bets:[{type, status, stake, legs:[{decoToken, type, propositionId, odds}], multiplierAvailable, …}]}  — VERIFIED live 2026-08-27.\n\nTHE decoToken IS THE POINT OF THIS CALL. Each priced leg comes back carrying one, and tab_place_bet will not take a leg without it. That token is what binds the bet to a price TAB actually quoted — so unlike Sportsbet, where the client asserts a number and hopes, here the quote is a thing you hold. Price, then place with the tokens you were given; never with tokens from an older enquiry.\n\nTHIS IS THE ACCOUNT-TIER TWIN OF tab_sgm_price. Same service, same envelope, but addressed at /accounts/{accountNumber}/ and authenticated — and only this version issues decoTokens. tab_sgm_price stays the right tool for comparing prices across books; this one is for the moment before placing.\n\n`bets[].status` is 'ok' on a priced bet, and per-leg errors surface alongside rather than as an HTTP failure — read them before assuming a price."
+
+  - name: tab_place_bet
+    group: tab.write
+    capabilities: []
+    method: POST
+    summary: "PLACE A REAL BET WITH REAL MONEY on your own TAB account. Irreversible. Call tab_price_slip first — every leg needs the decoToken that call issues, which is what ties the bet to a price TAB quoted."
+    base: webapi
+    path: /tab-betting-service/accounts/{accountNumber}/betslip
+    auth: account
+    params:
+      - { name: accountNumber, in: path, type: integer, required: true, description: "Your own TAB account number. This only ever bets from YOUR account." }
+      - { name: transactionId, in: body, type: string, required: true, description: "AN IDEMPOTENCY KEY, and the most important field here. Generate ONE fresh id per bet you intend to place, and keep it. If a placement times out or the answer is ambiguous, resending with the SAME transactionId asks TAB whether that bet landed instead of placing a second one. Generating a new id to retry is how you place the same bet twice." }
+      - { name: decoTokens, in: body, type: json, required: true, description: "The slip-level tokens returned by tab_price_slip, as an array of strings." }
+      - { name: bets, in: body, type: json, required: true, description: 'The bets: [{"type": "FIXED_ODDS", "stake": "1.00", "legs": [{"decoToken": "…", "type": "WIN", "propositionId": 1016, "odds": "2.00"}], "enableToteGuarantee": false, "enableMultiplier": false, "source": "…"}]. EVERY LEG NEEDS ITS decoToken FROM tab_price_slip — that token is what binds the leg to a price TAB actually quoted, and a stale one from an earlier enquiry is a different quote. Stake and odds are STRINGS.' }
+    response_hint: "{updatedTime, ticketCost, errors:[], accountNumber, accountBalance, bets:[{type, errors:[], stake, legs:[{type, propositionId, odds}], expectedReturn, betCost, ticketSerialNumber, betSellTime, status}]}  — VERIFIED live 2026-08-27 on real bets, a single and a same game multi, both HTTP 201.\n\nHTTP 201 CREATED, AND SYNCHRONOUS. The bet is on when this returns — a genuine difference from Sportsbet, which answers 202 Accepted and leaves you to confirm later. `ticketSerialNumber` is the receipt and `bets[].status` was 'ok' on both verified bets.\n\nCHECK `errors` AT BOTH LEVELS. There is a top-level `errors` array and a per-bet one, and both were empty on success. A 201 with a populated per-bet `errors` is a bet that did not go on, so status code alone is not the answer.\n\nVERIFY THE ECONOMICS FROM THE RESPONSE: `expectedReturn`, `betCost` and `ticketCost` come back, along with `accountBalance`. expectedReturn/stake is the price you actually got — compare it with what tab_price_slip quoted.\n\n`transactionId` IS AN IDEMPOTENCY KEY, and it is the reason this endpoint is safer to recover from than Sportsbet's. Reusing the SAME transactionId on a retry is how you ask TAB whether a timed-out placement landed, without risking a duplicate bet. Generate a fresh one per intended bet and keep it — never generate a new one to retry."
 
   - name: tab_trending_props
     group: tab.sports

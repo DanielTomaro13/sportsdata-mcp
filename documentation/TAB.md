@@ -126,6 +126,53 @@ standard `platform`/`os`/`jurisdiction`/`authentication-status` query defaults:
 
 ---
 
+## Your own account (groups `tab.account` / `tab.write`)
+
+Two tools, and the only ones here that need a personal credential. Everything else works
+anonymously or on the public data tier. Captured live 2026-08-27 from real bets.
+
+| Tool | Call | What it does |
+|---|---|---|
+| `tab_price_slip` | `POST api.beta…/pricing-service/accounts/{n}/enquiry` | Prices a slip **and mints the `decoToken`s placement needs.** Read-only. |
+| `tab_place_bet` | `POST webapi…/tab-betting-service/accounts/{n}/betslip` | **Places a real bet.** Irreversible. |
+
+Note the **different host**: pricing is `api.beta.tab.com.au`, the betslip is
+`webapi.tab.com.au`. Getting that wrong is a 404 on a call that otherwise looks right.
+
+### Authentication — Auth0, and NOT the data tier
+
+TAB has two identity systems and conflating them is a confusing failure:
+
+- **`oauth`** — client-credentials against `api.beta`, for the public feeds. Nothing to do
+  with a person's account.
+- **`account`** — **Auth0** at `login.tab.com.au`, the human's account.
+
+Public OIDC discovery (`https://login.tab.com.au/.well-known/openid-configuration`) shows
+`refresh_token` among the supported grants and `none` among
+`token_endpoint_auth_methods_supported` — a **public client**, so the refresh token in
+`TAB_REFRESH_TOKEN` is the entire credential. Requests carry an ordinary
+`Authorization: Bearer`.
+
+### Why TAB is the better-behaved book to automate
+
+1. **`decoToken` binds a leg to a price TAB quoted.** The enquiry issues one per priced
+   leg and placement will not accept a leg without it. Sportsbet, by contrast, takes a
+   price the client asserts with nothing tying it to a real quote.
+2. **`transactionId` is an idempotency key.** Resending the *same* id after a timeout asks
+   TAB whether that bet landed, rather than placing a second one. Generating a new id to
+   retry is how you place the same bet twice. Sportsbet's placement cannot be retried at
+   all.
+3. **201 Created, and synchronous** — the bet is on when the call returns, where Sportsbet
+   answers 202 Accepted and leaves confirmation to a separate read.
+4. **The response confirms the economics**: `expectedReturn`, `betCost`, `ticketCost`,
+   `accountBalance`, plus `ticketSerialNumber` as the receipt.
+
+**A 201 is still not automatically success.** There is a top-level `errors` array *and* a
+per-bet one — both empty on the verified bets. A 201 with a populated per-bet `errors` is
+a bet that did not go on, so the status code alone is not the answer.
+
+Full capture detail, including the exact payloads, is in `docs/PLACEMENT-TAB.md` §0.
+
 ## Cross-provider comparison
 
 TAB shares capability tags with the other Australian books, so its tools are

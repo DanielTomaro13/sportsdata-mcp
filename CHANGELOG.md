@@ -28,6 +28,25 @@ Full history is in `git log`; this file covers what a user would notice.
   reject the former. Sportsbet's CIAM is a public client: `none` appears in its
   `token_endpoint_auth_methods_supported`, and the refresh token is the entire credential.
 
+- **TAB account tools** — `tab_price_slip` and `tab_place_bet`, the second book that can
+  move money and the better-designed one. Captured live from real bets (a single and a
+  same game multi, both 201).
+
+  Two properties make TAB materially safer to automate than Sportsbet. A **`decoToken`**
+  issued by the enquiry BINDS each leg to a price TAB actually quoted, where Sportsbet
+  takes a price the client asserts with nothing tying it to a real quote. And
+  **`transactionId` is an idempotency key**, so a timed-out placement can be asked about by
+  resending the same id — Sportsbet's placement can never be retried at all. Placement is
+  also synchronous (201 Created, not 202 Accepted).
+
+  A 201 is still not automatically success: there is a top-level `errors` array and a
+  per-bet one, and a populated per-bet array on a 201 is a bet that did not go on.
+
+  Placement lives on a **different host** (`webapi.tab.com.au`) from everything else in the
+  spec, and the account tier is **Auth0** at `login.tab.com.au` — a public client, so the
+  refresh token is the whole credential. That is a second, separate identity system from
+  the existing `oauth` data tier, and the two must not be conflated.
+
 ### Fixed
 - **An optional OAuth tier was gated on the wrong env var.** The "is this configured?"
   check read `client_id_env`, which a public client never has — so an optional public tier

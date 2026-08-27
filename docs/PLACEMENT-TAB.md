@@ -1,5 +1,99 @@
 # Placement on TAB
 
+> **Superseded in part, 2026-08-27.** This document was written before TAB's placement
+> call had been seen. It has now been captured, and §0 below records what is actually
+> true; the design discussion further down still stands where it does not contradict it.
+
+## 0. What the capture showed — and why TAB is the better-behaved book
+
+Captured live by the account holder placing real bets, a single and a same game multi,
+both HTTP 201. The agent did not place them. Auth values were redacted to lengths and
+auth request bodies were never read.
+
+**Two calls, on two different hosts:**
+
+```
+POST api.beta.tab.com.au/v1/pricing-service/accounts/{accountNumber}/enquiry   → 200
+POST webapi.tab.com.au/v1/tab-betting-service/accounts/{accountNumber}/betslip → 201
+```
+
+### The enquiry mints `decoToken`s
+
+```jsonc
+// request
+{ "uuid", "clientVersion", "clientDetails": { "channel", "jurisdiction" },
+  "bets": [{ "type", "stake", "legs": [{ "type", "propositionId", "odds" }],
+             "enableToteGuarantee", "enableMultiplier", "source" }] }
+
+// response — each priced leg now carries a decoToken
+{ "uuid", "clientDetails": { "accountNumber", "customerId", "channel", "jurisdiction", "homeState" },
+  "bets": [{ "type", "status", "stake",
+             "legs": [{ "decoToken", "type", "propositionId", "odds" }],
+             "multiplierAvailable", … }] }
+```
+
+This is the **account-tier twin of `tab_sgm_price`** — same service and envelope, but
+addressed at `/accounts/{n}/` and authenticated, and **only this version issues
+decoTokens**. `tab_sgm_price` remains the right tool for cross-book price comparison.
+
+### Placement consumes them
+
+```jsonc
+// request
+{ "transactionId": "…",            // an IDEMPOTENCY KEY
+  "decoTokens": ["…"],             // slip level
+  "bets": [{ "type", "stake",
+             "legs": [{ "decoToken", "type", "propositionId", "odds" }],
+             "enableToteGuarantee", "enableMultiplier", "source" }] }
+
+// response, HTTP 201
+{ "updatedTime", "ticketCost", "errors": [], "accountNumber", "accountBalance",
+  "bets": [{ "type", "errors": [], "stake", "legs": [{ "type", "propositionId", "odds" }],
+             "expectedReturn", "betCost", "ticketSerialNumber", "betSellTime",
+             "status" }] }
+```
+
+### Four ways TAB beats Sportsbet here
+
+1. **`decoToken` binds a leg to a price TAB quoted.** Sportsbet takes a price the client
+   asserts and offers nothing to tie it to a real quote. Here the quote is a thing you
+   hold, and a stale token from an older enquiry is simply a different quote.
+2. **`transactionId` is an idempotency key.** A timed-out placement can be *asked about*
+   by resending the same id, rather than being unrecoverable. This is the single biggest
+   operational difference between the two books: Sportsbet's placement can never be
+   retried, TAB's can be retried safely — provided the id is reused rather than
+   regenerated.
+3. **201 Created, and synchronous.** The bet is on when the call returns. Sportsbet
+   answers 202 Accepted and leaves confirmation to a separate read.
+4. **The response confirms the economics** — `expectedReturn`, `betCost`, `ticketCost`,
+   `accountBalance` — so `expectedReturn / stake` is the price actually received.
+
+**But a 201 is not automatically success.** There is a top-level `errors` array *and* a
+per-bet one; both were empty on the verified bets. A 201 carrying a populated per-bet
+`errors` is a bet that did not go on.
+
+### Auth: Auth0, and a public client
+
+TAB has **two** identity systems and they must not be confused:
+
+| Tier | What it is |
+|---|---|
+| `oauth` (existing) | client-credentials against `api.beta` — the **public data** tier, nothing to do with a person |
+| `account` (new) | **Auth0** at `login.tab.com.au` — the human's account |
+
+From public OIDC discovery at `https://login.tab.com.au/.well-known/openid-configuration`:
+`refresh_token` is a supported grant and `none` appears in
+`token_endpoint_auth_methods_supported` — a **public client**, so the refresh token is the
+entire credential. The browser's Auth0 SPA cache requests `offline_access`, which is what
+causes one to be issued.
+
+Requests carry an ordinary `Authorization: Bearer` — no bespoke headers, unlike
+Sportsbet's `accesstoken` / `apptoken` / `customer-id` trio.
+
+**And `connect tab` is more buildable than `connect sportsbet`:** Auth0's SPA SDK caches
+its tokens in **localStorage**, not an HttpOnly cookie, so the refresh token is reachable.
+For Sportsbet it was never established where the refresh token is persisted.
+
 What an autonomous bet-placing agent would look like **for TAB specifically**. The
 architecture, the gates and the preconditions are in
 [`AUTONOMOUS-PLACEMENT.md`](AUTONOMOUS-PLACEMENT.md) and are not repeated here — this
