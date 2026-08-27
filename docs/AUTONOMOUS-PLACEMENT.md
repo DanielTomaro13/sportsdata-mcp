@@ -239,6 +239,16 @@ reasons this document ends where it does. Everything else is solvable; those are
 
 ---
 
+## The caching trap (added 2026-08-27, measured)
+
+The engine caches GET responses for 60 s. Four of the six SGM pricers are POSTs and are
+unaffected, but **Unibet's is a GET** — a re-quote inside the window returns the price that
+was approved rather than the price on offer, measured at 0 ms.
+
+A drift gate that compares a cached price against the approved one always passes. Whatever
+performs the pre-placement re-quote must bypass the cache, on every book, rather than
+relying on a given book's pricer happening to be a POST.
+
 ## Where this stands
 
 Nothing here is built. The scope is recorded so the decision can be revisited once the
