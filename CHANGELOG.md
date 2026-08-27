@@ -8,6 +8,26 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+### Fixed
+- **Unibet's placement contract was documented wrong in 0.31.0, in four places.** Read off
+  a live authenticated request: auth is **`Authorization: Bearer <uuid>`**
+  (`UNIBET_ACCESS_TOKEN`), not a session cookie on `.kambicdn.com`; the coupon's
+  `operation` is **`"AND"`** and its `type` is **`"BET_BUILDER"`**, not `"COMBINATION"`;
+  and `validate.json` **does not echo a price**, so it cannot be used to check drift —
+  its reply is `{status: "SUCCESS", validSession, rewardInfo}`.
+
+  How it was wrong is worth recording. The cookie claim was inferred from finding no
+  bearer in Unibet's storage plus the `player/` path segment, and never checked against
+  the request — because the capture recorder redacted every header matching
+  `authorization|cookie|token` to a length, blanking the one field that would have
+  settled it. The clue that should have caught it: Kambi is a cross-origin host, and a
+  browser does not send cookies there by default. The `operation`/`type` strings were
+  guesses that read as observations.
+
+  Nothing was placed against the wrong contract; it was caught while setting up a
+  supervised first placement. `allowOddsChange`/`requestId`/`channel` were also guessed
+  and do not appear on the verified request.
+
 ## 0.31.0 — 2026-08-27
 
 ### Added
@@ -96,9 +116,7 @@ Full history is in `git log`; this file covers what a user would notice.
   `unibet_sgm_price` returns); the stake lives separately in `bets[]`. `allowOddsChange`
   is a per-request drift policy.
 
-  Auth is a **session cookie on `.kambicdn.com`**, not an OAuth bearer — there is no
-  readable token in storage, only Kambi's keepalive timers — carried from
-  `UNIBET_KAMBI_COOKIE`. The request shape is verbatim from a successful placement, but a
+  Auth is **`Authorization: Bearer <uuid>`** from `UNIBET_ACCESS_TOKEN`. The request shape is verbatim from a successful placement, but a
   **headless** placement has not been round-tripped, so the stored credential is unproven
   and the spec says so. On rejection Kambi uses a `{status, message}` envelope; as with
   Entain, HTTP 200 is not the verdict.

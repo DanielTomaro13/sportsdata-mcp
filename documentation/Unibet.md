@@ -236,15 +236,54 @@ minimum-stake bet before trusting it. On rejection Kambi returns `{status, messa
 as with Entain. `requestId` is not a proven idempotency key, so **never retry** a timed-out
 placement; confirm by reading the account instead.
 
-### Authentication
+### Authentication — `Authorization: Bearer`, corrected 2026-08-27
 
-Kambi authenticates the punter with a **session cookie on `.kambicdn.com`**, *not* an OAuth
-bearer — there is no readable token in `localStorage` (only Kambi keepalive timers,
-`KAF_LAST_REFRESHED_AT` / `session_sync_info`). The session is minted by Unibet's own login
-via a Kambi SSO handshake. It is carried to the tool as a `Cookie` header from
-`UNIBET_KAMBI_COOKIE`. Because pricing/validation is anonymous (verified: `validate.json`
-answered **400, not 401**, cross-origin with no cookie), only the actual placement needs
-the cookie — the go/no-go check works with no login at all.
+Kambi authenticates the punter with **`Authorization: Bearer <uuid>`**, observed on a live
+request (`POST coupon/validate.json` → 200, `validSession: true`). The token is an opaque
+UUID, not a JWT, so its expiry cannot be read locally — a dead one surfaces as a 401.
+Supply it via `UNIBET_ACCESS_TOKEN`.
+
+> **This page previously said the credential was a session cookie on `.kambicdn.com`.**
+> That was an inference — no bearer was visible in Unibet's own storage, and the path
+> carries a `player/` segment — and it was never checked against the request, because the
+> capture recorder redacted every `authorization|cookie|token` header to a length. The
+> clue that should have caught it: Kambi is a **cross-origin** host
+> (`Sec-Fetch-Site: cross-site`), and a browser does not send cookies there by default.
+
+Because pricing/validation is anonymous (verified: `validate.json` answered **400, not
+401**, cross-origin with no credential), only the actual placement needs the token — the
+go/no-go check works with no login at all.
+
+### The coupon body, as observed
+
+```json
+{"couponRows":[{"index":0,"odds":3300,
+  "group":{"operation":"AND","groups":[
+    {"operation":"AND","outcomeIds":[4306981997]},
+    {"operation":"AND","outcomeIds":[4309036845]}]},
+  "type":"BET_BUILDER"}],
+ "bets":[{"couponRowIndexes":[0],"eachWay":false}],
+ "isUserLoggedIn":true}
+```
+
+`operation` is **`"AND"`** and `type` is **`"BET_BUILDER"`** — both were guessed as
+`"COMBINATION"` in the first version of this page. `odds` is thousandths (3300 = 3.30).
+Validate carries **no `stake`**; adding it is what makes the same body a placement. The
+guessed `allowOddsChange` / `requestId` / `channel` fields do **not** appear on the
+verified request.
+
+### What validate answers
+
+```json
+{"status":"SUCCESS","validSession":true,"rewardInfo":{...}}
+```
+
+**It does not echo a price.** There are no `couponRows` in the reply, so this call cannot
+check drift — use `unibet_sgm_price` for that. `validSession` is the cheapest way to tell
+a dead token from a bad coupon. `rewardInfo.validGroupRewards[]` lists applicable
+promotions (a `PROFIT_BOOST` was live on the verified call); a boost changes the payout,
+not the odds struck, so it must not feed a price comparison. Rate limits ride in
+`x-ratelimit-remaining` / `x-ratelimit-reset`.
 
 ## Not modelled
 

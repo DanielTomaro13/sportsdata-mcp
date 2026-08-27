@@ -6,15 +6,19 @@ other three books on every axis:
     POST cf-al-auth-api.kambicdn.com/player/api/v2019/ubau/coupon/validate.json   (anon)
     POST cf-al-auth-api.kambicdn.com/player/api/v2019/ubau/coupon.json            (account)
 
-  * Auth is a SESSION COOKIE on .kambicdn.com, not an OAuth bearer — carried as a Cookie
-    header from UNIBET_KAMBI_COOKIE.
+  * Auth is `Authorization: Bearer <uuid>` from UNIBET_ACCESS_TOKEN — OBSERVED on a live
+    authenticated request. This file first asserted a session COOKIE, which was an
+    inference that went unchecked because the capture recorder redacted the very header
+    that would have disproved it.
   * Pricing/validation is ANONYMOUS: validate.json answered 400 (not 401) cross-origin
-    with no cookie, so the go/no-go check needs no login.
-  * An SGM is ONE couponRow whose group nests the legs; the stake lives in bets[].
+    with no credential, so the go/no-go check needs no login.
+  * An SGM is ONE couponRow, operation "AND", type "BET_BUILDER"; the stake lives in
+    bets[] and is what separates a placement from a validation.
+  * Validate DOES NOT echo a price, so it cannot be used to check drift.
 
 Captured 2026-08-27 from a real 2-leg SGM placement (the account holder placed it; the
-agent recorded the request). The request SHAPE is verbatim from that success; a headless
-placement was deliberately NOT round-tripped, and the spec says so.
+agent recorded the request). The request SHAPE is verbatim; a headless placement was NOT
+round-tripped, and the spec says so.
 """
 
 from __future__ import annotations
@@ -86,14 +90,21 @@ def test_validate_and_place_share_the_coupon_body(place, validate):
         assert token in vb, token
 
 
-# ─── the account tier: cookie, not bearer ──────────────────────────────────
+# ─── the account tier: bearer, not cookie ──────────────────────────────────
 
 
-def test_the_account_tier_is_a_cookie_header_not_a_bearer(spec):
+def test_the_account_tier_is_a_bearer_token_not_a_cookie(spec):
+    """OBSERVED on a live authenticated request 2026-08-27: `Authorization: Bearer <uuid>`.
+
+    This spec first said the credential was a session COOKIE on .kambicdn.com — inferred
+    from finding no bearer in Unibet's storage, never checked against the request, because
+    the capture recorder redacted exactly the header that would have settled it. Kambi is
+    cross-origin, so a browser would not have sent cookies there at all."""
     a = spec.provider.auth["account"]
     assert a.type == "static_header"
-    assert a.header == "Cookie"
-    assert a.env == "UNIBET_KAMBI_COOKIE"
+    assert a.header == "Authorization"
+    assert a.value_prefix == "Bearer "
+    assert a.env == "UNIBET_ACCESS_TOKEN"
     # optional so an unset env degrades to anonymous (Kambi 401s) rather than breaking
     # startup for everyone who has not configured it.
     assert a.optional is True
@@ -111,6 +122,13 @@ def test_shape_verified_but_headless_placement_flagged(place):
     assert "REQUEST SHAPE IS REAL" in hint
 
 
+def test_the_shared_body_check_covers_the_stake_difference(place, validate):
+    """validate carries no stake; placement does. That is the difference between a
+    question and a bet."""
+    vb = next(p for p in validate.params if p.name == "body").description or ""
+    assert "does NOT carry" in vb or "no `stake`" in vb
+
+
 def test_no_retry_on_timeout_like_the_other_books(place):
     hint = place.response_hint or ""
     assert "NEVER retry" in hint
@@ -118,6 +136,27 @@ def test_no_retry_on_timeout_like_the_other_books(place):
 
 
 def test_kambi_odds_are_thousandths_in_the_body_help(place):
-    # 3400 = 3.40 — the loudest wrong answer here is a price 1000x too large.
+    # 3300 = 3.30 — the loudest wrong answer here is a price 1000x too large.
     d = next(p for p in place.params if p.name == "body").description or ""
-    assert "thousandths" in d and "3400" in d
+    assert "THOUSANDTHS" in d and "3300" in d
+
+
+def test_the_coupon_operation_and_type_are_the_verified_strings(place):
+    """"AND" / "BET_BUILDER", read off a live request. The first version of this spec
+    guessed "COMBINATION" for both, which Kambi would not have recognised."""
+    d = next(p for p in place.params if p.name == "body").description or ""
+    assert '"AND"' in d and '"BET_BUILDER"' in d
+
+
+def test_validate_does_not_echo_a_price_and_says_so(validate):
+    """The reply is {status, validSession, rewardInfo} — no couponRows. A drift check
+    that re-reads the price from here refuses every placement, which is what the betting
+    plane did until this was measured."""
+    hint = validate.response_hint or ""
+    assert "DOES NOT ECHO A PRICE" in hint
+    assert "unibet_sgm_price" in hint          # names the call that CAN re-price
+
+
+def test_validate_success_is_the_string_SUCCESS(validate):
+    hint = validate.response_hint or ""
+    assert "SUCCESS" in hint and "validSession" in hint

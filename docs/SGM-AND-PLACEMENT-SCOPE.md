@@ -542,7 +542,9 @@ response — which `event_betoffer` already serves. Projected down to ~11 KB.
 **Placement: MODELLED** (2026-08-27). Captured from a real 2-leg SGM on the Kambi Player
 API: `unibet_validate_coupon` (POST `coupon/validate.json`, anonymous — it answered 400 not
 401 with no cookie, so the go/no-go check needs no login) and `unibet_place_bet` (POST
-`coupon.json`, `unibet.write`, cookie auth via `UNIBET_KAMBI_COOKIE`). An SGM is one
+`coupon.json`, `unibet.write`, **`Authorization: Bearer` via `UNIBET_ACCESS_TOKEN`** —
+corrected 2026-08-27 from a wrong "session cookie" guess, after reading the header off a
+live authenticated request). An SGM is one
 `couponRow` whose `group.groups[]` nests the legs; the stake lives in `bets[]`. Request
 shape is verbatim from the successful placement; a **headless** round-trip was deliberately
 not done (moves money), so `unibet_place_bet` is shape-verified but auth-unverified. See
