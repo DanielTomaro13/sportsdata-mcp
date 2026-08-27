@@ -15,8 +15,102 @@ provider:
   auth:
     default:
       type: none
+    # THE ACCOUNT TIER. Everything under /apigw that touches a real account authorises on
+    # a short-lived `accesstoken` JWT — NOT on the session cookie. Verified live: a
+    # same-origin request carrying the cookies still returns 400, because the cookie is
+    # not the credential.
+    #
+    # Sportsbet's CIAM is PingFederate and publishes discovery at
+    # /apigw/ciam/.well-known/openid-configuration. `refresh_token` is a supported grant
+    # and "none" is among token_endpoint_auth_methods_supported — a PUBLIC client, so
+    # there is no client id or secret to hold, only the refresh token.
+    #
+    # HOW THE HUMAN GETS ONE: log in normally in a browser; the login mints
+    # {access_token, refresh_token, id_token}. The refresh token is the durable half and
+    # is what SPORTSBET_REFRESH_TOKEN holds. When it finally dies the token endpoint says
+    # `invalid_grant`, the engine raises with "harvest a new one", and that is the signal
+    # to log in again — the only recurring human step.
+    #
+    # `optional: true` so keyless installs keep working: every other Sportsbet tool in
+    # this spec is anonymous and must stay that way.
+    account:
+      type: oauth_refresh
+      token_url: https://www.sportsbet.com.au/apigw/ciam/token
+      grant: refresh_token
+      refresh_token_env: SPORTSBET_REFRESH_TOKEN
+      header: accesstoken
+      value_prefix: ""
+      optional: true
 
 endpoints:
+  # ─── sportsbet.account — YOUR REAL ACCOUNT (auth: account) ─────────────
+  # These three need SPORTSBET_REFRESH_TOKEN. Everything else in this spec is anonymous.
+  - name: sportsbet_bet_history
+    group: sportsbet.account
+    capabilities: []
+    summary: "Your own bets at Sportsbet. THIS IS HOW A PLACEMENT IS CONFIRMED — placing answers 202 Accepted, so a bet is only really on once it appears here."
+    base: default
+    path: /history/bets
+    auth: account
+    params:
+      - { name: appToken, in: header, api_name: apptoken, type: string, required: true, description: "Sportsbet's app key — a short constant the web client sends on every /apigw call. Not a personal credential, but not published either; read it from the browser once. Collected by `sportsdata-mcp connect sportsbet`." }
+      - { name: customerId, in: header, api_name: customer-id, type: string, required: true, description: "Your own account number. It is also the `custId` claim inside the access token, so it is not extra authority — the gateway just wants it stated. Collected by `connect`." }
+      - { name: channel, in: header, type: string, default: cxp, description: "Client channel. `cxp` is what the website sends; leave it." }
+      - { name: requestId, in: header, api_name: x-request-id, type: string, description: "A fresh UUID per call, for Sportsbet's own tracing. Optional here; send a new one each time if you send one at all." }
+      - { name: filterType, in: query, type: string, default: SETTLED, enum: [SETTLED, PENDING], description: "Which bets. SETTLED is verified; PENDING alone was rejected on probing and may need other parameters alongside it." }
+      - { name: dateType, in: query, type: string, default: ALL, description: "Date window. ALL is what the site sends." }
+      - { name: limit, in: query, type: integer, default: 10, description: "How many bets." }
+      - { name: includeLegData, in: query, type: boolean, default: true, description: "Include each bet's legs — needed to verify WHAT was bet, not just that something was." }
+      - { name: sortField, in: query, type: string, default: DATE, description: "Sort field." }
+      - { name: sortOrder, in: query, type: string, default: DESC, description: "Newest first." }
+    response_hint: "{bets:[…]}  — the account's bets. VERIFIED live 2026-08-27.\n\nTHIS IS HOW A PLACEMENT IS CONFIRMED. sportsbet_place_bet answers 202 Accepted, which means taken for processing rather than on, so a bet is only really placed once it appears here. Match on the `betId` the placement returned, and check the STAKE AND THE PRICE, not merely that a bet exists.\n\n`filterType` takes SETTLED (verified). PENDING alone was rejected on probing, so a pending read may want other parameters — establish that before relying on it for read-back of a just-placed bet."
+
+  - name: sportsbet_price_slip
+    group: sportsbet.account
+    capabilities: [sport.prices]
+    method: PUT
+    # A PUT that prices a slip and places nothing. It is the step the website itself
+    # performs before every placement, and the only source of a price you can actually bet.
+    read_only: true
+    summary: "PRICE A BET SLIP — the authoritative, current price for selections you are about to back. Call this IMMEDIATELY before sportsbet_place_bet: placement takes a price you assert, not a quote id, so this is the only way to place at a real number."
+    base: default
+    path: /acs/bets/combinations
+    auth: account
+    params:
+      - { name: appToken, in: header, api_name: apptoken, type: string, required: true, description: "Sportsbet's app key — a short constant the web client sends on every /apigw call. Not a personal credential, but not published either; read it from the browser once. Collected by `sportsdata-mcp connect sportsbet`." }
+      - { name: customerId, in: header, api_name: customer-id, type: string, required: true, description: "Your own account number. It is also the `custId` claim inside the access token, so it is not extra authority — the gateway just wants it stated. Collected by `connect`." }
+      - { name: channel, in: header, type: string, default: cxp, description: "Client channel. `cxp` is what the website sends; leave it." }
+      - { name: requestId, in: header, api_name: x-request-id, type: string, description: "A fresh UUID per call, for Sportsbet's own tracing. Optional here; send a new one each time if you send one at all." }
+      - { name: betItems, in: body, type: json, required: true, description: 'The slip: [{"betNo": 1, "legs": [{...}]}]. Leg shape matches sportsbet_place_bet — see its description for the parts/externalId structure.' }
+      - { name: outcomeGroups, in: body, type: json, default: [], description: "Leave empty unless grouping outcomes." }
+      - { name: returnOutcomeDetails, in: body, type: boolean, default: true, description: "Include the outcome detail; useful for confirming you priced what you meant." }
+      - { name: returnCashoutAvailable, in: body, type: boolean, default: true, description: "Whether cash-out is offered on the resulting bet." }
+      - { name: returnFreebetTokens, in: body, type: boolean, default: false, description: "Include eligible freebet tokens." }
+      - { name: returnVouchers, in: body, type: boolean, default: false, description: "Include vouchers." }
+      - { name: includeMBS, in: body, type: boolean, default: false, description: "Include minimum bet size information." }
+    response_hint: "{betBuilds:[{betNo, enhancedOdds:[{outcome, priceDecimal, priceNum, priceDen, legType}], betCombinations:[{betType, betTypeName, betMinStake, betNoOfLines, cashoutAvailable, betEnhancedPrice}], vouchers:[]}]}  — VERIFIED live 2026-08-27.\n\nTHIS IS THE AUTHORITATIVE PRICE, and it is the call to make immediately before placing. sportsbet_place_bet does NOT take a quote id: it takes a price you assert, so the only way to place at a real price is to read it here first and send THAT number. A price remembered from thirty seconds ago is not a price.\n\n`betMinStake` comes back per combination and was 0.01 on the verified slip — the smallest possible test bet is a cent, not a dollar.\n\nPrices appear twice and in two forms: `priceDecimal` on each enhanced odd, and `priceNum`/`priceDen` which is what placement wants. Carry the fraction across unchanged rather than re-deriving it from the decimal, which rounds."
+
+  - name: sportsbet_place_bet
+    group: sportsbet.write
+    capabilities: []
+    method: POST
+    summary: "PLACE A REAL BET WITH REAL MONEY on your own Sportsbet account. Irreversible. Call sportsbet_price_slip first and send the price it returned — this endpoint takes an asserted price, not a quote id."
+    base: default
+    path: /acs/bets
+    auth: account
+    params:
+      - { name: appToken, in: header, api_name: apptoken, type: string, required: true, description: "Sportsbet's app key — a short constant the web client sends on every /apigw call. Not a personal credential, but not published either; read it from the browser once. Collected by `sportsdata-mcp connect sportsbet`." }
+      - { name: customerId, in: header, api_name: customer-id, type: string, required: true, description: "Your own account number. It is also the `custId` claim inside the access token, so it is not extra authority — the gateway just wants it stated. Collected by `connect`." }
+      - { name: channel, in: header, type: string, default: cxp, description: "Client channel. `cxp` is what the website sends; leave it." }
+      - { name: requestId, in: header, api_name: x-request-id, type: string, description: "A fresh UUID per call, for Sportsbet's own tracing. Optional here; send a new one each time if you send one at all." }
+      - { name: betItems, in: body, type: json, required: true, description: 'The bets. One item: {betNo, betType: "SGL", stakePerLine, numLines: 1, legs: [{legNo, legSort: "IM", legType: "W", legDesc: "EXT_PP", isPYPSingle: false, classExternalId, competitionExternalId, eventExternalId, parts: [{partNo, outcome, priceType: "L", partDesc: "ALLMARKETS", priceNum, priceDen, marketExternalId, outcomeExternalId}]}]}. A SAME GAME MULTI IS ONE LEG WITH SEVERAL `parts` and betType "SGL" — not a multi-leg bet — and the combined price is carried as priceNum/priceDen REPLICATED ON EVERY PART. The external ids are the same id space sportsbet_sgm_price uses (AFL: class 103, competition 17131), NOT the internal ids in a market topicLink. `stakePerLine` is the stake; `betMinStake` from sportsbet_price_slip was 0.01.' }
+      - { name: checkBalance, in: body, type: boolean, default: true, description: "Have Sportsbet check the balance covers the stake before accepting. Leave true." }
+      - { name: returnBalance, in: body, type: boolean, default: true, description: "Return the resulting balance." }
+      - { name: returnCashoutAvailable, in: body, type: boolean, default: false, description: "Return whether cash-out is offered." }
+      - { name: fullDetails, in: body, type: boolean, default: true, description: "Return the full placement detail — needed to read back betId and betPotentialWin." }
+      - { name: errorDetail, in: body, type: string, default: "", description: "Sportsbet's error verbosity flag; the site sends an empty string." }
+    response_hint: "{pendingBetCount, betPlacements:[{betNo, betId, receipt, totalStake, currency, betPotentialWin, cashoutAvailable}]}  — VERIFIED live 2026-08-27 on a real bet.\n\nHTTP 202 ACCEPTED, NOT 201 CREATED. The bet has been taken for PROCESSING; it is not yet confirmed on. `pendingBetCount` says so. A 202 is not proof of anything, so ALWAYS read back with sportsbet_bet_history and confirm the bet is really there.\n\nCHECK THE PRICE YOU GOT. `betPotentialWin / totalStake` is the accepted decimal price — 39.50 / 10 = 3.95 on the verified bet, matching what was sent. If it does not match what you priced, the bet went on at a price nobody agreed to: escalate, do not place more.\n\nNEVER RETRY THIS CALL. A placement that timed out may already have landed, and a retry puts the bet on twice. On any timeout or ambiguous failure the correct action is to read bet history and find out what happened — never to send it again.\n\n`betId` is the handle for read-back and `receipt` is the human-readable reference."
+
   # ─── sportsbet.racing (15) — sportsbook-racing service ─────────────────
   - name: sportsbet_racing_allracing
     group: sportsbet.racing

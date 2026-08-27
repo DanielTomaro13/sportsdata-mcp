@@ -9,6 +9,34 @@ Full history is in `git log`; this file covers what a user would notice.
 ## Unreleased
 
 ### Added
+- **Sportsbet account tools — the first surface in this catalogue that can move money.**
+  `sportsbet_price_slip` (the authoritative price), `sportsbet_place_bet` (the write, alone
+  in `sportsbet.write`) and `sportsbet_bet_history` (read-back). Captured live by watching
+  a real bet being placed; the agent did not place it and does not place them.
+
+  Placement takes an **asserted price, not a quote id** — `priceNum`/`priceDen` in the
+  payload, the same shape as BetR's `FixedWin` — so pricing immediately beforehand is not
+  an optimisation but the only way to bet at a number the book is offering. It answers
+  **202 Accepted**, not 201, so a success response is not a placed bet and read-back is
+  mandatory. And a retry is a second real bet, so placements are never retried.
+
+  A same game multi here is `betType: "SGL"` with ONE leg and several `parts`, the combined
+  price replicated onto every part.
+- **Public OAuth clients.** `client_id_env` and `client_secret_env` are now optional, and
+  absent credentials are OMITTED from the token form rather than sent empty — posting
+  `client_id=""` is a different request from posting no `client_id`, and some servers
+  reject the former. Sportsbet's CIAM is a public client: `none` appears in its
+  `token_endpoint_auth_methods_supported`, and the refresh token is the entire credential.
+
+### Fixed
+- **An optional OAuth tier was gated on the wrong env var.** The "is this configured?"
+  check read `client_id_env`, which a public client never has — so an optional public tier
+  would have gone permanently anonymous, and silently, because optional tiers do not raise.
+  The gate is now chosen by grant: `refresh_token` gates on the refresh token,
+  `password` on the username.
+
+
+### Added
 - **`betr_sgm_price`** — the fourth Australian book that will price a same game multi you
   choose, joining `sportsbet_sgm_price`, `tab_sgm_price` and `pointsbet_sgm_price`.
   Verified live with the correlation adjustment running both ways: Bulldogs (1.95) with

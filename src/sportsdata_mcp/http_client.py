@@ -197,8 +197,17 @@ class HTTPClient:
             else:
                 provider = StaticBasicAuthProvider(spec, self._secrets)
         elif isinstance(spec, AuthOAuthRefresh):
+            # "Is this tier configured?" depends on the GRANT, not on client_id: a public
+            # client has no client id at all, and its credential is the refresh token.
+            # Keying off client_id_env would make an optional public tier permanently
+            # anonymous — silently, since optional tiers do not raise.
+            gate = {
+                "client_credentials": spec.client_id_env,
+                "refresh_token": spec.refresh_token_env,
+                "password": spec.username_env,
+            }.get(spec.grant, spec.client_id_env)
             if spec.optional and not (
-                os.environ.get(spec.client_id_env) or (self._secrets or {}).get(spec.client_id_env)
+                gate and (os.environ.get(gate) or (self._secrets or {}).get(gate))
             ):
                 # optional tier with no credentials configured → anonymous
                 provider = NullAuthProvider()

@@ -44,8 +44,12 @@ class OAuthRefreshProvider:
         secrets = secrets or {}
         self._spec = spec
         self._http = http
-        self._client_id = _resolve(spec.client_id_env, secrets, what="the OAuth client id")
-        self._client_secret = _resolve(spec.client_secret_env, secrets, what="the OAuth client secret")
+        # Public clients have neither. `required=False` so a spec that omits them is
+        # valid rather than an error at construction.
+        self._client_id = _resolve(spec.client_id_env, secrets, what="the OAuth client id",
+                                   required=False)
+        self._client_secret = _resolve(spec.client_secret_env, secrets,
+                                       what="the OAuth client secret", required=False)
         self._refresh_token = _resolve(
             spec.refresh_token_env, secrets, what="the OAuth refresh token",
             required=spec.grant == "refresh_token",
@@ -77,7 +81,9 @@ class OAuthRefreshProvider:
             if r.status_code >= 400:
                 raise AuthMissingError(
                     f"OAuth client_credentials grant failed (HTTP {r.status_code}): {r.text[:200]} — "
-                    f"check {self._spec.client_id_env}/{self._spec.client_secret_env}"
+                    f"check {self._spec.client_id_env}/{self._spec.client_secret_env}. "
+                    f"This grant REQUIRES a client id and secret; only the refresh and "
+                    f"password grants work on a public client."
                 )
             self._store(r.json())
             return
@@ -119,10 +125,15 @@ class OAuthRefreshProvider:
         # Form-encoded by contract — TAB's endpoint rejects JSON bodies outright.
         # Deliberately outside the provider's token-bucket rate limiter: a mint
         # happens at most once per token lifetime (~hours), not per data request.
-        return await self._http.post(
-            self._spec.token_url,
-            data={**grant_fields, "client_id": self._client_id, "client_secret": self._client_secret},
-        )
+        # Client credentials are OMITTED when absent rather than sent empty: a public
+        # client that posts client_id="" is not the same request as one that posts no
+        # client_id, and some servers reject the former.
+        data = dict(grant_fields)
+        if self._client_id:
+            data["client_id"] = self._client_id
+        if self._client_secret:
+            data["client_secret"] = self._client_secret
+        return await self._http.post(self._spec.token_url, data=data)
 
     def _store(self, payload: dict) -> None:
         token = payload.get("access_token")

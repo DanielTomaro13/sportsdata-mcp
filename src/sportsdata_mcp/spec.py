@@ -57,8 +57,14 @@ class AuthOAuthRefresh(BaseModel):
     #   password — username/password envs mint a token pair directly.
     type: Literal["oauth_refresh"]
     token_url: str
-    client_id_env: str
-    client_secret_env: str
+    # OPTIONAL, because not every OAuth server has a client secret to give you. A PUBLIC
+    # client — `token_endpoint_auth_methods_supported` containing "none" — authenticates
+    # the caller by the grant alone, and Sportsbet's CIAM is one: its token endpoint
+    # accepts a refresh grant with no client id and no secret at all. Sending empty
+    # strings is not the same as sending nothing, so absent fields are omitted from the
+    # form body rather than blanked.
+    client_id_env: str | None = None
+    client_secret_env: str | None = None
     grant: Literal["client_credentials", "refresh_token", "password"] = "client_credentials"
     refresh_token_env: str | None = None
     username_env: str | None = None

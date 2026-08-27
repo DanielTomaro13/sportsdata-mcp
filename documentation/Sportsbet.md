@@ -247,6 +247,90 @@ Two error envelopes observed:
 
 ---
 
+## Account endpoints — your real account (group `sportsbet.account` / `sportsbet.write`)
+
+Three tools, and the only ones in this provider that need a credential. Everything else on
+this page is anonymous and stays that way. Captured live 2026-08-27 by watching a real bet
+being placed.
+
+### Authentication — a public OAuth client
+
+The `/apigw` account surface authorises on a short-lived **`accesstoken` JWT, not on the
+session cookie**. A same-origin request carrying the cookies still returns 400: the cookie
+is not the credential.
+
+Sportsbet's CIAM is PingFederate and publishes discovery at a public URL:
+
+```
+GET /apigw/ciam/.well-known/openid-configuration
+```
+
+`refresh_token` is a supported grant, and `none` appears in
+`token_endpoint_auth_methods_supported` — a **public client**, so there is no client id or
+secret to hold. The refresh token is the entire credential.
+
+```
+POST /apigw/ciam/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&refresh_token=<SPORTSBET_REFRESH_TOKEN>
+```
+
+The human step is logging in once in a browser, which mints
+`{access_token, refresh_token, id_token}`. The refresh token is the durable half. When it
+eventually dies the endpoint answers `invalid_grant` and the engine raises telling you to
+harvest a new one — that error IS the "log in again" signal, and it is the only recurring
+manual step.
+
+Alongside the token, every call wants `apptoken`, `customer-id` and `channel: cxp`.
+
+### The three tools
+
+| Tool | Call | What it does |
+|---|---|---|
+| `sportsbet_price_slip` | `PUT /acs/bets/combinations` | The **authoritative price**. Read-only. |
+| `sportsbet_place_bet` | `POST /acs/bets` | **Places a real bet.** Irreversible. |
+| `sportsbet_bet_history` | `GET /history/bets` | Read-back — how a placement is confirmed. |
+
+### The flow, and why it is two calls
+
+```
+PUT  /acs/bets/combinations   → 200   priceNum/priceDen, betMinStake (0.01)
+POST /acs/bets                → 202   betId, receipt, betPotentialWin
+GET  /history/bets            → 200   confirm it is really on
+```
+
+**Placement takes an asserted price, not a quote id.** `sportsbet_sgm_price` returns a
+`quoteId` and this endpoint does not accept it — the price travels as `priceNum`/`priceDen`
+in the payload, the same shape as BetR's `FixedWin`. So pricing is not an optimisation you
+can skip: it is the only way to place at a number the book is actually offering, and it has
+to happen immediately before.
+
+### Four things that will bite
+
+1. **A same game multi is `betType: "SGL"` with ONE leg and several `parts`** — not a
+   multi-leg bet — and the combined price is **replicated onto every part**. Sent as a
+   multi-leg bet it is a different, longer bet.
+2. **202 Accepted is not a placed bet.** The response carries `pendingBetCount`; the bet
+   has been taken for processing. Read back through `sportsbet_bet_history` before
+   believing it.
+3. **Never retry a placement.** One that timed out may already have landed, and the retry
+   is a second real bet. On any ambiguous failure, read history — do not resend.
+4. **The external ids are the pricer's id space**, not the internal ids in a market's
+   `topicLink`. AFL is class `103` / competition `17131`; the topicLink pair (`50`/`4165`)
+   returns HTTP 500 from the pricer. One resolution serves quoting and placing.
+
+Verify the price you actually got: `betPotentialWin / totalStake` is the accepted decimal
+(39.50 / 10 = 3.95 on the captured bet). If it does not match what you priced, the bet went
+on at a price nobody agreed to.
+
+### Not built yet
+
+`sportsdata-mcp connect sportsbet`. The connector machinery exists and the credential is
+known, but **where the browser persists the refresh token has not been established** — it
+was observed in the token *response*, not in a cookie. Until that is checked, the refresh
+token goes into `SPORTSBET_REFRESH_TOKEN` by hand.
+
 ## Racing endpoints
 
 All under `/apigw/sportsbook-racing/Sportsbook/Racing/`.
