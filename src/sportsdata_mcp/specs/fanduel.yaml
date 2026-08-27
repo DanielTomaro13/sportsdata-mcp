@@ -22,6 +22,9 @@ provider:
     racing_promos: https://promos-api.racing.fanduel.com
     sportsbook_api: https://api.sportsbook.fanduel.com
     sportsbook_fdx: https://fdx-api.sportsbook.fanduel.com
+    # The betting-transaction service. Only its PRICING call is modelled — see
+    # fanduel_sgp_price, which is read-only and strips the placement token.
+    sportsbook_sib: https://sib.nj.sportsbook.fanduel.com
   default_headers:
     User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     Accept: "application/json, text/plain, */*"
@@ -83,6 +86,35 @@ endpoints:
     response_hint: "{success, promoPlacements:[{...}]}"
 
   # ─── fanduel.sportsbook — live score (fdx-api host) ────────────────────
+  - name: fanduel_sgp_price
+    group: fanduel.sportsbook
+    capabilities: [sport.same_game_multi, sport.prices]
+    method: POST
+    # A POST that PRICES and places nothing. The upstream is FanDuel's betting-transaction
+    # service and every combination it returns carries a `betReference` placement token —
+    # `response_fields` below drops it, along with the stake ceilings and bonus-wallet
+    # fields, so nothing that could be used to place a bet reaches the caller.
+    read_only: true
+    summary: "PRICE A SAME GAME PARLAY you choose — give it two or more selections from one FanDuel event and get the correlation-adjusted combined price. Read the entry with `isSGM: true`; the SINGLEs alongside it are the individual leg prices, not the parlay."
+    base: sportsbook_sib
+    path: /api/sports/fixedodds/transactional/v1/implyBets
+    auth: default
+    params:
+      - { name: web_key, in: query, api_name: _ak, type: string, default: "FhMFpcPWXMeyZxOx", description: "FanDuels static PUBLIC web key. Leave it alone — but do not remove it either: WITHOUT `_ak` the call still returns 200 and prices the SINGLES while silently omitting the same-game combination entirely, which is the one thing you asked for." }
+      - { name: betLegs, in: body, type: json, required: true, description: 'The legs: [{"legType": "SIMPLE_SELECTION", "betRunners": [{"runner": {"marketId": "734.180521459", "selectionId": 60427}}]}, …]. NOTE THE DOUBLE NESTING — `betRunners` holds objects with a `runner` key, and writing `runners` or a bare runner object binds to NOTHING: the call still returns 200 with legFailures INVALID_BET_LEG and an empty `betRunners`, so it fails silently rather than erroring. Both ids come from fanduel_sb_call(operation="event_page"): `marketId` from attachments.markets, `selectionId` from that markets `runners[]`. All legs must be from ONE event for an SGP. Two or more legs; one leg just returns that legs own price.' }
+    # Drops `betReference` (a placement token) plus betMinStake/betMaxStake/betMaxPayout,
+    # bonusWalletConditions, applicablePromotions and the cashout flags. What is left is
+    # the price, the legs it applies to, and why anything was refused.
+    response_pick: [respCode, betCombinations, betFailures, legFailures]
+    response_fields: [betType, isSGM, features, numLines, combinationGroup, averageOdds, winAvgOdds, legCombinations, failureCode, failedRunner, failedLeg]
+    response_hint: "{respCode: 'SUCCESS', betCombinations:[{betType, isSGM, features, winAvgOdds:{trueOdds:{decimalOdds:{decimalOdds}}, americanDisplayOdds}, legCombinations:[…]}], betFailures:[…]}  — VERIFIED live 2026-08-27 against NBA Boston Celtics @ Detroit Pistons (event 35928218).\n\nREAD THE `isSGM: true` ENTRY — IT IS THE ONLY ONE THAT IS A SAME GAME PARLAY. The response prices EVERY combination it can make from your legs, so a two-leg request comes back with two SINGLEs and one DOUBLE. The SINGLEs are the individual leg prices, not the parlay; taking the first betCombination gives you a single bet.\n\nTHE PRICE IS NOT THE PRODUCT OF THE LEGS. Verified: 2.02 and 1.87 as singles, and the SGP DOUBLE prices 3.4128 against a naive 3.7765 — a 9.6% correlation charge.\n\nUSE `winAvgOdds.trueOdds.decimalOdds.decimalOdds`, NOT `averageOdds`. The latter is a DISPLAY rounding: the same bet reads 3.41 there and 3.41275716 in trueOdds. Rounded odds compared against another book's exact ones manufacture edge that is not there.\n\n`betFailures: INVALID_COMBINATION` IS USUALLY NOT ABOUT YOUR PARLAY. It says the legs cannot form an ORDINARY multi because they are from the same game — which is the whole point of an SGP. It appears alongside a perfectly good isSGM entry, so never treat its presence as failure; check for the isSGM entry instead.\n\nNO isSGM ENTRY MEANS FANDUEL WILL NOT COMBINE THOSE LEGS. Seen live on legs whose markets were `sgmMarket: true` in fanduel_sb_call(event_page), so that flag is necessary and not sufficient. A leg whose runner is suspended reports RUNNER_SUSPENDED instead.\n\nTHE UPSTREAM RETURNS A `betReference` PLACEMENT TOKEN ON EVERY COMBINATION. It is PROJECTED AWAY here and never reaches you — this tool prices and cannot place. The stake ceilings, bonus-wallet and promotion fields are dropped with it."
+    examples:
+      - description: "Price a two-leg same game parlay"
+        params:
+          betLegs:
+            - { legType: "SIMPLE_SELECTION", betRunners: [{ runner: { marketId: "734.180521459", selectionId: 60427 } }] }
+            - { legType: "SIMPLE_SELECTION", betRunners: [{ runner: { marketId: "734.180522215", selectionId: 7017823 } }] }
+
   - name: fanduel_sb_live_score
     group: fanduel.sportsbook
     capabilities: [sport.match_score]

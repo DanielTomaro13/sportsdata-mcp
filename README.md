@@ -10,7 +10,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~832 tools across 64 providers in Claude Desktop,
+Free & open source (MIT). ~833 tools across 64 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -50,7 +50,7 @@ Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.
 
-**Also good — you want sport data anywhere in the world.** The other **681
+**Also good — you want sport data anywhere in the world.** The other **682
 tools across 56 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
 plus Pinnacle and the Kalshi and Polymarket prediction markets. 484 of those

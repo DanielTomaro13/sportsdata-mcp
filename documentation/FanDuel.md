@@ -109,7 +109,7 @@ fanduel_sb_call(event_page,   {eventId})                → every market + selec
 fanduel_sb_live_score(eventId)                          → live score
 ```
 
-### Same Game Parlay — the legs, not the price
+### Same Game Parlay
 
 `event_page` already tells you which markets FanDuel will combine within one event, and
 that is currently the whole of the SGP story here. Verified live 2026-08-27.
@@ -125,24 +125,61 @@ that is currently the whole of the SGP story here. Verified live 2026-08-27.
   and 2 tabs while its SGP card still reported `attachmentsFullyLoaded: false`, so a small
   market count says nothing about SGP availability.
 
-**There is no combined price.** The SGP card is `attachmentsFullyLoaded: false` — something
-else fills it, and that something was not found. What was ruled out on 2026-08-27, so it
-need not be redone:
+**And the combined price comes from `fanduel_sgp_price`.**
 
-- ~35 candidate routes on `api.sportsbook.fanduel.com` against a clean 404 baseline
-  (`/sbapi/sgp/price`, `/sbapi/same-game-parlay`, `/sbapi/betslip/price`, and variants),
-  GET and POST. All 404.
-- `fdx-api.sportsbook.fanduel.com` — answers 403 to everything including a nonsense path,
-  so it yields no signal either way.
-- `smp.nj.sportsbook.fanduel.com` — SGP candidates 404, and see the correction below.
-- Ten documented-parameter variations on `event_page` itself (`loadAllAttachments`,
-  `includeAllMarkets`, `attachments=all`, `tab=sgp`, …). Every one byte-identical to the
-  plain call.
-- Every `event_page` `tab` id on a 7-tab event. `tab` genuinely changes the payload, but
-  the SGP card stays `attachmentsFullyLoaded: false`.
+```
+POST https://sib.nj.sportsbook.fanduel.com/api/sports/fixedodds/transactional/v1/implyBets
+     ?_ak=FhMFpcPWXMeyZxOx
+{"betLegs": [{"legType": "SIMPLE_SELECTION",
+              "betRunners": [{"runner": {"marketId": "734.180521459", "selectionId": 60427}}]},
+             {"legType": "SIMPLE_SELECTION",
+              "betRunners": [{"runner": {"marketId": "734.180522215", "selectionId": 7017823}}]}]}
+```
 
-The remaining route is a traffic capture off the FanDuel app or web client, which is the
-same position Dabble is in — see `docs/DABBLE-CAPTURE.md`, whose method transfers directly.
+Verified live 2026-08-27, unauthenticated, on NBA Boston Celtics @ Detroit Pistons: legs at
+2.02 and 1.87 price as a parlay at **3.41275716**, against a naive 3.7765 — a 9.6%
+correlation charge.
+
+**Five things that are easy to get wrong**, four of them silently:
+
+1. **`_ak` is load-bearing.** Drop it and the call still returns 200 and prices the
+   SINGLES, silently omitting the same-game combination — the one thing you asked for.
+   It is the same static public web key the rest of the sportsbook surface uses.
+2. **`betRunners[].runner` is doubly nested.** Writing `runners`, or putting the runner
+   object straight into `betRunners`, binds to nothing: the call returns 200 with
+   `legFailures: INVALID_BET_LEG` and an empty `betRunners`.
+3. **Read the entry with `isSGM: true`.** A two-leg request returns *three* combinations —
+   two SINGLEs and the DOUBLE. Taking the first gives a single bet at 2.02 while you
+   believe you hold a parlay at 3.41.
+4. **Use `winAvgOdds.trueOdds.decimalOdds.decimalOdds`, not `averageOdds`.** The latter is
+   a display rounding: 3.41 against 3.41275716. Comparing one book's rounded price with
+   another's exact one manufactures edge that is not there.
+5. **`betFailures: INVALID_COMBINATION` is usually not about your parlay.** It means the
+   legs cannot form an *ordinary* multi because they are from the same game — which is the
+   whole point of an SGP. It sits alongside a perfectly good `isSGM` entry.
+
+If no `isSGM` entry comes back at all, FanDuel will not combine those legs. That happens
+even when both markets are `sgmMarket: true`, so that flag is necessary and not sufficient.
+A suspended runner reports `RUNNER_SUSPENDED` instead.
+
+#### Why this endpoint is read-only by construction
+
+`implyBets` is FanDuel's **betslip** service, not a read API — the only one of the seven
+SGM pricers in this catalogue that is. Every combination it returns carries a
+`betReference`: a signed token that is the input to actually placing the bet, alongside
+stake ceilings and bonus-wallet state.
+
+The spec declares `response_fields` so that token — and `betMinStake`, `betMaxStake`,
+`betMaxPayout`, `bonusWalletConditions`, `applicablePromotions` and the cashout flags —
+is stripped before anything reaches a caller. What survives is the price, the legs it
+applies to, and the reason for any refusal. A test asserts the token cannot come back,
+because that is the invariant rather than a preference.
+
+**What was ruled out before the capture** (recorded so it is not redone): ~35 candidate
+routes on `api.sportsbook.fanduel.com` against a clean 404 baseline; `fdx-api`, which 403s
+everything including nonsense; ten documented-parameter variations on `event_page`, every
+one byte-identical; and every tab id on a 7-tab event. None of it could have worked — the
+pricer is on a different host, and it took a traffic capture to find.
 
 ## Cross-provider comparison
 
@@ -154,9 +191,9 @@ sources are added; the tag still makes it discoverable.
 
 `fanduel_sb_call` also carries **`sport.same_game_multi`**, for the same reason
 `dabble_fixture_details` and `unibet_kambi_call` do: it surfaces the SGP-eligible markets.
-It is NOT one of the six pricers in `docs/SGM-AND-PLACEMENT-SCOPE.md`, which return a
-correlation-adjusted price for a combination you choose. Do not put FanDuel in a price
-comparison — it can contribute legs, not a quote.
+For the correlation-adjusted PRICE of a combination, use **`fanduel_sgp_price`** — the
+seventh pricer in `docs/SGM-AND-PLACEMENT-SCOPE.md`. FanDuel is US, so a like-for-like
+comparison needs other US books rather than the Australian six.
 
 ## Not modelled
 
@@ -164,8 +201,9 @@ comparison — it can contribute legs, not a quote.
   2026-08-27**: the host is live and 404s a nonsense path, but this route now answers an
   HTML "Service not Found". It was already not worth modelling (the markets and prices come
   from `event_page`), so this is a correction to the note rather than a loss.
-- **The Same Game Parlay pricer.** It exists — FanDuel sells SGP — and was not found from
-  outside a client. See "Same Game Parlay" above for exactly what was ruled out.
+- **The rest of `sib.nj.sportsbook.fanduel.com`.** Only its PRICING call is modelled; the
+  placement routes on that service are deliberately absent, and the one endpoint that is
+  modelled has its placement token projected away.
 - `boapi.sportsbook.fanduel.com/popular/events/{id}` — overlaps `event_page`.
 - `service.racing.fanduel.com/seo/v1/metainfo` — requires an `x-tvg-context` header
   (a hyphenated name can't be a tool param) and only returns SEO meta; low value.

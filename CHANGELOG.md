@@ -99,12 +99,27 @@ Full history is in `git log`; this file covers what a user would notice.
   `fanduel_sb_call` gains `sport.same_game_multi` for surfacing those markets — the same
   basis as `dabble_fixture_details` and `unibet_kambi_call`.
 
-  **It is not a seventh pricer.** FanDuel's SGP combined price was not found: the SGP card
-  reports `attachmentsFullyLoaded: false` and ~35 candidate routes, three hosts, ten
-  parameter variations and every tab id on a 7-tab event all came back empty — and the
-  browser capture that solved the six Australian books was unavailable, since the pane
-  refuses that host by policy. Documented as blocked with everything that was ruled out, so
-  it need not be redone.
+- **`fanduel_sgp_price`** — the seventh pricer, and the first found by traffic capture
+  rather than probing. Verified live and unauthenticated: legs at 2.02 and 1.87 price as a
+  parlay at 3.41275716 against a naive 3.7765, a 9.6% correlation charge.
+
+  Probing could never have found it — the pricer is on `sib.nj.sportsbook.fanduel.com`,
+  a host reached from none of the ~35 candidate routes, three hosts, ten parameter
+  variations and every tab id that were tried first. **`_ak` is the load-bearing detail**:
+  without that static public web key the call still returns 200 and prices the SINGLES
+  while silently omitting the same-game combination. Three more silent traps are pinned —
+  `betRunners[].runner` is doubly nested and binds to nothing if flattened, a two-leg
+  request returns THREE combinations of which only `isSGM: true` is the parlay, and
+  `averageOdds` is a rounded display value next to the exact `winAvgOdds.trueOdds`.
+
+  **It runs on FanDuel's betslip service**, the only pricer here that does, so every
+  combination carries a `betReference` placement token. `response_fields` strips it along
+  with the stake ceilings and bonus-wallet fields: the tool is read-only by construction,
+  not by luck, and `test_sgm_comparator.py` now asserts that any betslip-backed pricer
+  must strip its token. That narrows an earlier position — placement-adjacent endpoints
+  were skipped outright when Unibet's `coupon/validate.json` was passed over, but that cost
+  nothing because Unibet has a clean read-only pricer. Here it would have cost the price
+  entirely.
 
 ### Changed
 - **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The

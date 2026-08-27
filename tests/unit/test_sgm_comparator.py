@@ -1,4 +1,4 @@
-"""The six same-game-multi pricers, as a set.
+"""The seven same-game-multi pricers, as a set.
 
 Each book's own test file pins that book's traps. This one pins the thing none of them
 can: that the six tools exist together, agree on how they are tagged, and stay findable by
@@ -33,6 +33,9 @@ PRICERS = {
     "betr": "betr_sgm_price",
     "unibet": "unibet_sgm_price",
     "entain": "entain_sgm_price",
+    # The only non-Australian one, and the only one whose upstream is a BETSLIP service
+    # rather than a read endpoint — see test_fanduel_sgp.py for why that is safe here.
+    "fanduel": "fanduel_sgp_price",
 }
 
 #: How each book expresses a price, and therefore what a comparator must do before
@@ -45,6 +48,14 @@ SCALE = {
     "betr": "decimal",
     "unibet": "thousandths — divide by 1000 (3400 = 3.40)",
     "entain": "fractional — numerator/denominator PLUS ONE (27/10 = 3.70)",
+    "fanduel": "decimal",
+}
+
+#: Books that publish a ROUNDED price alongside the exact one. A different axis from
+#: SCALE and worth its own table: getting the scale wrong is loud, but comparing one
+#: book's rounded 3.41 against another's exact 3.4128 manufactures edge quietly.
+ROUNDED_UNLESS_YOU_ASK = {
+    "fanduel": ("averageOdds", "winAvgOdds.trueOdds.decimalOdds.decimalOdds"),
 }
 
 #: Books surveyed and deliberately given no pricer, with the reason. Kept here so a later
@@ -54,6 +65,11 @@ NO_PRICER = {
     "pinnacle": "prices a parlay as the product of its legs — compute it locally",
     "dabble": "sells SGMs but is app-only; no web client to observe the pricer from",
 }
+
+#: Providers whose pricer runs on a BETSLIP service, so its response carries a placement
+#: token. They must strip it — a price is fine to hand a model, a token that places the
+#: bet is not. Empty for six of the seven; FanDuel is the exception.
+STRIPS_A_PLACEMENT_TOKEN = {"fanduel": "betReference"}
 
 
 @pytest.fixture(scope="module")
@@ -74,6 +90,21 @@ def test_all_five_answer_one_capability_query(tools_by_name):
     for name in PRICERS.values():
         caps = set(tools_by_name[name][1].capabilities or [])
         assert {"sport.same_game_multi", "sport.prices"} <= caps, f"{name}: {caps}"
+
+
+def test_a_betslip_backed_pricer_strips_its_placement_token(tools_by_name):
+    """The one rule that makes it acceptable to price off a transaction service at all.
+    FanDuel has no read-only pricer, so its SGP price can only come from `implyBets` —
+    which answers with a signed `betReference` on every combination. The tool is read-only
+    by CONSTRUCTION: the projection removes the token. Without that this endpoint would be
+    handing a model the input to placing a real bet."""
+    for provider, token in STRIPS_A_PLACEMENT_TOKEN.items():
+        tool = tools_by_name[PRICERS[provider]][1]
+        assert tool.response_fields, f"{provider} must project, or the token comes through"
+        assert token not in tool.response_fields, f"{provider} keeps {token}"
+        assert "PROJECTED AWAY" in (tool.response_hint or ""), (
+            f"{provider}: a caller expecting {token} from the vendor's docs must be told "
+            "it is gone deliberately")
 
 
 def test_none_of_them_can_move_money(tools_by_name):
@@ -126,6 +157,7 @@ REFUSAL_STYLE = {
     "tab": "none",           # per-leg `status` in a validation matrix, no fake price
     "unibet": "none",        # real HTTP 400 with a typed body
     "entain": "none",        # real HTTP 400, and a refusal carries no `odds` key at all
+    "fanduel": "none",       # respCode + typed betFailures/legFailures, no fake price
 }
 
 
@@ -149,6 +181,15 @@ def test_every_pricer_has_an_entry_in_both_tables(tools_by_name):
     """So neither table can quietly fall behind the set of books."""
     assert set(REFUSAL_STYLE) == set(PRICERS)
     assert set(SCALE) == set(PRICERS)
+
+
+def test_a_book_that_rounds_says_where_the_exact_price_is(tools_by_name):
+    """3.41 vs 3.41275716 on the same bet. A comparator that takes the display value from
+    one book and the exact value from another finds edge that is purely rounding."""
+    for provider, (rounded, exact) in ROUNDED_UNLESS_YOU_ASK.items():
+        hint = tools_by_name[PRICERS[provider]][1].response_hint or ""
+        assert rounded in hint and "trueOdds" in hint, (
+            f"{provider} publishes a rounded price and its hint no longer says so")
 
 
 def test_a_book_that_is_not_plain_decimal_says_so_in_its_hint(tools_by_name):

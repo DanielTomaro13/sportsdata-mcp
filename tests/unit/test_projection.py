@@ -115,6 +115,14 @@ PROJECTING = {
     # and unibet_kambi_call(event_betoffer) already serves exactly that book. Keeping it
     # would spend the entire response budget re-delivering data the caller can already get.
     "unibet": "the SGM pricer echoes the whole 647KB event book around a 4-field answer",
+    # THE ONLY ONE HERE THAT IS NOT ABOUT SIZE. FanDuel's SGP price can only be had from
+    # its betslip service, and every combination that service returns carries a
+    # `betReference` — a signed token that is the input to placing the bet. The projection
+    # is what makes the tool read-only by construction rather than by luck. Removing it
+    # would not merely bloat a response; it would hand a model the means to place a real
+    # bet. See test_fanduel_sgp.py, which asserts the token cannot survive.
+    "fanduel": "its SGP pricer runs on the betslip service; the projection strips the "
+               "betReference placement token",
 }
 
 

@@ -646,43 +646,81 @@ Melbourne to win plus Melbourne on the line returned `23/20`, the single-leg pri
 
 ---
 
-# Bookmaker 9: FanDuel (US) — legs yes, price no
+# Bookmaker 9: FanDuel (US) — SOLVED, and the one that needed a capture
 
-Not part of the Australian comparator this scope was written for, but surveyed because it
-is the largest US book and the same question applies.
+Not part of the Australian comparator this scope was written for, but the largest US book
+and the same question applies.
 
-**SGP markets: SOLVED and already shipped.** `fanduel_sb_call(event_page)` carries
-`attachments.markets[].sgmMarket`, the per-market Same Game Parlay eligibility flag — 26 of
-44 markets on a verified MLB game — and `layout.tabs[].isSameGameMulti` marks the SGP tab
-("Same Game Parlay™" pre-match, "Live SGP" in-play). Both were undocumented; they are now
-described on the operation and the dispatcher carries `sport.same_game_multi`.
+**SGP markets** come from `fanduel_sb_call(event_page)`: `attachments.markets[].sgmMarket`
+is the per-market eligibility flag (26 of 44 on a verified MLB game), and
+`layout.tabs[].isSameGameMulti` marks the SGP tab.
 
-**SGP pricing: BLOCKED, same class as Dabble.** The SGP card reports
-`attachmentsFullyLoaded: false`, so something else fills it, and that something was not
-found from outside a client. Ruled out on 2026-08-27: ~35 candidate routes on
-`api.sportsbook.fanduel.com` against a clean 404 baseline; `fdx-api` (403s everything, so
-no signal); `smp.nj.sportsbook.fanduel.com`; ten documented-parameter variations on
-`event_page`, all byte-identical to the plain call; and every tab id on a 7-tab event —
-`tab` genuinely changes the payload, but the SGP card stays unloaded.
+**SGP pricing: SOLVED**, shipped as `fanduel_sgp_price`.
 
-Capture was not available either: **the Browser pane refuses `sportsbook.fanduel.com` by
-policy**, so the technique that solved the six Australian books could not be run at all
-here. That is a tooling constraint rather than a finding about FanDuel.
+```
+POST sib.nj.sportsbook.fanduel.com/api/sports/fixedodds/transactional/v1/implyBets?_ak=…
+{betLegs:[{legType:"SIMPLE_SELECTION", betRunners:[{runner:{marketId, selectionId}}]}, …]}
+→ {respCode, betCombinations:[{betType, isSGM, winAvgOdds:{trueOdds:…}, legCombinations}]}
+```
 
-**One correction to existing docs** found on the way: the
-`smp.nj.sportsbook.fanduel.com/sportsbook/v1/getMarketPrices` route recorded under "Not
-modelled" now returns an HTML "Service not Found". The host is still live and 404s a
-nonsense path, so the route specifically is gone.
+Verified live 2026-08-27, unauthenticated: legs at 2.02 and 1.87 price as a parlay at
+**3.41275716** against a naive 3.7765 — a 9.6% correlation charge.
 
-**Do not put FanDuel in an SGM price comparison.** It contributes legs, not a quote. The
-capability tag makes the markets discoverable, which is a different promise.
+## This one could not be found by probing, and that is the lesson
+
+Everything reasonable was tried first and none of it could have worked: ~35 candidate
+routes on `api.sportsbook.fanduel.com` against a clean 404 baseline, `fdx-api` (403s
+everything including nonsense, so no signal), ten documented-parameter variations on
+`event_page` that came back byte-identical, and every tab id on a 7-tab event. The pricer
+is on a **different host** — `sib.nj.` — which no amount of probing the known hosts would
+have reached. Daniel captured it off the site in one go.
+
+That is now three books where probing failed and capture succeeded (Sportsbet, FanDuel)
+or capture was unavailable and probing failed (Dabble). **Capture first; probe only when
+capture is impossible.**
+
+## Four silent traps, and one that is not silent
+
+1. **`_ak` is load-bearing.** Without the static public web key the call still returns 200
+   and prices the SINGLES while silently omitting the same-game combination — the one
+   thing asked for. This was the entire gap between "singles work" and "solved", and it
+   took a diff against Daniel's captured request to see.
+2. **`betRunners[].runner` is doubly nested.** `runners`, or a bare runner object, binds to
+   nothing: 200 with `legFailures: INVALID_BET_LEG` and an empty `betRunners`.
+3. **A two-leg request returns THREE combinations.** Taking the first gives a single bet at
+   2.02 while believing you hold a parlay at 3.41. Read the `isSGM: true` entry.
+4. **`averageOdds` is rounded.** 3.41 against 3.41275716 in `winAvgOdds.trueOdds`.
+   Comparing one book's rounded price against another's exact one manufactures edge that
+   is not there — the precise failure a cross-book comparator exists to avoid.
+5. Not silent, but misleading: **`betFailures: INVALID_COMBINATION` is usually not about
+   your parlay.** It means the legs cannot form an *ordinary* multi because they are from
+   the same game, which is the point of an SGP, and it sits next to a perfectly good
+   `isSGM` entry.
+
+## The one that runs on a betslip service
+
+`implyBets` is FanDuel's **betting-transaction** endpoint, not a read API — the only one of
+the seven pricers that is. Every combination carries a `betReference`: a signed token that
+is the input to placing the bet, alongside stake ceilings and bonus-wallet state.
+
+FanDuel has no read-only alternative, so the choice was to model this or have no FanDuel
+price at all. It is modelled **read-only by construction**: `response_fields` strips the
+token and every placement-adjacent field, so what reaches a caller is the price, the legs
+it applies to, and the reason for any refusal. `test_sgm_comparator.py` asserts a
+betslip-backed pricer must strip its token, so the rule outlives this one provider.
+
+This is a deliberate narrowing of the earlier position, which was that placement-adjacent
+endpoints stay unmodelled — taken when Unibet's `coupon/validate.json` was skipped. That
+skip cost nothing, because Unibet has a clean read-only pricer. Here it would have cost
+the price entirely, so the line moved from "do not touch the betslip service" to "a
+pricing call on a betslip service is fine if the placement token cannot escape".
 
 ---
 
-# Where the eight books leave it
+# Where the nine books leave it
 
-Every Australian book in the catalogue has now been surveyed. Six price a combination you
-choose, one prices the fair benchmark, one is blocked.
+Every Australian book has been surveyed, plus FanDuel in the US. **Seven** price a
+combination you choose, one prices the fair benchmark, one is blocked.
 
 | Book | Tool | Units | Echoes what it priced? | The trap that will cost you |
 |---|---|---|---|---|
@@ -692,23 +730,30 @@ choose, one prices the fair benchmark, one is blocked.
 | BetR | `betr_sgm_price` | decimal | refuses instead of dropping | **`FixedWin` is trusted as a price floor** |
 | Unibet | `unibet_sgm_price` | **thousandths** | **the full set** | ÷1000; 1001.0 is a cap |
 | Entain | `entain_sgm_price` | **fractional +1** | nothing at all | **quotes bets that cannot win** |
+| FanDuel (US) | `fanduel_sgp_price` | decimal, **use `trueOdds`** | yes — `legCombinations` | `_ak` omitted drops the parlay silently; `averageOdds` is rounded |
 | Pinnacle | *(none needed)* | american | n/a | the price simply IS the product |
 | Dabble | *(blocked — app-only)* | — | unknown | unknown |
 
-Three outcomes, and the difference decides what to do next: six are **solved**, Pinnacle
+Three outcomes, and the difference decides what to do next: seven are **solved**, Pinnacle
 needs **nothing built** because its parlay price is the product of its legs, and Dabble is
 **blocked on observation** rather than on product — its pricer exists and is only reachable
 from the app.
+
+FanDuel is US and does not belong in a price comparison against the Australian six; it is
+here because the same question applies and the answer transfers.
 
 ## Four rules the comparator must carry
 
 Each one is here because a specific book behaves this way, not on principle.
 
-1. **Normalise the scale first.** Four books quote plain decimals, Unibet quotes
-   thousandths (`3400` = 3.40) and Entain quotes fractions needing a `+1` (`27/10` = 3.70).
-   No payload announces its units. The two errors fail differently and both matter: Unibet
-   un-scaled is 1000x too large and screams; Entain un-adjusted is 2.70 instead of 3.70,
-   looks perfectly reasonable, and quietly loses every comparison it should have won.
+1. **Normalise the scale first, then the precision.** Five books quote plain decimals,
+   Unibet quotes thousandths (`3400` = 3.40) and Entain quotes fractions needing a `+1`
+   (`27/10` = 3.70). No payload announces its units. The two errors fail differently and
+   both matter: Unibet un-scaled is 1000x too large and screams; Entain un-adjusted is
+   2.70 instead of 3.70, looks perfectly reasonable, and quietly loses every comparison it
+   should have won. Separately, FanDuel publishes a ROUNDED price next to the exact one —
+   3.41 against 3.41275716 — and mixing one book's rounded value with another's exact one
+   manufactures edge out of nothing.
 2. **Never report a price without restating the legs that produced it.** Four of the six
    can hand back a price for a different bet than you asked for — TAB and PointsBet and
    Entain by collapsing a redundant leg, BetR by honouring a `FixedWin` you supplied. Only
