@@ -135,13 +135,61 @@ cookie *is* the credential and lasts months. Here the cookie is not the credenti
 thing that is expires in minutes. Reading it once and storing it buys under an hour of
 automation.
 
+### There IS a refresh token — captured 2026-08-27
+
+Captured by watching a real logout/login in the account holder's own browser. **Request
+bodies were never read** — the recorder passed them through untouched, because that is
+where a password would be — and responses were reduced to field names and string *lengths*
+before anything was reported.
+
+The flow is a textbook OAuth authorisation-code exchange:
+
+```
+POST /apigw/ciam/revoke-token        204   (logout)
+GET  /apigw/ciam/authorise           200   (session/plugin descriptor, HAL _links)
+POST /apigw/ciam/authenticate/{id}   200   (the credential exchange — body never inspected)
+POST /apigw/ciam/token               200   (the mint)
+```
+
+and the mint returns:
+
+```jsonc
+{ "access_token":  "string(826)",   // the short-lived JWT the /apigw calls carry
+  "refresh_token": "string(42)",    // opaque, and the durable half
+  "id_token":      "string(598)",
+  "token_type":    "string(6)",
+  "expires_in":     number }
+```
+
+**This is the answer that unblocks unattended operation.** The durable credential is the
+42-character `refresh_token`, not the password. So the model becomes:
+
+1. The account holder logs in **once, themselves**, in a browser.
+2. `connect sportsbet` stores the **refresh token** — the same shape as every other
+   connector, just a different string.
+3. The engine mints a fresh `access_token` from it whenever the current one nears `exp`,
+   and puts that in the `accesstoken` header.
+4. Nothing re-authenticates, nothing holds a password, and the scanner runs indefinitely.
+
+Revocation still works the way it should: `POST /apigw/ciam/revoke-token` is what the
+logout button calls, so logging out anywhere kills the agent's access too. That is the
+property a password would not have given.
+
+### What is still unknown
+
+- **How long the refresh token itself lives.** Days? Until logout? Unknown, and it decides
+  how often the human step recurs. Measurable once stored.
+- **The exact refresh grant.** `POST /apigw/ciam/token` mints on an authorisation code
+  here; the refresh grant is presumably the same endpoint with
+  `grant_type=refresh_token`, but that has not been observed and should not be assumed.
+  Watching the app refresh itself would confirm it without anyone handling a token.
+- **`expires_in`'s actual value.** Present in the response; the earlier measurement showed
+  an access token with nine minutes left, so the ceiling is small.
+
 ### What that leaves
 
-1. **Find the refresh flow.** OAuth-shaped setups usually have one, and if a long-lived
-   refresh token lives in an HttpOnly cookie then `connect` becomes viable again: read the
-   refresh credential, mint access tokens as needed. **This is the single most valuable
-   thing left to establish**, and it is a capture on the login/refresh call rather than on
-   placement.
+1. ~~**Find the refresh flow.**~~ **ANSWERED — see above.** There is a `refresh_token`,
+   and `connect` is viable again with it as the stored credential.
 2. **Re-connect hourly.** Technically works, practically useless for an unattended scanner.
 3. **Re-authenticate programmatically** — which means the account password, and is the one
    thing that stays out of scope here regardless of how convenient it would be.
