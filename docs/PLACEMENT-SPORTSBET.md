@@ -101,6 +101,68 @@ a notification for a minute or have to be near-instant.
 
 ---
 
+## 3a. What the logged-in inspection actually found — and why it changes the plan
+
+Inspected live in a logged-in Chrome, 2026-08-27, **read-only: no odds clicked, no betslip
+touched, nothing placed.**
+
+### The authenticated API is not cookie-authenticated
+
+Sportsbet's account surface sits behind `www.sportsbet.com.au/apigw/…`, and every call
+carries these headers:
+
+| Header | What it is |
+|---|---|
+| `accesstoken` | **a JWT** — the actual credential |
+| `apptoken` | 15 chars, identical on every request — a static public app key, like FanDuel's `_ak` |
+| `customer-id` | the account number |
+| `channel` | `cxp` |
+| `x-request-id` | a fresh UUID per call, trivially generated |
+| `accept`, `content-type` | ordinary |
+
+The decisive test: a **same-origin** `fetch` with `credentials: 'include'` — so the session
+cookies *were* sent — returns `400 Validation error` on the exact query the page itself had
+just run successfully. The cookie is not what authorises the call. The `accesstoken` is.
+
+### The access token is short-lived
+
+The JWT's `exp` was **nine minutes away** when measured, and one token served every call in
+the observation window (no refresh observed, though a couple of minutes is not long enough
+to rule one out).
+
+**This breaks the `connect`-reads-a-cookie model for Sportsbet.** For FPL, ESPN and MFL a
+cookie *is* the credential and lasts months. Here the cookie is not the credential, and the
+thing that is expires in minutes. Reading it once and storing it buys under an hour of
+automation.
+
+### What that leaves
+
+1. **Find the refresh flow.** OAuth-shaped setups usually have one, and if a long-lived
+   refresh token lives in an HttpOnly cookie then `connect` becomes viable again: read the
+   refresh credential, mint access tokens as needed. **This is the single most valuable
+   thing left to establish**, and it is a capture on the login/refresh call rather than on
+   placement.
+2. **Re-connect hourly.** Technically works, practically useless for an unattended scanner.
+3. **Re-authenticate programmatically** — which means the account password, and is the one
+   thing that stays out of scope here regardless of how convenient it would be.
+
+Until (1) is answered, honest position: **Sportsbet cannot be driven unattended for longer
+than one token lifetime.** Everything else in this document still stands; this is the
+gating unknown, and it is a bigger one than the placement shape.
+
+### Endpoints found on the way (both reads)
+
+```
+GET /apigw/history/bets?filterType=SETTLED&dateType=ALL&limit=10&includeLegData=true
+                       &detailedCashout=true&includeForm=true&sortField=DATE&sortOrder=DESC
+                       &excludeSgmCashoutQuotes=true
+GET /apigw/mdm/round/my-bets/summary
+```
+
+The first is `sportsbet_bet_history` — the read-back tool §5 needs. `filterType` takes
+`SETTLED`; a pending variant is what read-back would actually use, and `PENDING` alone was
+rejected, so its exact parameters still need capturing.
+
 ## 4. What already exists
 
 - **The price.** `sportsbet_sgm_price`, verified live, 101 ms.
