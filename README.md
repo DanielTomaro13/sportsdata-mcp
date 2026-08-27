@@ -10,7 +10,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~839 tools across 64 providers in Claude Desktop,
+Free & open source (MIT). ~841 tools across 64 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -53,13 +53,34 @@ and harness, with tote pools and exchange money — is covered to the same depth
 **Also good — you want sport data anywhere in the world.** The other **682
 tools across 56 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
-plus Pinnacle and the Kalshi and Polymarket prediction markets. 484 of those
+plus Pinnacle and the Kalshi and Polymarket prediction markets. 486 of those
 need no key at all.
 
 **Not a fit — you want US sportsbook odds.** Those eight books are licensed for
 Australia and block traffic from outside it. From the US you get Pinnacle,
 FanDuel, Kalshi and Polymarket for prices; the stats and fantasy side works in
 full. If cross-book US pricing is what you came for, this is not the tool.
+
+### It can now place bets. Read this bit.
+
+Since **0.31.0** the catalogue includes `sportsbet_place_bet`, `tab_place_bet`,
+`entain_place_bet` and `unibet_place_bet`. These stake real money from your own
+account, using credentials you supply. Nothing calls them on its own — they are
+ordinary tools, so whatever you connect this server to decides when they run.
+
+Two things follow, and neither is optional reading:
+
+- **An LLM with these tools in scope can place a bet.** If that is not what you
+  want, do not enable the account groups; every other group is unaffected, and
+  `list-groups` shows exactly what you have turned on.
+- **Only Sportsbet and TAB have been round-tripped against a real account.**
+  Unibet and Ladbrokes/Neds have their request shape captured from placements
+  made in a browser, which proves the request and says nothing about whether a
+  stored credential alone is accepted.
+
+The agent workbench applies its own policy on top of this — everything starts in
+`paper` mode and stakes nothing until you opt a book in — but that is the *app's*
+guardrail, not this server's. On its own, this package does what it is asked.
 
 Rather than take that on trust, ask it:
 
