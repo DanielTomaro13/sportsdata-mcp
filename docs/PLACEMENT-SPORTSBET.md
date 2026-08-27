@@ -175,16 +175,78 @@ Revocation still works the way it should: `POST /apigw/ciam/revoke-token` is wha
 logout button calls, so logging out anywhere kills the agent's access too. That is the
 property a password would not have given.
 
+### The refresh grant — confirmed, not assumed
+
+Sportsbet's CIAM publishes a full OIDC discovery document at a **public** URL, no
+credentials involved:
+
+```
+GET /apigw/ciam/.well-known/openid-configuration
+```
+
+```jsonc
+{ "issuer":              "https://www.sportsbet.com.au/apigw/ciam",
+  "token_endpoint":      "https://www.sportsbet.com.au/apigw/ciam/token",
+  "revocation_endpoint": "https://www.sportsbet.com.au/apigw/ciam/revoke-token",
+  "grant_types_supported": ["implicit", "authorization_code", "refresh_token", …],
+  "token_endpoint_auth_methods_supported": [… "none"] }
+```
+
+It is PingFederate (`urn:pingidentity.com:oauth2:grant_type:validate_bearer` gives it
+away), `refresh_token` is a supported grant, and `none` among the auth methods means a
+**public client — no client secret to hold**.
+
+The exact call was then confirmed by probing with a deliberately bogus token, so the real
+one was never read or sent:
+
+| Sent | Response |
+|---|---|
+| nothing | `400 invalid_request` — "grant_type is required" |
+| `grant_type=refresh_token` | `400 invalid_request` — "refresh_token parameter is required" |
+| `grant_type=refresh_token&refresh_token=BOGUS` | `400 invalid_grant` — "unknown, invalid, or expired refresh token" |
+
+So the refresh is:
+
+```
+POST /apigw/ciam/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&refresh_token=<stored>
+```
+
+No `client_id`, no secret.
+
+### Why the refresh token's lifetime does not need measuring
+
+It was tempting to go and measure how long the refresh token lives. It does not matter,
+because the third probe above gives the signal directly:
+
+> `invalid_grant` — "unknown, invalid, or expired refresh token"
+
+That is unambiguous and it is the **only** thing the plane needs to know. The scanner
+mints access tokens until a refresh returns `invalid_grant`, and *that* is what trips the
+staleness alarm and asks for the one human step. Whether it fires after a day or a month
+changes nothing about the code — it changes only how often the notification arrives.
+
+Measuring the lifetime would mean introspecting a live refresh token, which means handling
+the credential. The error contract is better information and costs nothing.
+
+### On the `password` grant
+
+Discovery also lists `password` among the supported grants, so a username/password login
+against this endpoint would work. It is not used here and there is no code path for it:
+the refresh token gives the same unattended operation, is revocable from any logout, and
+cannot lock the account holder out.
+
 ### What is still unknown
 
-- **How long the refresh token itself lives.** Days? Until logout? Unknown, and it decides
-  how often the human step recurs. Measurable once stored.
-- **The exact refresh grant.** `POST /apigw/ciam/token` mints on an authorisation code
-  here; the refresh grant is presumably the same endpoint with
-  `grant_type=refresh_token`, but that has not been observed and should not be assumed.
-  Watching the app refresh itself would confirm it without anyone handling a token.
-- **`expires_in`'s actual value.** Present in the response; the earlier measurement showed
-  an access token with nine minutes left, so the ceiling is small.
+- ~~How long the refresh token lives~~ — **does not need answering**; `invalid_grant` is
+  the signal, see above.
+- ~~The exact refresh grant~~ — **confirmed above.**
+- **`expires_in`'s actual value.** Present in the mint response and not yet read. The
+  earlier measurement caught an access token with nine minutes left, so the ceiling is
+  small — but the plane should mint on `exp` from the JWT rather than on a constant.
+- **The placement call itself.** Still the open item, and now the only one.
 
 ### What that leaves
 
