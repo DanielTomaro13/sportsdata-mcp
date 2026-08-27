@@ -92,12 +92,11 @@ the approval binds to the quote, the price you approved is the price you get, an
 becomes impossible rather than merely detected. The agent's job shrinks to "place quote X
 for $Y before it expires".
 
-**If placement re-prices server-side**, the drift gate in step 5 is load-bearing and the
-approval has to be short-lived — seconds, not minutes.
-
-This is the single most valuable thing the capture will tell us, and it should be the
-first question asked of the captured request. It also decides whether approvals can sit in
-a notification for a minute or have to be near-instant.
+**ANSWERED by the capture (§3b): placement does NOT take a quoteId.** The price is asserted
+by the client as `priceNum`/`priceDen`, so the drift gate is load-bearing and approvals must
+be short-lived. The good news is that the book's own client already performs the re-price as
+a separate `PUT` before placing, so the gate sits exactly where Sportsbet expects a call
+anyway rather than being bolted on.
 
 ---
 
@@ -246,7 +245,7 @@ cannot lock the account holder out.
 - **`expires_in`'s actual value.** Present in the mint response and not yet read. The
   earlier measurement caught an access token with nine minutes left, so the ceiling is
   small — but the plane should mint on `exp` from the JWT rather than on a constant.
-- **The placement call itself.** Still the open item, and now the only one.
+- ~~The placement call itself~~ — **captured, see §3b.**
 
 ### What that leaves
 
@@ -272,6 +271,106 @@ GET /apigw/mdm/round/my-bets/summary
 The first is `sportsbet_bet_history` — the read-back tool §5 needs. `filterType` takes
 `SETTLED`; a pending variant is what read-back would actually use, and `PENDING` alone was
 rejected, so its exact parameters still need capturing.
+
+## 3b. The placement call — captured 2026-08-27
+
+Captured by the account holder placing a real bet while a recorder watched. **The agent
+did not place it**, and will not: committing money is the account holder's action, which
+is the same invariant the rest of this repo is built on. Auth header values were redacted
+to lengths before anything was reported; the bet payload itself carries no credentials.
+
+Placement is **two calls**, and the first one is what makes the drift gate natural.
+
+### Step 1 — price the slip
+
+```
+PUT /apigw/acs/bets/combinations          → 200
+{ betItems: [{ betNo, legs: […] }], outcomeGroups: [],
+  returnFreebetTokens, returnVouchers, returnOutcomeDetails,
+  returnCashoutAvailable, includeMBS, errorDetail }
+```
+
+returns, per build:
+
+```jsonc
+{ "betBuilds": [{
+    "betNo": 2,
+    "enhancedOdds":  [{ "outcome": …, "priceDecimal": 2.65, "priceNum": 33, "priceDen": 20, "legType": "W" }],
+    "betCombinations": [{ "betType": "SGL", "betTypeName": "Single",
+                          "betMinStake": 0.01,          // ← the real minimum
+                          "betNoOfLines": 1, "cashoutAvailable": true,
+                          "betEnhancedPrice": 2.65 }] }] }
+```
+
+**This is the authoritative price**, and it is a separate call from placing. So the
+re-quote in the drift gate is not a workaround — it is a step the book's own client
+performs. Ask, compare against what was approved, and only then place.
+
+### Step 2 — place
+
+```
+POST /apigw/acs/bets                      → 202 Accepted
+```
+
+```jsonc
+{ "betItems": [{
+    "betNo": 7, "betType": "SGL", "stakePerLine": 10, "numLines": 1,
+    "legs": [{ "legNo": 8, "legSort": "IM", "legType": "W", "legDesc": "EXT_PP",
+               "isPYPSingle": false,
+               "classExternalId": 103,        // ← the SAME external ids the pricer wants
+               "competitionExternalId": 17131,
+               "eventExternalId": 16374542,
+               "parts": [{ "partNo": 1, "outcome": …, "priceType": "L",
+                           "partDesc": "ALLMARKETS",
+                           "priceNum": 59, "priceDen": 20,     // the SGM price, on every part
+                           "marketExternalId": …, "outcomeExternalId": … }] }],
+    "voucherType": …, "freebetTokenId": …, "tokenType": …, "prevTerms": … }],
+  "checkBalance": …, "returnBalance": …, "returnCashoutAvailable": …,
+  "firstBet": …, "pendingBetCount": …, "fullDetails": …, "errorDetail": … }
+```
+
+response:
+
+```jsonc
+{ "pendingBetCount": 1,
+  "betPlacements": [{ "betNo": 7,
+                      "betId": <long>,                 // ← the handle for read-back
+                      "receipt": "O/<customer>/<seq>/D",
+                      "totalStake": 10, "currency": "AUD",
+                      "betPotentialWin": "39.50",      // ← 10 x 3.95: the ACCEPTED price, confirmed
+                      "cashoutAvailable": false }] }
+```
+
+### Five things this settles
+
+1. **A same game multi is `betType: "SGL"` with one leg and many `parts`.** Not a multi-leg
+   bet. The SGM price is carried as `priceNum/priceDen` **replicated on every part** — all
+   three parts read `59/20` on the captured bet.
+2. **There is no `quoteId`.** The pricer returns one, and placement does not take it. So
+   the price is **asserted by the client**, exactly like BetR's `FixedWin`. The plane must
+   therefore send the price it just got from step 1, never a remembered one, and must treat
+   step 1 as mandatory rather than an optimisation.
+3. **The response confirms the fill price.** `betPotentialWin / totalStake` = 3.95, matching
+   what was sent. Verification does not have to wait for bet history — though read-back
+   should still happen, because…
+4. **…placement is `202 Accepted`, not `201 Created`.** It is asynchronous. A 202 means the
+   bet was taken for processing, not that it is on. `pendingBetCount` in the response says
+   as much. Read-back via `/apigw/history/bets` is therefore mandatory, not belt-and-braces.
+5. **The external ids match the pricer's.** `classExternalId: 103`,
+   `competitionExternalId: 17131`, `eventExternalId` — the same id space
+   `sportsbet_sgm_price` needs, and the same one whose internal/external confusion was
+   fixed in the comparator. One resolution serves quoting and placing.
+
+`betMinStake: 0.01` also comes back from step 1, so a "smallest possible stake" test bet is
+a cent, not a dollar.
+
+### The one thing deliberately NOT tested
+
+Whether the server validates the client-asserted price. Finding out means sending a price
+more favourable than the one offered, which is an attempt to obtain a better price than the
+book is quoting — not something to do to a real account, and not something to build. The
+plane assumes the price is validated, always sends the price step 1 just returned, and
+treats any mismatch in the response as a failure to escalate.
 
 ## 4. What already exists
 
