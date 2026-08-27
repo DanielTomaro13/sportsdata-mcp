@@ -85,7 +85,7 @@ caller supplies only the variable query params. Browse `fanduel://sportsbook/ope
 |---|---|---|
 | `application_context` | `/sbapi/application-context` | Nav scaffolding — pick blocks via `dataEntries` (POPULAR_BETTING, QUICK_LINKS, AZ_BETTING, EVENT_TYPES, …). |
 | `content_page` | `/sbapi/content-managed-page` | A managed sport/landing page (events + markets) by `customPageId` (e.g. `mlb`, `nfl`, `nba`). |
-| `event_page` | `/sbapi/event-page` | Full event page: tabs of markets + selections for one `eventId`. |
+| `event_page` | `/sbapi/event-page` | Full event page: tabs of markets + selections for one `eventId`. Also carries the Same Game Parlay flags — see below. |
 | `inplay_counter` | `/sbapi/in-play/counter` | Count of events currently in-play. |
 | `inplay_livedata` | `/ips/inplayservice/v1.0/livedata` | Live scores/media for comma-separated `eventIds`. |
 | `promotions` | `/promos/api/v2/promotions` | Sportsbook promotions for a `context`. |
@@ -105,8 +105,44 @@ Dispatcher capabilities: `sport.event_markets`, `sport.match_detail`,
 ```
 fanduel_sb_call(content_page, {customPageId: "mlb"})   → eventId (attachments.events)
 fanduel_sb_call(event_page,   {eventId})                → every market + selection
+  └ attachments.markets[].sgmMarket                     → the SGP-eligible legs
 fanduel_sb_live_score(eventId)                          → live score
 ```
+
+### Same Game Parlay — the legs, not the price
+
+`event_page` already tells you which markets FanDuel will combine within one event, and
+that is currently the whole of the SGP story here. Verified live 2026-08-27.
+
+- **`attachments.markets[].sgmMarket`** is the per-market eligibility flag. On an MLB game
+  (`35981997`), 26 of 44 markets were `true`.
+- **The SGP tab** is the one with `isSameGameMulti: true` in `layout.tabs` — titled
+  "Same Game Parlay™" pre-match and "Live SGP" in-play.
+- **`tab` takes the numeric tab id**, and the ids are per event, not global: that MLB game
+  used 32 / 61 / 123 / 244 / 249 / 262 / 385. Read `layout.tabs` from a call without `tab`
+  to find them. Passing a name (`tab=sgp`) is silently ignored rather than rejected.
+- **A thin event is not an event without SGP.** An NFL preseason game returned 3 markets
+  and 2 tabs while its SGP card still reported `attachmentsFullyLoaded: false`, so a small
+  market count says nothing about SGP availability.
+
+**There is no combined price.** The SGP card is `attachmentsFullyLoaded: false` — something
+else fills it, and that something was not found. What was ruled out on 2026-08-27, so it
+need not be redone:
+
+- ~35 candidate routes on `api.sportsbook.fanduel.com` against a clean 404 baseline
+  (`/sbapi/sgp/price`, `/sbapi/same-game-parlay`, `/sbapi/betslip/price`, and variants),
+  GET and POST. All 404.
+- `fdx-api.sportsbook.fanduel.com` — answers 403 to everything including a nonsense path,
+  so it yields no signal either way.
+- `smp.nj.sportsbook.fanduel.com` — SGP candidates 404, and see the correction below.
+- Ten documented-parameter variations on `event_page` itself (`loadAllAttachments`,
+  `includeAllMarkets`, `attachments=all`, `tab=sgp`, …). Every one byte-identical to the
+  plain call.
+- Every `event_page` `tab` id on a 7-tab event. `tab` genuinely changes the payload, but
+  the SGP card stays `attachmentsFullyLoaded: false`.
+
+The remaining route is a traffic capture off the FanDuel app or web client, which is the
+same position Dabble is in — see `docs/DABBLE-CAPTURE.md`, whose method transfers directly.
 
 ## Cross-provider comparison
 
@@ -116,10 +152,20 @@ alongside `tab_racing_race`, `sportsbet_racecard`, `pointsbet_racing_race`). Not
 FanDuel is **US** racing, so a like-for-like odds comparison applies when other US
 sources are added; the tag still makes it discoverable.
 
+`fanduel_sb_call` also carries **`sport.same_game_multi`**, for the same reason
+`dabble_fixture_details` and `unibet_kambi_call` do: it surfaces the SGP-eligible markets.
+It is NOT one of the six pricers in `docs/SGM-AND-PLACEMENT-SCOPE.md`, which return a
+correlation-adjusted price for a combination you choose. Do not put FanDuel in a price
+comparison — it can contribute legs, not a quote.
+
 ## Not modelled
 
-- `smp.nj.sportsbook.fanduel.com/.../getMarketPrices` — a POST endpoint that wants
-  a body of market ids; the markets + prices already come from `event_page`.
+- `smp.nj.sportsbook.fanduel.com/sportsbook/v1/getMarketPrices` — **gone as of
+  2026-08-27**: the host is live and 404s a nonsense path, but this route now answers an
+  HTML "Service not Found". It was already not worth modelling (the markets and prices come
+  from `event_page`), so this is a correction to the note rather than a loss.
+- **The Same Game Parlay pricer.** It exists — FanDuel sells SGP — and was not found from
+  outside a client. See "Same Game Parlay" above for exactly what was ruled out.
 - `boapi.sportsbook.fanduel.com/popular/events/{id}` — overlaps `event_page`.
 - `service.racing.fanduel.com/seo/v1/metainfo` — requires an `x-tvg-context` header
   (a hyphenated name can't be a tool param) and only returns SEO meta; low value.

@@ -91,6 +91,21 @@ Full history is in `git log`; this file covers what a user would notice.
   either side of the call and accepts either date, and the stale-example scan measures
   against the real date because a pinned one would grow silently weaker as it drifted.
 
+- **FanDuel's Same Game Parlay markets are now discoverable** — `sgmMarket` on each market
+  is the per-leg eligibility flag (26 of 44 on a verified MLB game) and
+  `layout.tabs[].isSameGameMulti` marks the SGP tab. Both were undocumented; `event_page`
+  now describes them, including that `tab` takes a NUMERIC id that is per event rather than
+  global, and that a name like `tab=sgp` is silently ignored rather than rejected.
+  `fanduel_sb_call` gains `sport.same_game_multi` for surfacing those markets — the same
+  basis as `dabble_fixture_details` and `unibet_kambi_call`.
+
+  **It is not a seventh pricer.** FanDuel's SGP combined price was not found: the SGP card
+  reports `attachmentsFullyLoaded: false` and ~35 candidate routes, three hosts, ten
+  parameter variations and every tab id on a 7-tab event all came back empty — and the
+  browser capture that solved the six Australian books was unavailable, since the pane
+  refuses that host by policy. Documented as blocked with everything that was ruled out, so
+  it need not be redone.
+
 ### Changed
 - **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The
   detail lookup was lowercase-only, so BetR's `Message` was invisible and "Same Game Multi

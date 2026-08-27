@@ -646,6 +646,39 @@ Melbourne to win plus Melbourne on the line returned `23/20`, the single-leg pri
 
 ---
 
+# Bookmaker 9: FanDuel (US) — legs yes, price no
+
+Not part of the Australian comparator this scope was written for, but surveyed because it
+is the largest US book and the same question applies.
+
+**SGP markets: SOLVED and already shipped.** `fanduel_sb_call(event_page)` carries
+`attachments.markets[].sgmMarket`, the per-market Same Game Parlay eligibility flag — 26 of
+44 markets on a verified MLB game — and `layout.tabs[].isSameGameMulti` marks the SGP tab
+("Same Game Parlay™" pre-match, "Live SGP" in-play). Both were undocumented; they are now
+described on the operation and the dispatcher carries `sport.same_game_multi`.
+
+**SGP pricing: BLOCKED, same class as Dabble.** The SGP card reports
+`attachmentsFullyLoaded: false`, so something else fills it, and that something was not
+found from outside a client. Ruled out on 2026-08-27: ~35 candidate routes on
+`api.sportsbook.fanduel.com` against a clean 404 baseline; `fdx-api` (403s everything, so
+no signal); `smp.nj.sportsbook.fanduel.com`; ten documented-parameter variations on
+`event_page`, all byte-identical to the plain call; and every tab id on a 7-tab event —
+`tab` genuinely changes the payload, but the SGP card stays unloaded.
+
+Capture was not available either: **the Browser pane refuses `sportsbook.fanduel.com` by
+policy**, so the technique that solved the six Australian books could not be run at all
+here. That is a tooling constraint rather than a finding about FanDuel.
+
+**One correction to existing docs** found on the way: the
+`smp.nj.sportsbook.fanduel.com/sportsbook/v1/getMarketPrices` route recorded under "Not
+modelled" now returns an HTML "Service not Found". The host is still live and 404s a
+nonsense path, so the route specifically is gone.
+
+**Do not put FanDuel in an SGM price comparison.** It contributes legs, not a quote. The
+capability tag makes the markets discoverable, which is a different promise.
+
+---
+
 # Where the eight books leave it
 
 Every Australian book in the catalogue has now been surveyed. Six price a combination you

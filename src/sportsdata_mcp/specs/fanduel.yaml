@@ -119,7 +119,10 @@ dispatchers:
   - name: fanduel_sb_call
     group: fanduel.sportsbook
     kind: templated_rest
-    capabilities: [sport.event_markets, sport.match_detail, sport.competition_screen, sport.in_play, content.promo]
+    # sport.same_game_multi because event_page surfaces the SGP-ELIGIBLE MARKETS via
+    # `sgmMarket` — the same reason dabble_fixture_details and unibet_kambi_call carry it.
+    # It does NOT price a combination; no FanDuel tool does.
+    capabilities: [sport.event_markets, sport.match_detail, sport.competition_screen, sport.in_play, sport.same_game_multi, content.promo]
     summary: |
       Fetch a FanDuel Sportsbook (US, NJ) REST resource by operation name. Carries
       the static public `_ak` web key + the sportsbook Origin/region headers, so the
@@ -151,7 +154,23 @@ dispatchers:
         path: /sbapi/event-page
         query_params: [eventId, tab, useCombinedTouchdownsVirtualMarket, useQuickBets]
         query_defaults: {_ak: "FhMFpcPWXMeyZxOx"}
-        summary: "Full event page: tabs of markets + selections for one eventId."
+        summary: |
+          Full event page: tabs of markets + selections for one eventId. `tab` selects a
+          market tab by its NUMERIC id, which is per event — read `layout.tabs` from a
+          call without `tab` to find them, since the ids are not stable across sports
+          (an MLB game had 32/61/123/244/249/262/385).
+
+          SAME GAME PARLAY: `attachments.markets[].sgmMarket` is the per-market
+          eligibility flag — the legs FanDuel will let you combine within one event (26 of
+          44 markets on a verified MLB game, 2026-08-27). The SGP tab itself is the one
+          with `isSameGameMulti: true` in `layout.tabs`, titled "Same Game Parlay™"
+          pre-match and "Live SGP" in-play.
+
+          THIS GIVES YOU THE LEGS, NOT A COMBINED PRICE. FanDuel's SGP pricer is not
+          modelled — see documentation/FanDuel.md. A thin event returns very little (an
+          NFL preseason game had 3 markets and 2 tabs) while its SGP card still reports
+          `attachmentsFullyLoaded: false`, so a small market count is not evidence the
+          event has no SGP.
       - name: inplay_counter
         path: /sbapi/in-play/counter
         query_params: [includeTabs, timezone]
