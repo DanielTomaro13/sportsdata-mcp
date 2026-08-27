@@ -241,13 +241,19 @@ reasons this document ends where it does. Everything else is solvable; those are
 
 ## The caching trap (added 2026-08-27, measured)
 
-The engine caches GET responses for 60 s. Four of the six SGM pricers are POSTs and are
-unaffected, but **Unibet's is a GET** — a re-quote inside the window returns the price that
-was approved rather than the price on offer, measured at 0 ms.
+The engine caches GET responses for 60 s. **Two of the seven pricers are GETs — Unibet and
+Entain** — and a re-quote inside that window returns the price that was approved rather
+than the price on offer, measured at 0 ms. The other five are POSTs, which the cache key
+already refuses.
 
-A drift gate that compares a cached price against the approved one always passes. Whatever
-performs the pre-placement re-quote must bypass the cache, on every book, rather than
-relying on a given book's pricer happening to be a POST.
+A drift gate that compares a cached price against the approved one always passes, so the
+check protects nothing while appearing to work. Both GET pricers now declare
+`never_cache: true`, and a test asserts that **no** pricer can be cacheable — because
+"the other five happen to be POSTs" is luck, not a property anyone chose.
+
+Entain was missed when this was first written: the note named only Unibet. The audit in
+`tests/unit/test_price_freshness.py` is what found the second one, which is the argument
+for auditing the property rather than listing the endpoints by hand.
 
 ## Where this stands
 

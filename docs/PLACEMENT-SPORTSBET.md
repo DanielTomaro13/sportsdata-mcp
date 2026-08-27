@@ -56,13 +56,13 @@ That is not the interesting number.
 you are deciding. An agent that quotes, waits ninety seconds for a human, and then places
 is placing a bet nobody priced. Everything in section 3 exists because of that gap.
 
-> **A caching trap that would silently defeat the drift gate.** The engine caches GET
-> responses for 60 s (`SPORTSDATA_MCP_CACHE_TTL`). Four of the six SGM pricers are POSTs
-> and are unaffected — but **Unibet's is a GET**, and a re-quote inside the window returns
-> the *approved* price rather than the current one, measured at 0 ms. A drift check that
-> compares a cached price against itself always passes. The re-quote path must bypass the
-> cache; on Sportsbet this does not bite (its pricer is a POST), but the plane must not
-> rely on that.
+> **A caching trap that would silently defeat the drift gate — now fixed.** The engine
+> caches GET responses for 60 s (`SPORTSDATA_MCP_CACHE_TTL`). **Two pricers are GETs,
+> Unibet and Entain**, and a re-quote inside that window returned the *approved* price
+> rather than the current one, measured at 0 ms — a drift check comparing a price against
+> itself, always agreeing. Both now declare `never_cache: true`, and a test asserts that no
+> pricer can be cacheable at all, so a future book cannot reintroduce it. Sportsbet is a
+> POST and was never affected, but the plane must not depend on that.
 
 ### How long to build
 

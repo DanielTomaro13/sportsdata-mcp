@@ -445,6 +445,21 @@ class Endpoint(BaseModel):
     # fills it in, and what is sent is what was written.
     request_body_format: Literal["json", "raw"] = "json"
     request_content_type: str | None = None
+    # NEVER serve this endpoint from the response cache, whatever the TTL.
+    #
+    # The cache is a 60s GET cache and it is right for fixtures, market lists and
+    # reference data. It is WRONG for a live price quote, and wrong in a way that is
+    # invisible: ask a bookmaker to re-price a combination inside the window and you get
+    # back the number you already had, in 0ms, with nothing marking it as stale.
+    #
+    # That is fatal to the one check that makes automated betting safe — quote, get
+    # approval, RE-QUOTE, and refuse if the price moved. A re-quote served from cache
+    # compares a number against itself and always agrees. Measured live 2026-08-27 on
+    # unibet_sgm_price, which is the only SGM pricer that is a GET (the rest are POSTs
+    # and were never cacheable).
+    #
+    # The rule: any endpoint returning a price someone might ACT on declares this.
+    never_cache: bool = False
     # Whether this endpoint CHANGES anything. Defaults from the method, which is right
     # almost always — but not universally: FanDuel's promotions endpoint is a POST whose
     # empty body returns everything, a read wearing a write's method. Annotating it

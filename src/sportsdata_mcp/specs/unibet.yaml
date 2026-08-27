@@ -76,6 +76,11 @@ endpoints:
     base: kambi_offering
     path: /onDemandPricing/event/{eventId}/outcome/{outcomeIds}.json
     auth: default
+    # The only SGM pricer in the catalogue that is a GET, and therefore the only one the
+    # response cache could ever serve stale. A quote read back from cache defeats the
+    # re-price check that automated betting depends on — measured returning the previous
+    # price in 0ms. Prices are never cached.
+    never_cache: true
     params:
       - { name: eventId, in: path, type: integer, required: true, description: "Kambi event id, e.g. 1028856020 — from unibet_kambi_call(operation=\"sport_matches\") or any Kambi event feed." }
       - { name: outcomeIds, in: path, type: string, required: true, description: 'The legs, as outcome ids joined by COMMAS in one string: "4306981996,4309057043". Ids come from unibet_kambi_call(operation="event_betoffer") — `betOffers[].outcomes[].id` — and all must belong to THIS event. Give two or more: a single id returns the combinable list with NO price. Order does not matter and is not preserved in the echo.' }

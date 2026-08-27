@@ -380,6 +380,7 @@ def make_endpoint_handler(ep: Endpoint, http: HTTPClient) -> Callable:
             auth_key=ep.auth,
             response_format=ep.response_format,
             projected=projects,
+            no_cache=ep.never_cache,
         )
         # Pure passthrough unless the endpoint opted in. Order matters: `classify` adds
         # a derived tag, then `project` reduces — so an endpoint can tag rows and still

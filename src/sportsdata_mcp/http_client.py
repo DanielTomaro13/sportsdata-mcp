@@ -362,7 +362,10 @@ class HTTPClient:
         # Endpoints that project are size-checked on the PROJECTED result instead
         # (registry.py) — see the guard in `_decode`.
         projected = bool(kwargs.pop("projected", False))
-        key = self._cache_key(kwargs) if self._cache_ttl > 0 else None
+        # `never_cache` endpoints opt out entirely — a live quote served stale is worse
+        # than a slow one. See Endpoint.never_cache for why this is not the caller's job.
+        no_cache = bool(kwargs.pop("no_cache", False))
+        key = self._cache_key(kwargs) if self._cache_ttl > 0 and not no_cache else None
         if key is not None:
             hit = self._cache.get(key)
             if hit is not None and hit[0] > time.monotonic():
