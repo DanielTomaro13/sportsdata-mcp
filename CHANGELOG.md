@@ -8,6 +8,8 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+## 0.31.0 — 2026-08-27
+
 ### Added
 - **Sportsbet account tools — the first surface in this catalogue that can move money.**
   `sportsbet_price_slip` (the authoritative price), `sportsbet_place_bet` (the write, alone
@@ -65,9 +67,41 @@ Full history is in `git log`; this file covers what a user would notice.
   Auth: Entain keeps its OIDC tokens in **plain, non-HttpOnly cookies**
   (`web-frontend:token:refreshToken` among them), scope `["openid","offline_access"]`, and
   a one-hour access token whose expiry is published in a cookie. That makes it the easiest
-  of the three to connect — the existing cookie-reading machinery takes it as-is. The token
-  ENDPOINT is unverified though: no discovery document was reachable, so `token_url` is a
-  guess and is flagged as such in the spec and by a test.
+  of the three to connect — the existing cookie-reading machinery takes it as-is.
+
+  The token ENDPOINT is on a **separate auth host**, which is why every guess against the
+  data host returned go-micro's "none available": `authentication.neds.com/auth/token`,
+  derived from the live site's `window.__config` (public client `web-frontend`, ORY Hydra,
+  refresh grant). It is **not round-tripped** — the auth host sits behind Kasada, which
+  drops both server-side curl and scripted browser fetch, so a bogus-token probe could not
+  be executed. Host, base, suffix, client and grant are config-confirmed; the exact path
+  and the Kasada requirement are the residual unknowns, and both are flagged in the spec
+  and by a test.
+
+- **Unibet placement — `unibet_place_bet` and `unibet_validate_coupon`**, the fourth book
+  that can bet, and the one that shares none of the others' shapes. Captured live from a
+  real two-leg same game multi.
+
+  Unibet runs on **Kambi**, so this is Kambi's Player API rather than Unibet's own:
+  `POST …kambicdn.com/player/api/v2019/ubau/coupon.json` to place, and
+  `coupon/validate.json` to check first. The `player/` segment marks the authenticated
+  surface, against the anonymous `offering/` feed the pricers already read.
+
+  **Validation is anonymous** — verified: `validate.json` answered 400, not 401,
+  cross-origin with no session cookie — so the pre-placement go/no-go needs no login at
+  all. Only the placement itself does.
+
+  A same game multi is **one `couponRow`** whose `group.groups[]` nests the legs, priced
+  by the row's `odds` in **Kambi thousandths** (`3400` is 3.40, the same scaling
+  `unibet_sgm_price` returns); the stake lives separately in `bets[]`. `allowOddsChange`
+  is a per-request drift policy.
+
+  Auth is a **session cookie on `.kambicdn.com`**, not an OAuth bearer — there is no
+  readable token in storage, only Kambi's keepalive timers — carried from
+  `UNIBET_KAMBI_COOKIE`. The request shape is verbatim from a successful placement, but a
+  **headless** placement has not been round-tripped, so the stored credential is unproven
+  and the spec says so. On rejection Kambi uses a `{status, message}` envelope; as with
+  Entain, HTTP 200 is not the verdict.
 
 ### Fixed
 - **An optional OAuth tier was gated on the wrong env var.** The "is this configured?"
