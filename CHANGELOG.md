@@ -81,6 +81,16 @@ Full history is in `git log`; this file covers what a user would notice.
   `docs/SGM-AND-PLACEMENT-SCOPE.md` for the four rules a cross-book comparator has to
   carry, each traceable to a specific book's behaviour.
 
+### Fixed
+- **A test that failed only if the suite crossed UTC midnight.** `test_date_tokens.py`
+  captured `TODAY` at import and compared it against dates `dates.render()` computed at
+  call time, so a run starting at 23:37 UTC and asserting at 00:06 failed eight
+  assertions — which is exactly what CI did on 2026-08-27. The clock is now pinned through
+  the existing `dates._today` seam, removing the race rather than narrowing it. The two
+  assertions that genuinely need a real clock keep one: the UTC-not-local check samples
+  either side of the call and accepts either date, and the stale-example scan measures
+  against the real date because a pinned one would grow silently weaker as it drifted.
+
 ### Changed
 - **A 200-with-an-error-body now finds its message whatever the vendor calls it.** The
   detail lookup was lowercase-only, so BetR's `Message` was invisible and "Same Game Multi

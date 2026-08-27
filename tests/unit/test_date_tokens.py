@@ -19,17 +19,46 @@ import pytest
 from sportsdata_mcp import dates
 from sportsdata_mcp.spec_loader import load_all_specs
 
-TODAY = datetime.now(tz=UTC).date()
+#: A FIXED date, not `datetime.now()`. These tests compare a value captured once at import
+#: against one `dates.render` computes at call time, so a real clock makes them fail for
+#: any run that straddles UTC midnight — which is exactly what happened on CI on
+#: 2026-08-27: the run started 23:37 UTC and the assertions ran at 00:06. Pinning the
+#: clock through the `_today` seam removes the race instead of narrowing it.
+TODAY = date(2026, 3, 14)
+
+#: The real implementation, kept before the autouse fixture replaces it, so the one test
+#: that must see a real clock still can.
+_REAL_TODAY = dates._today
 
 
-@pytest.mark.parametrize("token,expected", [
-    ("{{today}}", TODAY),
-    ("{{today+1}}", TODAY + timedelta(days=1)),
-    ("{{today-1}}", TODAY - timedelta(days=1)),
-    ("{{today+30}}", TODAY + timedelta(days=30)),
+@pytest.fixture(autouse=True)
+def _frozen_clock(monkeypatch):
+    monkeypatch.setattr(dates, "_today", lambda: TODAY)
+
+
+def test_the_real_clock_is_utc_not_local():
+    """The one thing a frozen clock cannot check, so it keeps a real one.
+
+    A local-midnight "today" would make an Australian probe ask for tomorrow's card for
+    several hours a day — the bug the UTC choice in `dates._today` exists to prevent.
+
+    Sampled either side of the call rather than compared to a single `now()`, because a
+    tick between the two reads is precisely the flake this whole change is fixing.
+    """
+    before = datetime.now(tz=UTC).date()
+    got = _REAL_TODAY()
+    after = datetime.now(tz=UTC).date()
+    assert got in (before, after)
+
+
+@pytest.mark.parametrize("token,offset", [
+    ("{{today}}", 0),
+    ("{{today+1}}", 1),
+    ("{{today-1}}", -1),
+    ("{{today+30}}", 30),
 ])
-def test_tokens_render_to_iso_dates(token, expected):
-    assert dates.render(token) == expected.isoformat()
+def test_tokens_render_to_iso_dates(token, offset):
+    assert dates.render(token) == (TODAY + timedelta(days=offset)).isoformat()
 
 
 def test_tokens_render_inside_a_larger_string():
@@ -67,8 +96,13 @@ def test_nested_structures_are_rendered():
 
 def test_no_spec_example_carries_a_rotting_date():
     """The condition that broke the drift check. Enforced by `sportsdata-mcp lint` too,
-    but pinned here so it fails in the normal test run rather than only in CI's lint
-    step."""
+    but pinned here so it fails in the normal test run rather than only in CI's lint step.
+
+    Measured against the REAL date, deliberately. A pinned clock would make this scan
+    silently weaker every day it drifted from the present — a spec example dated after the
+    pin computes a negative age and sails through the window check.
+    """
+    today = _REAL_TODAY()
     offenders = []
     for spec in load_all_specs():
         for ep in spec.endpoints:
@@ -78,7 +112,7 @@ def test_no_spec_example_carries_a_rotting_date():
                         m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str(item))
                         if not m:
                             continue
-                        age = (TODAY - date(*map(int, m.groups()))).days
+                        age = (today - date(*map(int, m.groups()))).days
                         if 0 < age < 400:
                             offenders.append(f"{spec.provider.id}/{ep.name}: {key}={item} ({age}d)")
     assert not offenders, "examples with dates that rot:\n  " + "\n  ".join(offenders)
@@ -137,7 +171,10 @@ def test_no_registered_tool_description_contains_a_concrete_today():
                 continue
             desc = _describe(ep)
             assert "<today" in desc, f"{ep.name}: token vanished from its description"
-            assert TODAY.isoformat() not in desc, f"{ep.name}: froze today's date into its description"
+            # The REAL date: the failure being guarded against is a description built at
+            # boot that carries the day it was built on.
+            assert _REAL_TODAY().isoformat() not in desc, (
+                f"{ep.name}: froze today's date into its description")
 
 
 def test_doctor_still_probes_with_a_real_date():
