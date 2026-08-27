@@ -20,6 +20,28 @@ provider:
   auth:
     default:
       type: none
+    # THE ACCOUNT TIER. Entain issues an OIDC token set at login and stores it in PLAIN,
+    # non-HttpOnly cookies named `web-frontend:token:accessToken`, `…:refreshToken`,
+    # `…:expiresAt`, `…:scope`. Verified live 2026-08-27: scope is
+    # ["openid","offline_access"] — offline_access being why a refresh token exists — and
+    # the access token is a JWT with a ONE-HOUR life, its expiry published in the
+    # `expiresAt` cookie as plain milliseconds.
+    #
+    # Because the refresh token sits in an ordinary readable cookie, this is the EASIEST
+    # of the three books to connect: the existing cookie-reading `connect` machinery can
+    # take it as-is, where Sportsbet's location was never established and TAB's lives in
+    # localStorage.
+    #
+    # The token endpoint has NOT been observed — no OIDC discovery document was reachable
+    # at the obvious paths — so `token_url` below is unverified and refresh will need it
+    # confirmed before the tier can mint anything. Until then, put a current access token
+    # in ENTAIN_ACCESS_TOKEN and accept that it dies within the hour.
+    account:
+      type: oauth_refresh
+      token_url: https://api.ladbrokes.com.au/v2/auth/token
+      grant: refresh_token
+      refresh_token_env: ENTAIN_REFRESH_TOKEN
+      optional: true
   # Used by `sportsdata-mcp refresh-hashes entain`: operation documents are
   # extracted from the current production JS bundle, printed, hashed, and
   # registered with the gateway; the printed texts land in
@@ -175,6 +197,19 @@ endpoints:
               selections:
                 - { market_id: "c73591e5-b00e-4c92-abfb-b3737acbdd30", entrant_id: "49475673-c7b8-4b49-8c87-e14637ebfa5c" }
                 - { market_id: "2bc6b298-4fce-4545-93cd-ed232a9c69a0", entrant_id: "8ada7d51-2a67-4bcb-9593-f9fcbbbd5188" }
+
+  - name: entain_place_bet
+    group: entain.write
+    capabilities: []
+    method: POST
+    summary: "PLACE A REAL BET WITH REAL MONEY on your own Ladbrokes/Neds account. Irreversible. Price with entain_sgm_price first and send those odds — this endpoint takes odds you assert."
+    base: default
+    path: /v2/betting/place-bet
+    auth: account
+    params:
+      - { name: stake, in: body, type: number, required: true, description: "The stake, as a NUMBER (2 and 1 on the verified bets). Compare the response's `accepted_stake` against this — Entain may take less than asked." }
+      - { name: bets, in: body, type: json, required: true, description: 'The bets: [{"legs": [{"bet_id", "entrant_name", "odds": {"numerator", "denominator", "decimal"}, "product_type_id", "root_category_id", "selections": [{"position", "market_id", "event_id", "entrant_id"}]}]}]. `market_id` and `entrant_id` are the SAME identifiers entain_sport_event_card and entain_sgm_price use, so one resolution serves pricing and placing. A SAME GAME MULTI is several `legs` in one bet PLUS a `prices` object on that bet keyed by EVENT ID: {"prices": {"<event_id>": {"valid": true, "odds": {"numerator", "denominator"}}}} carrying the combined price — a single carries no `prices` block at all. That was the shape of the verified three-leg SGM.' }
+    response_hint: "{transaction_id, status: 'accepted', accepted_stake, message, placed_odds:[{product_type_id, odds:{decimal, numerator, denominator}}]}  — VERIFIED live 2026-08-27 on real bets, a single and a three-leg same game multi, both HTTP 200 with status 'accepted'.\n\nHTTP 200 IS NOT THE ANSWER — `status` IS. Entain returns 200 and puts the verdict in the body: 'accepted' on both verified bets, with `message` alongside. Treat anything other than 'accepted' as a bet that did not go on, whatever the status code said.\n\nCHECK `accepted_stake` AGAINST WHAT YOU SENT. Entain states the stake it actually took, and a book is entitled to take less than asked — on a limited account that is normal, not an error. Both verified bets matched, but a plane that assumes they always will is one that reports a $50 bet it never had.\n\nCHECK `placed_odds` AGAINST WHAT YOU PRICED. The odds actually struck come back, so price drift is detectable from the placement response alone — no separate read-back needed to answer 'what did I get'.\n\n`transaction_id` is RETURNED, not sent. It is a receipt, NOT an idempotency key — unlike TAB, where you generate one and can safely resend it. There is no observed way to ask Entain whether a timed-out placement landed, so treat this endpoint like Sportsbet's: never retry, and VERIFY by reading the account instead.\n\nSO: CONFIRM EVERY PLACEMENT from the response before reporting it — `status` must be 'accepted', `accepted_stake` must match what you sent, and `placed_odds` must match what you priced. All three, not one."
 
   - name: entain_event_market_rules
     group: entain.rest

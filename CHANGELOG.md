@@ -47,6 +47,28 @@ Full history is in `git log`; this file covers what a user would notice.
   refresh token is the whole credential. That is a second, separate identity system from
   the existing `oauth` data tier, and the two must not be conflated.
 
+- **`entain_place_bet`** — Ladbrokes/Neds, the third book that can bet. Captured live from
+  real bets (a single and a three-leg SGM, both HTTP 200 `status: "accepted"`).
+
+  Entain reports **more** about what happened than either other book and offers **less** to
+  recover with. `accepted_stake` states the stake actually taken — a book may take less
+  than asked, which on a limited account is normal rather than an error — and `placed_odds`
+  states the price actually struck, so drift is visible from the placement response alone.
+  But **HTTP 200 is not the verdict**; `status` is. And `transaction_id` is *returned*, not
+  sent: a receipt, not an idempotency key, so unlike TAB a timed-out placement cannot be
+  asked about and must never be retried.
+
+  A same game multi is several `legs` plus a `prices` object keyed by **event id** carrying
+  the combined price; a single carries no `prices` block at all. Leg ids are the same
+  `market_id`/`entrant_id` the pricer uses, so one resolution serves both.
+
+  Auth: Entain keeps its OIDC tokens in **plain, non-HttpOnly cookies**
+  (`web-frontend:token:refreshToken` among them), scope `["openid","offline_access"]`, and
+  a one-hour access token whose expiry is published in a cookie. That makes it the easiest
+  of the three to connect — the existing cookie-reading machinery takes it as-is. The token
+  ENDPOINT is unverified though: no discovery document was reachable, so `token_url` is a
+  guess and is flagged as such in the spec and by a test.
+
 ### Fixed
 - **An optional OAuth tier was gated on the wrong env var.** The "is this configured?"
   check read `client_id_env`, which a public client never has — so an optional public tier

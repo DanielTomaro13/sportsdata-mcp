@@ -1513,6 +1513,69 @@ Every persisted operation registered in `vendor-graphql-ops-web-D59Og4AP.js`, wi
 
 ---
 
+## Your own account (group `entain.write`)
+
+**`entain_place_bet`** — one tool, and the only one here needing a personal credential. Captured live 2026-08-27
+from real bets on Ladbrokes — a single and a three-leg same game multi, both HTTP 200,
+`status: "accepted"`.
+
+```
+POST https://api.ladbrokes.com.au/v2/betting/place-bet
+{ "stake": 1,
+  "bets": [{ "legs": [{ "bet_id", "entrant_name",
+                        "odds": { "numerator", "denominator", "decimal" },
+                        "product_type_id", "root_category_id",
+                        "selections": [{ "position", "market_id", "event_id", "entrant_id" }] }],
+             // SGM ONLY — a single carries no `prices` block:
+             "prices": { "<event_id>": { "valid": true,
+                                         "odds": { "numerator", "denominator" } } } }] }
+
+→ 200
+{ "transaction_id", "status": "accepted", "accepted_stake", "message",
+  "placed_odds": [{ "product_type_id", "odds": { "decimal", "numerator", "denominator" } }] }
+```
+
+`market_id` and `entrant_id` are the **same identifiers** `entain_sport_event_card` and
+`entain_sgm_price` use, so the resolver written for pricing serves placing too.
+
+### Where Entain sits against the other two books
+
+It reports **more** about what happened than either, and offers **less** to recover with.
+
+| | Sportsbet | TAB | **Entain** |
+|---|---|---|---|
+| Success signal | `202` — async | `201` — synchronous | **`200` + `status` in the body** |
+| Price binding | none — client asserts | `decoToken` per leg | none — client asserts |
+| Idempotency | none | `transactionId` you send | **none — `transaction_id` is returned** |
+| Stake actually taken | not stated | `stake` echoed | **`accepted_stake`** |
+| Price actually struck | `betPotentialWin` | `expectedReturn` | **`placed_odds`** |
+
+1. **HTTP 200 is not the verdict — `status` is.** Anything other than `"accepted"` is a bet
+   that did not go on, whatever the code said.
+2. **Check `accepted_stake` against what you sent.** Entain states the stake it actually
+   took, and a book may take less than asked; on a limited account that is normal, not an
+   error. Both verified bets matched, but assuming they always will means eventually
+   reporting a bet larger than the one that exists.
+3. **Never retry.** `transaction_id` is *returned*, not sent — a receipt, not an
+   idempotency key. Unlike TAB there is no way to ask whether a timed-out placement
+   landed, so treat it like Sportsbet's and read the account instead.
+
+### Authentication
+
+Entain issues an OIDC token set at login into **plain, non-HttpOnly cookies**:
+`web-frontend:token:accessToken`, `…:refreshToken`, `…:expiresAt`, `…:scope`. Verified
+live: scope is `["openid","offline_access"]` — which is why a refresh token exists — and
+the access token is a JWT with a **one-hour** life whose expiry is published in
+`expiresAt` as plain milliseconds.
+
+Because the refresh token sits in an ordinary readable cookie, Entain is the **easiest of
+the three books to connect**: the existing cookie-reading `connect` machinery takes it
+as-is. Sportsbet's location was never established; TAB's lives in localStorage.
+
+> **The token endpoint is unverified.** No OIDC discovery document was reachable at the
+> obvious paths and a refresh was never observed, so `token_url` in the spec is a guess and
+> must be confirmed before the account tier can mint anything.
+
 ## Endpoint quick reference
 
 | # | Group | Method | Path | Verified |
@@ -1635,6 +1698,7 @@ server-side;… |
 | `entain_racing_racecard` | Full priced racecard for one race — entrants, fixed-odds fluctuations, form. |
 | `entain_racing_search` | Racing search facets (barrier/country/jockey/trainer buckets); optional full-text. |
 | `entain_sgm_price` | **Prices a same game multi you choose** — correlation-adjusted, several events per call. |
+| `entain_place_bet` | **Places a real bet** on your own Ladbrokes/Neds account. Irreversible; needs `ENTAIN_REFRESH_TOKEN`. |
 | `entain_sport_event_card` | Complete event card — every market, selection and price for one sport event. |
 | `entain_sport_event_request` | Bulk events + markets + prices for one or more sport categories. |
 | `entain_video_channels` | Racing live-video channels (HLS .m3u8 URLs; verify token expires within minutes). |
