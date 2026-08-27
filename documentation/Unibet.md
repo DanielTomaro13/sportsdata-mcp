@@ -150,11 +150,17 @@ Over 170.5 (1.88) prices **3.40**, against a naive 3.6096.
    zero in the price field. It is the only one of the five that needs no `error_signals`
    declaration.
 
-| Refusal | Body |
-|---|---|
-| conflicting or mutually implied legs | `{"error":{"message":"Combination is not supported by the selected strategy.","status":400}}` |
-| an id that is not an outcome | `{"error":{"message":"Invalid outcomes","invalidOutcomes":[999999999],"status":400}}` |
-| an id that is not an event | `{"error":{"message":"Unknown event","status":400}}` |
+| Refusal | Body | What to do |
+|---|---|---|
+| legs that clash or imply one another | `400 {"message":"Combination is not supported by the selected strategy."}` | drop one leg |
+| a leg that is not **bet-builder eligible** | `400 {"message":"Invalid outcomes","invalidOutcomes":[…]}` | pick another market — check `combinableOutcomeIds` first |
+| a combination that **cannot happen** | `409 {"message":"Impossible outcome selection","invalidOutcomes":[]}` | abandon the combination |
+| an id that is not an event | `400 {"message":"Unknown event"}` | — |
+
+The `invalidOutcomes` list being **empty on the 409** is not a bug to route around: the
+impossibility is in the *combination*, so no single id is at fault. And note the second
+row — an ordinary outcome straight out of the betoffer feed can be rejected this way,
+which is exactly what `combinableOutcomeIds` is for.
 
 **Three things to watch.**
 

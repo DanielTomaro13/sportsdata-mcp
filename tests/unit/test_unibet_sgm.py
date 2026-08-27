@@ -113,6 +113,19 @@ def test_the_event_book_is_projected_away(sgm):
     assert "betOffers" not in sgm.response_pick
 
 
+def test_the_hint_separates_the_four_refusal_codes(sgm):
+    """They are not interchangeable and the difference is actionable: an INELIGIBLE leg is
+    fixed by picking a different market, a CLASHING pair by dropping one leg, and a 409 by
+    abandoning the combination entirely. Found live when a perfectly ordinary betoffer
+    outcome came back `Invalid outcomes` because it was not bet-builder eligible."""
+    hint = sgm.response_hint or ""
+    assert "409" in hint and "Impossible outcome selection" in hint
+    assert "not BET-BUILDER ELIGIBLE" in hint
+    assert "`invalidOutcomes` EMPTY" in hint, (
+        "the empty list on a 409 looks like a bug and is not — the combination is at "
+        "fault, not any single id")
+
+
 def test_unibet_declares_no_error_signal(spec):
     """The other four books answer a refusal with HTTP 200 and a zero in the price field,
     so they need one. Kambi returns a real 400 with a typed body. Adding a signal here
