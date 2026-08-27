@@ -74,9 +74,10 @@ def test_never_cache_is_off_by_default(endpoints):
 def test_the_flag_reaches_the_cache_key(no_cache, expected_key):
     """The wiring itself: spec flag -> registry -> http_client. Without this the
     declaration is decorative."""
+    from pathlib import Path
+
     from sportsdata_mcp.config import Config
     from sportsdata_mcp.spec_loader import load_spec
-    from pathlib import Path
 
     spec = load_spec(Path(__file__).resolve().parents[2]
                      / "src/sportsdata_mcp/specs/unibet.yaml")
@@ -93,9 +94,10 @@ def test_the_flag_reaches_the_cache_key(no_cache, expected_key):
 def test_a_post_was_never_cacheable(endpoints):
     """Why the other five pricers did not need the flag — stated so nobody 'tidies up' by
     removing it from Unibet on the grounds that its neighbours manage without."""
+    from pathlib import Path
+
     from sportsdata_mcp.config import Config
     from sportsdata_mcp.spec_loader import load_spec
-    from pathlib import Path
 
     spec = load_spec(Path(__file__).resolve().parents[2]
                      / "src/sportsdata_mcp/specs/pointsbet.yaml")
