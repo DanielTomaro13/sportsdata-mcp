@@ -8,6 +8,8 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+## 0.31.1 — 2026-08-27
+
 ### Fixed
 - **Unibet's placement contract was documented wrong in 0.31.0, in four places.** Read off
   a live authenticated request: auth is **`Authorization: Bearer <uuid>`**
