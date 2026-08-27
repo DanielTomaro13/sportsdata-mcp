@@ -1572,9 +1572,22 @@ Because the refresh token sits in an ordinary readable cookie, Entain is the **e
 the three books to connect**: the existing cookie-reading `connect` machinery takes it
 as-is. Sportsbet's location was never established; TAB's lives in localStorage.
 
-> **The token endpoint is unverified.** No OIDC discovery document was reachable at the
-> obvious paths and a refresh was never observed, so `token_url` in the spec is a guess and
-> must be confirmed before the account tier can mint anything.
+> **The token endpoint is on a separate auth host — config-derived, not yet round-tripped.**
+> Every guess against the `api.ladbrokes.com.au` data host returned go-micro's
+> "none available", because the auth server is elsewhere. Derived 2026-08-27 from the live
+> site's `window.__config`: `auth.url = https://authentication.neds.com/auth`, a **public
+> client** `web-frontend`, `defaultClient: hydra`, and `activeTokenRefreshThreshold: 0.75`
+> (a refresh-token flow). The app bundle joins that base with a `/token` suffix and posts
+> `grant_type`/`refresh_token`/`client_id`, so the endpoint is
+> `https://authentication.neds.com/auth/token`, now set in the spec.
+>
+> What is **still unproven**: the auth host is behind **Kasada** (`auth.kasada: true`),
+> which drops both server-side curl (empty body) and scripted browser fetch
+> (`Failed to fetch`, no CORS + no `x-kpsdk` header), so a bogus-token probe could not be
+> executed to confirm the exact status/shape. An unattended refresh will likely need a
+> Kasada token attached, exactly as the web client does. Host + base + suffix + public
+> client + refresh grant are config-confirmed; the precise path and the Kasada requirement
+> are the residual unknowns — confirm with one real refresh before relying on the tier.
 
 ## Endpoint quick reference
 

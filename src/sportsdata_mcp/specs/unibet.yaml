@@ -23,6 +23,12 @@ provider:
     kambi_offering: https://ap.offering-api.kambicdn.com/offering/v2018/ubau
     kambi_stats: https://ap1.offering-api.kambicdn.com
     kambi_eu: https://eu-offering-api.kambicdn.com
+    # The Kambi Player Betting Interface (PBI) — the AUTHENTICATED write plane, a
+    # different host from the anonymous offering API above. Captured 2026-08-27 from a
+    # real placement on unibet.com.au. The `player/` path segment (vs `offering/`) is
+    # what marks it as the logged-in surface. Host is Cloudflare-fronted and may be
+    # region-specific; if placement 404s, recapture it from a live betslip.
+    kambi_player: https://cf-al-auth-api.kambicdn.com
   default_headers:
     User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     Accept: "application/json, text/plain, */*"
@@ -34,6 +40,28 @@ provider:
   auth:
     default:
       type: none
+    # ── account: the Kambi punter session for PLACING bets ──────────────────
+    # Unibet runs on Kambi, and Kambi's Player API authenticates the logged-in punter
+    # with a session COOKIE on .kambicdn.com — NOT an OAuth bearer like Sportsbet/TAB/
+    # Entain. The session is minted by Unibet's own login via a Kambi SSO handshake and
+    # kept alive client-side (localStorage carries KAF_LAST_REFRESHED_AT / session_sync
+    # timers, seen live). There is no readable bearer token in storage; the credential is
+    # the cookie itself, so it is carried here as a `Cookie` header sourced from an env
+    # var that holds the captured session cookie(s).
+    #
+    # CAPTURED, NOT ROUND-TRIPPED. The placement request contract below is verbatim from
+    # a real, successful browser placement (2026-08-27). What has NOT been proven is a
+    # HEADLESS placement — driving coupon.json from outside the browser with only this
+    # cookie — because doing so would move real money. Treat `unibet_place_bet` as
+    # shape-verified but auth-unverified until a controlled minimum-stake headless bet
+    # confirms the Cookie header alone (plus the Origin/Referer defaults) satisfies Kambi.
+    # `optional: true` so an unset env var degrades to an anonymous request (which Kambi
+    # will 401) rather than breaking startup for everyone.
+    account:
+      type: static_header
+      header: Cookie
+      env: UNIBET_KAMBI_COOKIE
+      optional: true
   defaults:
     rate_limit_rps: 5
     request_timeout_seconds: 30
@@ -95,6 +123,58 @@ endpoints:
     examples:
       - description: "Price Bulldogs to win with over 170.5 points"
         params: {eventId: 1028856020, outcomeIds: "4306981996,4309057043"}
+
+  # ─── unibet.sport — the Kambi Player API (PLACE plane) ─────────────────
+  # Contract captured 2026-08-27 from a real 2-leg SGM placement on unibet.com.au.
+  # The coupon body is Kambi's, shared by validate (preview) and coupon (place):
+  #   couponRows[]  — one row per LINE. A single is a row whose group holds one leg; an
+  #                   SGM is ONE row with group.operation="COMBINATION" and group.groups[]
+  #                   listing each leg's outcomeIds[]. `odds` on the row is the combined
+  #                   price you priced (Kambi thousandths — 3400 = 3.40), `type` its kind.
+  #   bets[]        — the money: each references couponRowIndexes[] and carries `stake`
+  #                   (major units, e.g. 1 = $1) and `eachWay`.
+  #   allowOddsChange / allowOddsChangeLive / allowOddsChangePreMatch — your drift policy.
+  #   requestId     — a client-generated id for the attempt; channel — "Internet".
+  #   trackingData  — analytics (selectedOutcomes[] mirrors the legs); not load-bearing.
+  - name: unibet_validate_coupon
+    group: unibet.sport
+    capabilities: [sport.prices]
+    read_only: true
+    method: POST
+    summary: "VALIDATE AND RE-PRICE a bet slip before placing it — the pre-placement go/no-go. Send the exact Kambi coupon you intend to place; it returns the current price and rejects an impossible or clashing combination, the same check Unibet's betslip fires. Anonymous (no login). Call IMMEDIATELY before unibet_place_bet and only place if this comes back clean."
+    # ANONYMOUS on purpose — proven: a cross-origin call with NO session cookie came back
+    # 400 with Kambi's {status, message} envelope, not 401, so validate prices/checks a
+    # coupon without login. It is the pre-placement authority: it re-prices the exact
+    # coupon you are about to place and rejects an impossible or clashing one, the same
+    # check the betslip fires on every change. Call it immediately before unibet_place_bet.
+    base: kambi_player
+    path: /player/api/v2019/ubau/coupon/validate.json
+    auth: default
+    params:
+      - { name: lang, in: query, type: string, default: en_AU, description: "Locale. Leave as the default." }
+      - { name: market, in: query, type: string, default: AU, description: "Market. Leave as AU." }
+      - { name: channel_id, in: query, type: integer, default: 1, description: "Kambi channel. Leave as 1 (web)." }
+      - { name: body, in: body, type: json, required: true, description: 'The Kambi coupon, identical in shape to unibet_place_bet. couponRows[]:[{index:0, odds:<thousandths>, group:{operation:"COMBINATION", groups:[{operation:"COMBINATION", outcomeIds:[<id>]}, …]}, type:"COMBINATION"}], bets:[{couponRowIndexes:[0], eachWay:false, stake:<major units>}], allowOddsChange/allowOddsChangeLive/allowOddsChangePreMatch, requestId, channel:"Internet". For a single, one group with one outcome id.' }
+    response_hint: "Kambi's coupon envelope. ON REJECTION (seen live): {status:<number>, message:<string>} — the SAME envelope validate returns for a stale/impossible/clashing coupon, so a non-2xx or a `status` that is not the accepted value MEANS the coupon would not place, whatever the HTTP code. The SUCCESS body (a re-priced, placeable coupon) was NOT captured here and is not documented rather than guessed — read it back the first time you run this live and pin it. The point of this call is the go/no-go BEFORE money: if it does not come back clean, do not call unibet_place_bet."
+
+  - name: unibet_place_bet
+    group: unibet.write
+    # Empty, like every other book's place_bet: placement is not a discovery capability.
+    # It is reachable ONLY as unibet.write, by exact name, never through a preset or glob.
+    # A POST is never served from cache, so no never_cache flag is needed (matches the
+    # sportsbet/tab/entain placement endpoints).
+    capabilities: []
+    method: POST
+    summary: "PLACE A REAL BET WITH REAL MONEY on your own Unibet (Kambi) account. Irreversible. Price with unibet_sgm_price and CHECK with unibet_validate_coupon first, then send the odds validate confirmed — Kambi takes the odds you assert on the coupon, not a quote id."
+    base: kambi_player
+    path: /player/api/v2019/ubau/coupon.json
+    auth: account
+    params:
+      - { name: lang, in: query, type: string, default: en_AU, description: "Locale. Leave as the default." }
+      - { name: market, in: query, type: string, default: AU, description: "Market. Leave as AU." }
+      - { name: channel_id, in: query, type: integer, default: 1, description: "Kambi channel. Leave as 1 (web)." }
+      - { name: body, in: body, type: json, required: true, description: 'The Kambi coupon. couponRows[]:[{index:0, odds:<the price you priced, in Kambi thousandths — 3400 = 3.40>, group:{operation:"COMBINATION", groups:[{operation:"COMBINATION", outcomeIds:[<outcome id>]}, …one sub-group per SGM leg…]}, type:"COMBINATION"}]. bets[]:[{couponRowIndexes:[0], eachWay:false, stake:<major units, 1 = $1>}] — THIS is where the money is. allowOddsChange/allowOddsChangeLive/allowOddsChangePreMatch: your drift policy ("false" to reject any move). requestId: a fresh client id per attempt. channel:"Internet". Build the SAME body you passed to unibet_validate_coupon and it accepted.' }
+    response_hint: "Kambi's coupon receipt. VERIFIED ONLY THAT THE REQUEST SHAPE IS REAL — this body is verbatim from a successful browser placement (a 2-leg SGM, 2026-08-27) — but the RESPONSE was not captured and a HEADLESS placement has NOT been round-tripped, so no success-field list is asserted here. On rejection Kambi uses {status, message} (its validate envelope), and HTTP 200 is NOT proof on Kambi any more than on Entain: read the `status` in the body. TREAT LIKE SPORTSBET/ENTAIN: `requestId` is yours and is NOT a proven idempotency key, so NEVER retry a timed-out placement — CONFIRM by reading the account/bet history instead. First live use: capture the success body and pin status + returned stake + returned odds, then hold every future placement to matching all three before reporting it on."
 
 dispatchers:
   # ─── unibet.racing — persisted GraphQL (rsa.unibet.com.au) ─────────────

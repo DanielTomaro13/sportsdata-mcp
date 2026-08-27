@@ -102,16 +102,28 @@ def test_the_account_tier_is_a_public_client_on_the_refresh_grant(spec):
     assert a.optional is True
 
 
-def test_the_unverified_token_endpoint_is_flagged_as_such(spec):
-    """Honesty guard. Entain's token endpoint was NOT observed — no discovery document was
-    reachable — so `token_url` is a guess. If this comment is ever removed without the
-    endpoint being confirmed, a refresh will fail in a way that looks like a dead
-    credential rather than a wrong URL."""
+def test_the_token_endpoint_is_the_config_derived_auth_host(spec):
+    """The token endpoint lives on the separate auth host, derived 2026-08-27 from the
+    live site's window.__config (auth.url = authentication.neds.com/auth, public client
+    web-frontend, refresh grant), NOT on the api.ladbrokes.com.au data host where every
+    guess returned go-micro 'none available'."""
+    a = spec.provider.auth["account"]
+    assert a.token_url == "https://authentication.neds.com/auth/token"
+    assert "api.ladbrokes.com.au" not in a.token_url
+
+
+def test_the_residual_auth_uncertainty_is_flagged(spec):
+    """Honesty guard. Host + base + suffix + public client + refresh grant are all
+    config-confirmed, but a bogus-token probe could NOT be round-tripped (Kasada drops
+    both curl and scripted fetch), so the exact path and the Kasada-header requirement
+    are still unproven. If this caveat is deleted without a real refresh confirming it,
+    an unattended refresh will fail in a way that looks like a dead credential."""
     text = SPEC.read_text()
     i = text.index("ENTAIN_REFRESH_TOKEN")
-    block = text[max(0, i - 1800):i]
-    assert "has NOT been observed" in block
-    assert "unverified" in block
+    block = text[max(0, i - 2400):i]
+    assert "authentication.neds.com" in block
+    assert "NOT round-tripped" in block
+    assert "Kasada" in block
 
 
 def test_only_the_placement_uses_the_account_tier(spec):

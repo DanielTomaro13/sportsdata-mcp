@@ -539,9 +539,14 @@ error message does not do.
 the upstream repeats the event's entire bet-offer book — 626 offers, 647 KB of a 610 KB
 response — which `event_betoffer` already serves. Projected down to ~11 KB.
 
-**Placement:** not surveyed — see `AUTONOMOUS-PLACEMENT.md`. Worth noting that the same
-capture showed the betslip validation call (`cf-al-auth-api.kambicdn.com/.../coupon/
-validate.json`), which is placement-adjacent and deliberately not modelled.
+**Placement: MODELLED** (2026-08-27). Captured from a real 2-leg SGM on the Kambi Player
+API: `unibet_validate_coupon` (POST `coupon/validate.json`, anonymous — it answered 400 not
+401 with no cookie, so the go/no-go check needs no login) and `unibet_place_bet` (POST
+`coupon.json`, `unibet.write`, cookie auth via `UNIBET_KAMBI_COOKIE`). An SGM is one
+`couponRow` whose `group.groups[]` nests the legs; the stake lives in `bets[]`. Request
+shape is verbatim from the successful placement; a **headless** round-trip was deliberately
+not done (moves money), so `unibet_place_bet` is shape-verified but auth-unverified. See
+`documentation/Unibet.md`.
 
 ---
 
@@ -783,9 +788,20 @@ say how to convert.
 
 ## Placement
 
-Deliberately not surveyed for any of the eight. `AUTONOMOUS-PLACEMENT.md` covers the
-architecture and the safety machinery an autonomous placement agent would need;
-`PLACEMENT-TAB.md` works it through for one book. The operational last mile — capturing
-authenticated placement calls, storing gambling credentials, evading bot detection — is
-deliberately absent from both, and none of the six pricers above can move money: they are
-all `read_only`, and a test asserts it.
+**Four books now carry a placement plane** (2026-08-27), each captured from a real bet the
+account holder placed — the agent recorded the request, it never placed:
+
+| Book | Place call | Auth | State |
+|---|---|---|---|
+| Sportsbet | `sportsbet_place_bet` (+`price_slip`, `bet_history`) | OAuth refresh, public client | verified live |
+| TAB | `tab_place_bet` (+`price_slip`) | OAuth refresh (Auth0) | verified live |
+| Ladbrokes (Entain) | `entain_place_bet` | OAuth refresh — `authentication.neds.com/auth/token`, Kasada-gated | place verified; refresh config-derived, not round-tripped |
+| Unibet (Kambi) | `unibet_place_bet` (+`validate_coupon`) | session cookie on `.kambicdn.com` | shape verified; headless placement not round-tripped |
+
+The pricers remain `read_only` and a test still asserts it; the `*_place_bet` tools are the
+only money-movers and each is reachable **only** as its provider's `.write` group, never
+through a preset or a glob. `AUTONOMOUS-PLACEMENT.md` covers the safety machinery an
+autonomous agent would wrap around them; `PLACEMENT-TAB.md` / `PLACEMENT-SPORTSBET.md` work
+two books through in detail. The remaining operational last mile — headless auth for the
+two flagged books, credential storage, bot-detection (Kasada on Entain) — is called out per
+book above and in each provider's documentation, not hand-waved.

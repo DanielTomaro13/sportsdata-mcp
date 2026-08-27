@@ -45,7 +45,7 @@ Worth being straight about, because it decides whether the first thing you ask
 works or looks broken.
 
 **Best fit — you follow or bet into Australian markets.** The cross-book edge
-above is the reason this exists, and it is built on **157 tools across eight
+above is the reason this exists, and it is built on **159 tools across eight
 Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.

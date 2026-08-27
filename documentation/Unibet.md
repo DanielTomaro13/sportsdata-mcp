@@ -198,6 +198,54 @@ AU books via `list_tools_by_capability`:
   and compared — see `docs/SGM-AND-PLACEMENT-SCOPE.md`. Remember to scale Unibet's
   thousandths before comparing.
 
+## Placing bets — the Kambi Player API
+
+Unibet runs on **Kambi**, so placement is Kambi's contract, not Unibet's, and it looks
+nothing like the other three books. Captured live 2026-08-27 from a real 2-leg SGM the
+account holder placed (the agent recorded the request; it did not place).
+
+Two calls, both `POST`, on the **Player API** host `cf-al-auth-api.kambicdn.com` (the
+`player/` path segment marks the logged-in surface, vs the anonymous `offering/` read
+feed):
+
+| Tool | Path | Auth | Purpose |
+|---|---|---|---|
+| `unibet_validate_coupon` | `/player/api/v2019/ubau/coupon/validate.json` | **anonymous** | pre-placement go/no-go: re-price and reject an impossible/clashing coupon |
+| `unibet_place_bet` | `/player/api/v2019/ubau/coupon.json` | account (`unibet.write`) | **place a real bet with real money** |
+
+Query on both is just `lang` / `market` / `channel_id` — no ticket, no secret in the URL.
+
+**The coupon body** (shared by both calls):
+
+- `couponRows[]` — one row per line. A **single** is a row whose `group` holds one leg; an
+  **SGM** is ONE row with `group.operation: "COMBINATION"` and `group.groups[]` listing
+  each leg's `outcomeIds[]`. `odds` on the row is the combined price **in Kambi
+  thousandths** (`3400` = 3.40 — the same scaling `unibet_sgm_price` returns).
+- `bets[]` — the money: `{couponRowIndexes, eachWay, stake}`, `stake` in major units
+  (`1` = $1).
+- `allowOddsChange` / `allowOddsChangeLive` / `allowOddsChangePreMatch` — the drift policy.
+- `requestId` (client-generated per attempt), `channel` (`"Internet"`), and `trackingData`
+  (analytics; `selectedOutcomes[]` mirrors the legs, not load-bearing).
+
+**Verified vs not.** The request *shape* above is verbatim from a successful browser
+placement. What was **not** done: a **headless** placement — driving `coupon.json` from
+outside the browser with only the session cookie — because that moves real money. So
+`unibet_place_bet` is **shape-verified but auth-unverified**; confirm one controlled
+minimum-stake bet before trusting it. On rejection Kambi returns `{status, message}`
+(seen live on `validate.json`), and **HTTP 200 is not proof** — read `status` in the body,
+as with Entain. `requestId` is not a proven idempotency key, so **never retry** a timed-out
+placement; confirm by reading the account instead.
+
+### Authentication
+
+Kambi authenticates the punter with a **session cookie on `.kambicdn.com`**, *not* an OAuth
+bearer — there is no readable token in `localStorage` (only Kambi keepalive timers,
+`KAF_LAST_REFRESHED_AT` / `session_sync_info`). The session is minted by Unibet's own login
+via a Kambi SSO handshake. It is carried to the tool as a `Cookie` header from
+`UNIBET_KAMBI_COOKIE`. Because pricing/validation is anonymous (verified: `validate.json`
+answered **400, not 401**, cross-origin with no cookie), only the actual placement needs
+the cookie — the go/no-go check works with no login at all.
+
 ## Not modelled
 
 - `EventDetailExpertTipQuery` — **dead surface, do not chase** (investigated 2026-07-02).
