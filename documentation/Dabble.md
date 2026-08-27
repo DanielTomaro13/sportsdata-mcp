@@ -193,6 +193,9 @@ fixture- and group-id variants); all 404. There is no swagger document, and
 - `selfMultiExtension.allowSelfMulti` was `false` on every fixture sampled across
   eight competitions, so it is not the flag that gates the feature.
 
+**How to unblock it:** `docs/DABBLE-CAPTURE.md` — the step-by-step for proxying the phone
+app, and the one request worth saving.
+
 **What this means in practice.** Dabble can contribute the naive product of its
 own leg prices to a comparison; it cannot contribute its correlation-adjusted
 number, which is the only interesting one. Keep it out of SGM price comparisons

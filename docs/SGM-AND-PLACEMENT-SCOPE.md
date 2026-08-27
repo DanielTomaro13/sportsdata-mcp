@@ -459,11 +459,13 @@ capture solved it in one pass, so it was stopped rather than continued.
 
 Only observing the app itself: proxying the phone's traffic, or reading the shipped app
 binary. Both are decisions for the account holder on their own device rather than
-something to set up from here — the first needs a root certificate installed on the
-phone, and the second means pulling apart a third-party binary. If you ever run that
-capture yourself, the single request to save is the one the app fires when a **second**
-leg is added to an SGM; that alone is enough to ship the tool, and everything else in this
-document is already in place.
+something to set up from here — the first needs a root certificate installed on the phone,
+and the second means pulling apart a third-party binary.
+
+**`docs/DABBLE-CAPTURE.md` is the step-by-step for the proxy route**, written to be
+followed away from this session. The single request to save is the one the app fires when
+a **second** leg is added to an SGM; that alone is enough to ship the tool, and everything
+else in this document is already in place.
 
 ## What Dabble gives you today, without the pricer
 
