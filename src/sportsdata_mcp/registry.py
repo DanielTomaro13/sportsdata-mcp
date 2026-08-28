@@ -149,6 +149,22 @@ def _interpolate_path(ep: Endpoint, kwargs: dict) -> str:
     return url
 
 
+def _value_for(p: Param, kwargs: dict) -> object:
+    """The caller's value, falling back to the DECLARED DEFAULT.
+
+    Without this a `default:` on a query/header/body param was decorative: the
+    handler takes **kwargs, so an omitted param simply was not in the dict and got
+    skipped, and only path params fell back. A spec saying `outcomeGroups` defaults
+    to [] therefore sent no outcomeGroups at all, and Sportsbet answered "Field is
+    required: outcomeGroups" -- an error that points nowhere near the cause.
+
+    Note this deliberately restores FALSY defaults ([], 0, false, ""), which are
+    exactly the ones a `value is None` check silently loses.
+    """
+    v = kwargs.get(p.name)
+    return p.default if v is None else v
+
+
 def _encode_query_value(p: Param, value: object) -> object:
     if p.type == "string_csv":
         if isinstance(value, (list, tuple)):
@@ -168,7 +184,7 @@ def _build_query(ep: Endpoint, kwargs: dict) -> dict:
     for p in ep.params:
         if p.in_ != "query":
             continue
-        value = kwargs.get(p.name)
+        value = _value_for(p, kwargs)
         if value is None:
             continue
         out[p.wire_name] = _encode_query_value(p, value)
@@ -180,7 +196,7 @@ def _build_headers(ep: Endpoint, kwargs: dict) -> dict:
     for p in ep.params:
         if p.in_ != "header":
             continue
-        value = kwargs.get(p.name)
+        value = _value_for(p, kwargs)
         if value is None:
             continue
         # A `json` header carries a JSON document, not a Python repr — str() would emit
@@ -198,7 +214,7 @@ def _build_body(ep: Endpoint, kwargs: dict) -> dict | list | None:
         return kwargs.get(body_params[0].name)
     out: dict[str, object] = {}
     for p in body_params:
-        value = kwargs.get(p.name)
+        value = _value_for(p, kwargs)
         if value is None:
             continue
         # A DOTTED WIRE NAME nests: `api_name: clientDetails.jurisdiction` becomes
