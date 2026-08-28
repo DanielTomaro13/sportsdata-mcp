@@ -25,36 +25,44 @@ provider:
     # and "none" is among token_endpoint_auth_methods_supported — a PUBLIC client, so
     # there is no client id or secret to hold, only the refresh token.
     #
-    # TWO WAYS TO GET A TOKEN, and the password grant is now the primary one.
+    # THE PASSWORD GRANT IS CLOSED. Settled empirically 2026-08-28, in two steps:
     #
-    # Discovery (re-read 2026-08-28) lists `password` in grant_types_supported and
-    # `none` in token_endpoint_auth_methods_supported. That combination is the RFC 6749
-    # Resource Owner Password Credentials grant on a public client: username + password
-    # go to the token endpoint and come back as {access_token, refresh_token}. It is
-    # THEIR published, standards-based flow — not a scraped login form — which is why
-    # this is wired as configuration rather than as browser automation.
+    #   no client_id  -> 400 invalid_client, "Unidentified clients cannot make password
+    #                    grant type requests"
+    #   client_id=cxp -> 400 unauthorized_client
     #
-    # Consequence: SPORTSBET_REFRESH_TOKEN is no longer something a human harvests. The
-    # password grant mints the pair, and `_password_grant()` re-mints automatically when
-    # the refresh half dies, so the "log in again every so often" step disappears.
+    # The second is decisive. `password` IS in the server's grant_types_supported, but
+    # `cxp` — the only public client id the site exposes (platformConfig.pingClientId,
+    # in the clear in every /ciam/authorise URL) — is not authorised to use it. The web
+    # app itself only ever uses authorization_code + PKCE with response_mode=pi.flow,
+    # confirmed from a real login capture. Nothing short of presenting as a different
+    # client would change this, so username/password is not a route in.
+    #
+    # username_env/password_env are therefore kept only as the fallback `_password_grant`
+    # path, which will fail the same way; they are harmless and document the attempt.
     #
     # The other two headers every account call wants are DERIVED, not user-supplied:
     #   customer-id  is the `custId` claim inside the access token this grant returns
     #   apptoken     is a static public app key, identical on every request for every
     #                user (documentation/Sportsbet.md, docs/PLACEMENT-SPORTSBET.md)
-    # So the complete human-supplied credential set is a username and a password.
-    #
-    # NOT YET EXERCISED: the grant is advertised by discovery but has not been run
-    # against a real account from this repo. If the token endpoint answers
-    # `unsupported_grant_type` rather than `invalid_grant`, the grant is advertised but
-    # not enabled for this client, and the refresh path below is still the fallback.
+    # So the ONLY thing a human supplies is SPORTSBET_REFRESH_TOKEN, harvested from a
+    # real browser login (devtools -> Network -> the POST to /ciam/token -> the
+    # `refresh_token` in the JSON response). It is opaque, ~40 chars, and is NOT the
+    # `eyJ…` access token sitting beside it, which dies in ~15 minutes.
     #
     # `optional: true` so keyless installs keep working: every other Sportsbet tool in
     # this spec is anonymous and must stay that way.
     account:
       type: oauth_refresh
       token_url: https://www.sportsbet.com.au/apigw/ciam/token
-      grant: password
+      grant: refresh_token
+      # PUBLIC client id, not a secret. A password grant with no client_id is refused
+      # `invalid_client` — "Unidentified clients cannot make password grant type
+      # requests" (measured 2026-08-28). The value is `pingClientId` in the web app's
+      # platformConfig and is literally "cxp"; it appears in the clear in every
+      # /ciam/authorise URL the site builds. Kept in an env var rather than inline only
+      # because the model has no literal field for it.
+      client_id_env: SPORTSBET_CLIENT_ID
       username_env: SPORTSBET_USERNAME
       password_env: SPORTSBET_PASSWORD
       refresh_token_env: SPORTSBET_REFRESH_TOKEN
@@ -109,6 +117,54 @@ endpoints:
       - { name: returnVouchers, in: body, type: boolean, default: false, description: "Include vouchers." }
       - { name: includeMBS, in: body, type: boolean, default: false, description: "Include minimum bet size information." }
     response_hint: "{betBuilds:[{betNo, enhancedOdds:[{outcome, priceDecimal, priceNum, priceDen, legType}], betCombinations:[{betType, betTypeName, betMinStake, betNoOfLines, cashoutAvailable, betEnhancedPrice}], vouchers:[]}]}  — VERIFIED live 2026-08-27.\n\nTHIS IS THE AUTHORITATIVE PRICE, and it is the call to make immediately before placing. sportsbet_place_bet does NOT take a quote id: it takes a price you assert, so the only way to place at a real price is to read it here first and send THAT number. A price remembered from thirty seconds ago is not a price.\n\n`betMinStake` comes back per combination and was 0.01 on the verified slip — the smallest possible test bet is a cent, not a dollar.\n\nPrices appear twice and in two forms: `priceDecimal` on each enhanced odd, and `priceNum`/`priceDen` which is what placement wants. Carry the fraction across unchanged rather than re-deriving it from the decimal, which rounds."
+
+  # ─── RACING PLACEMENT: THE VERIFIED CONTRACT ──────────────────────────
+  # Proven end-to-end 2026-08-28 with a real $0.01 win single (betId 7039196689,
+  # receipt O/4102809/0003396/D, Geelong R6). The betItems description on
+  # sportsbet_place_bet below is written against SPORTS/SGM bets and is WRONG for
+  # racing in almost every particular. For a race:
+  #
+  #   NO EXTERNAL IDS. Not classExternalId, competitionExternalId, eventExternalId,
+  #   marketExternalId or outcomeExternalId. `outcome` is the plain selection id
+  #   straight out of sportsbet_racecard. (External racing ids do exist -- bet
+  #   history exposes externalClassId 1054, externalMeetingId, externalOutcomeId --
+  #   but placement does not want them.)
+  #
+  #   body: {"betItems":[{"betNo":1,"stakePerLine":0.01,"numLines":1,
+  #           "betType":"SGL","legType":"W",
+  #           "legs":[{"legNo":1,"legSort":"--","legType":"W","legDesc":"",
+  #                    "isPYPSingle":false,
+  #                    "parts":[{"outcome":<selection id>,"partNo":1,
+  #                              "priceType":"L","partDesc":"RACECARD",
+  #                              "priceNum":N,"priceDen":D}]}]}],
+  #          "checkBalance":true,"errorDetail":"ALL","firstBet":true,
+  #          "fullDetails":true,"pendingBetCount":true,"returnBalance":false,
+  #          "returnCashoutAvailable":true}
+  #
+  #   partDesc is "RACECARD" for racing; "ALLMARKETS" is the sports/SGM value.
+  #   legType "W" wins, "L" is the place leg (which carries placePriceNum/Den/Places
+  #   instead of priceNum/priceDen).
+  #   outcomeGroups is sent to PRICING only, never to placement.
+  #
+  # HEADERS THAT ARE NOT OPTIONAL
+  #   transuniqueid   a HEADER, not a body field. Must match ^[a-f0-9]{29}$ --
+  #                   a dashed UUID is refused "invalid element format". It is the
+  #                   idempotency key: generate a fresh one per attempt.
+  #   x-api-version   3.0.0 for /acs/bets, 2.0.0 for /acs/bets/combinations. The
+  #                   gateway serves an older schema silently if you understate it.
+  #   errorDetail     "ALL"|"FIRST"|"NONE" for placement; pricing takes "CONTINUE".
+  #
+  # READING THE ANSWER
+  #   HTTP 200 IS NOT SUCCESS. A 200 carrying `betFailures` is a refusal that placed
+  #   nothing. Only `betPlacements` means a bet exists. Failure reasons for business
+  #   rejections are nested TWO levels down: betFailures[].betErrors[].
+  #   Code 535 "price has changed" returns the CURRENT price in betFailureDetail,
+  #   so it can be retried at that price -- check it is still worth taking first.
+  #   Bet history returns its rows under `betList`, not `bets`.
+  #
+  # THE REFRESH TOKEN ROTATES ON EVERY USE and the old one dies immediately. Persist
+  # the new value from each mint or the next run fails; the browser session rotates
+  # it too, so a token harvested and left sitting goes stale on its own.
 
   - name: sportsbet_place_bet
     group: sportsbet.write
