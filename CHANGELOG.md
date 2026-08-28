@@ -8,6 +8,43 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+## 0.32.0 — 2026-08-28
+
+### Fixed
+
+- **Declared parameter defaults never reached the wire.** A `default:` on a query,
+  header or body param was decorative: the endpoint handler takes `**kwargs`, so an
+  omitted parameter was absent from the dict and skipped by a `value is None` guard.
+  Only path params fell back to their default. Falsy defaults (`[]`, `0`, `false`,
+  `""`) were exactly the ones lost. Any spec relying on a declared default was
+  silently affected — `sportsbet_price_slip` sent no `outcomeGroups` despite
+  declaring `default: []`, and the gateway answered "Field is required:
+  outcomeGroups". Defaults are now applied consistently for query, header and body.
+
+### Changed
+
+- **Sportsbet: the racing placement contract is documented and verified.** Racing
+  bets send **no external ids** — `outcome` is the plain `sportsbet_racecard`
+  selection id, with `partDesc: "RACECARD"`. `sportsbet_place_bet`'s existing
+  `betItems` description describes sports/SGM bets and does not apply to races;
+  following it for a race is refused with an opaque `ClientError` naming no field.
+  Proven end to end with a real bet.
+- **Sportsbet: three corrections that made placement impossible to get right.**
+  `transuniqueid` is a required *header* matching `^[a-f0-9]{29}$` (a dashed UUID is
+  rejected) and was undocumented; `x-api-version` must be `3.0.0` for placement and
+  `2.0.0` for pricing, and the gateway silently serves an older schema without it;
+  `errorDetail` is an enum `^(FIRST|ALL|NONE)$`, so the previously documented default
+  of `""` could never have worked (pricing takes `"CONTINUE"`, which placement
+  rejects).
+- **Sportsbet: `sportsbet_bet_history` returns rows under `betList`, not `bets`.**
+  Reading `bets` yields nothing and is indistinguishable from an empty account — a
+  false negative when checking whether a placement landed. `PENDING` works and is the
+  correct filter for reading back a just-placed bet.
+- **Sportsbet: the OAuth password grant is closed.** `password` appears in the
+  server's `grant_types_supported`, but `cxp` — the only public client id the site
+  exposes — is not authorised for it (`400 unauthorized_client`). The refresh grant
+  is the only route, and the refresh token rotates on every use.
+
 ## 0.31.1 — 2026-08-27
 
 ### Fixed

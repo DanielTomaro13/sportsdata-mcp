@@ -1,6 +1,6 @@
 [project]
 name = "sportsdata-mcp"
-version = "0.31.1"
+version = "0.32.0"
 description = "MCP server for sports-data APIs (bookmakers, league data, aggregators). Capability-tag system enables cross-provider composition."
 readme = "README.md"
 requires-python = ">=3.11"
