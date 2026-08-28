@@ -25,18 +25,38 @@ provider:
     # and "none" is among token_endpoint_auth_methods_supported — a PUBLIC client, so
     # there is no client id or secret to hold, only the refresh token.
     #
-    # HOW THE HUMAN GETS ONE: log in normally in a browser; the login mints
-    # {access_token, refresh_token, id_token}. The refresh token is the durable half and
-    # is what SPORTSBET_REFRESH_TOKEN holds. When it finally dies the token endpoint says
-    # `invalid_grant`, the engine raises with "harvest a new one", and that is the signal
-    # to log in again — the only recurring human step.
+    # TWO WAYS TO GET A TOKEN, and the password grant is now the primary one.
+    #
+    # Discovery (re-read 2026-08-28) lists `password` in grant_types_supported and
+    # `none` in token_endpoint_auth_methods_supported. That combination is the RFC 6749
+    # Resource Owner Password Credentials grant on a public client: username + password
+    # go to the token endpoint and come back as {access_token, refresh_token}. It is
+    # THEIR published, standards-based flow — not a scraped login form — which is why
+    # this is wired as configuration rather than as browser automation.
+    #
+    # Consequence: SPORTSBET_REFRESH_TOKEN is no longer something a human harvests. The
+    # password grant mints the pair, and `_password_grant()` re-mints automatically when
+    # the refresh half dies, so the "log in again every so often" step disappears.
+    #
+    # The other two headers every account call wants are DERIVED, not user-supplied:
+    #   customer-id  is the `custId` claim inside the access token this grant returns
+    #   apptoken     is a static public app key, identical on every request for every
+    #                user (documentation/Sportsbet.md, docs/PLACEMENT-SPORTSBET.md)
+    # So the complete human-supplied credential set is a username and a password.
+    #
+    # NOT YET EXERCISED: the grant is advertised by discovery but has not been run
+    # against a real account from this repo. If the token endpoint answers
+    # `unsupported_grant_type` rather than `invalid_grant`, the grant is advertised but
+    # not enabled for this client, and the refresh path below is still the fallback.
     #
     # `optional: true` so keyless installs keep working: every other Sportsbet tool in
     # this spec is anonymous and must stay that way.
     account:
       type: oauth_refresh
       token_url: https://www.sportsbet.com.au/apigw/ciam/token
-      grant: refresh_token
+      grant: password
+      username_env: SPORTSBET_USERNAME
+      password_env: SPORTSBET_PASSWORD
       refresh_token_env: SPORTSBET_REFRESH_TOKEN
       header: accesstoken
       value_prefix: ""
