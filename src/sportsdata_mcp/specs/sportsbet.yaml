@@ -38,8 +38,11 @@ provider:
     # confirmed from a real login capture. Nothing short of presenting as a different
     # client would change this, so username/password is not a route in.
     #
-    # username_env/password_env are therefore kept only as the fallback `_password_grant`
-    # path, which will fail the same way; they are harmless and document the attempt.
+    # username_env/password_env are deliberately NOT set. They are not merely useless
+    # here, they are harmful: OAuthRefreshProvider falls back to the password grant
+    # when a refresh token dies AND login creds are configured, so a dead token would
+    # report "password grant failed: unauthorized_client" instead of the accurate and
+    # actionable "refresh token expired -- harvest a new one".
     #
     # The other two headers every account call wants are DERIVED, not user-supplied:
     #   customer-id  is the `custId` claim inside the access token this grant returns
@@ -56,15 +59,11 @@ provider:
       type: oauth_refresh
       token_url: https://www.sportsbet.com.au/apigw/ciam/token
       grant: refresh_token
-      # PUBLIC client id, not a secret. A password grant with no client_id is refused
-      # `invalid_client` — "Unidentified clients cannot make password grant type
-      # requests" (measured 2026-08-28). The value is `pingClientId` in the web app's
-      # platformConfig and is literally "cxp"; it appears in the clear in every
-      # /ciam/authorise URL the site builds. Kept in an env var rather than inline only
-      # because the model has no literal field for it.
-      client_id_env: SPORTSBET_CLIENT_ID
-      username_env: SPORTSBET_USERNAME
-      password_env: SPORTSBET_PASSWORD
+      # NO client_id here on purpose. The REFRESH grant is verified to work without
+      # one, and a client id is only needed for the password grant — which is closed
+      # (see above), so carrying it would be scaffolding for a route that does not
+      # exist. For the record the value is public: `pingClientId` in the web app's
+      # platformConfig, literally "cxp", visible in every /ciam/authorise URL.
       refresh_token_env: SPORTSBET_REFRESH_TOKEN
       header: accesstoken
       value_prefix: ""
