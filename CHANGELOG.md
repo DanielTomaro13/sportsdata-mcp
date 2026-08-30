@@ -8,6 +8,8 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+## 0.32.1 — 2026-08-31
+
 ### Fixed
 - **Live racing prices were served from the 60s response cache.** Six racecard endpoints
   now declare `never_cache`: `tab_racing_race`, `pointsbet_racing_race`,
