@@ -59,15 +59,41 @@ def test_the_get_pricers_declare_it_explicitly(endpoints, name):
     assert ep.never_cache is True
 
 
+#: The second category of cache opt-out: racecards the racing board polls for PRICES.
+#: Not betting pricers — these feed a live odds board rather than a re-quote check — but
+#: the same defect. Measured 2026-08-31: the board polls every 8s against a 60s TTL, so
+#: five calls to a live meeting returned an identical body hash in 12-25ms against 311ms
+#: cold. The prices did not move because they could not; polling faster changed nothing.
+#: Racing DISCOVERY endpoints (tab_racing_meetings, dabble_active_competitions, …) keep
+#: the cache deliberately — they change per day, not per second.
+RACING_PRICE_ENDPOINTS = [
+    "dabble_competition_fixtures", "dabble_fixture_details", "entain_racing_racecard",
+    "pointsbet_racing_race", "sportsbet_racecard", "tab_racing_race",
+]
+
+
 def test_never_cache_is_off_by_default(endpoints):
     """Passthrough caching stays the default — this is an opt-out for prices, not a
-    general disabling of the cache that would make every tool slower."""
+    general disabling of the cache that would make every tool slower.
+
+    The allowlist is exact on purpose: it is what forces a reason to be written down for
+    each opt-out, rather than the flag spreading until the cache is effectively gone.
+    """
     _, betoffer = endpoints["unibet_kambi_live_stats"]
     assert betoffer.never_cache is False
+
+    # Every racing endpoint that opted out must be a PRICE endpoint, never a discovery
+    # one — the split is the whole point, and an index served fresh costs ~100x on repeat.
+    for name in ("tab_racing_meetings", "pointsbet_racing_meetings",
+                 "sportsbet_racing_allracing", "dabble_active_competitions"):
+        assert endpoints[name][1].never_cache is False, (
+            f"{name} is DISCOVERY, not a price — it should keep the cache")
+
+    expected = sorted(["entain_sgm_price", "unibet_sgm_price"] + RACING_PRICE_ENDPOINTS)
     declaring = [n for (s, e) in endpoints.values() for n in [e.name] if e.never_cache]
-    assert sorted(declaring) == ["entain_sgm_price", "unibet_sgm_price"], (
-        f"unexpected endpoints opting out of cache: {declaring} — if that is right, say "
-        "why in the endpoint's own comment")
+    assert sorted(declaring) == expected, (
+        f"unexpected endpoints opting out of cache: {sorted(set(declaring) - set(expected))} "
+        "— if that is right, say why in the endpoint's own comment and add it here")
 
 
 @pytest.mark.parametrize("no_cache,expected_key", [(False, True), (True, False)])

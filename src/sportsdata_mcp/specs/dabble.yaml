@@ -96,6 +96,11 @@ endpoints:
     base: default
     path: /frontend-api/competitions/{competitionId}/sport-fixtures
     auth: default
+    # A GET, so the 60s response cache would serve the same prices to every poll. Live
+    # racing prices move in seconds and the board polls far faster than the cache TTL, so
+    # a cached racecard makes fast polling silently pointless — the numbers simply do not
+    # change. Same reasoning as entain_sgm_price. Prices are never cached.
+    never_cache: true
     params:
       - { name: competitionId, in: path, type: string, required: true, description: "Competition UUID — from dabble_active_competitions / dabble_competitions (any competition, not just AFL/NRL)." }
       - { name: includeInPlay, in: query, type: boolean, default: false, description: "Include in-play fixtures." }
@@ -132,6 +137,11 @@ endpoints:
     base: default
     path: /frontend-api/sport-fixtures/details/{fixtureId}
     auth: default
+    # A GET, so the 60s response cache would serve the same prices to every poll. Live
+    # racing prices move in seconds and the board polls far faster than the cache TTL, so
+    # a cached racecard makes fast polling silently pointless — the numbers simply do not
+    # change. Same reasoning as entain_sgm_price. Prices are never cached.
+    never_cache: true
     params:
       - { name: fixtureId, in: path, type: string, required: true, description: "Fixture UUID (from dabble_competition_fixtures.data[].id)." }
     response_hint: "{sportFixtureDetail:{id, name, competitionName, sportName, status, teams, markets:[{id, name, resultingType, product, isSgmAllowed, isSingleAllowed}], selections:[{id, name, marketId}], prices:[{marketId, selectionId, price}], marketGroups, marketGroupMappings, playerProps:[{playerName, stats, value, lineType}]}}  (LARGE — markets/selections/prices number in the hundreds-to-thousands. Each market carries an engine-derived `product` ∈ {single, sgm, pickem, srm, racing}: RacingSrm*→srm, Racing*→racing, resultingType-contains-pickem→pickem, else isSingleAllowed→single, else isSgmAllowed→sgm, else→single. Use `product` ∈ {single, sgm} for like-for-like price comparison; NEVER blend `pickem` multipliers into fixed-odds value/arb.)"

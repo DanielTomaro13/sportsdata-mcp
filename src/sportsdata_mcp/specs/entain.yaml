@@ -135,6 +135,11 @@ endpoints:
     base: default
     path: /rest/v1/racing/
     auth: default
+    # A GET, so the 60s response cache would serve the same prices to every poll. Live
+    # racing prices move in seconds and the board polls far faster than the cache TTL, so
+    # a cached racecard makes fast polling silently pointless — the numbers simply do not
+    # change. Same reasoning as entain_sgm_price. Prices are never cached.
+    never_cache: true
     params:
       - { name: method, in: query, type: string, default: "racecard", description: "Upstream RPC method (racecard)." }
       - { name: id, in: query, type: string, required: true, description: "Race UUID from the meetings route." }

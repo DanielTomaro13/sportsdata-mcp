@@ -101,3 +101,47 @@ def test_no_two_endpoints_share_a_cache_key_with_different_classify():
             formats = {e.response_format for e in eps}
             assert len(classify_shapes) == 1, f"{spec.provider.id} {key}: differing classify on a shared path"
             assert len(formats) == 1, f"{spec.provider.id} {key}: differing response_format on a shared path"
+
+
+# ─── live racing prices must not be cached ──────────────────────────────
+
+#: The endpoints the racing board polls for PRICES, as opposed to for discovery.
+#: Each returns a racecard whose numbers move continuously while a race is open.
+RACING_PRICE_ENDPOINTS = {
+    "tab_racing_race",
+    "pointsbet_racing_race",
+    "sportsbet_racecard",
+    "entain_racing_racecard",
+    "dabble_competition_fixtures",
+    "dabble_fixture_details",
+}
+
+
+def test_racing_price_endpoints_are_never_cached():
+    """THE defect this pins, measured 2026-08-31.
+
+    `CACHE_TTL_DEFAULT` is 60s and applies to every GET. None of these endpoints opted
+    out, so the racing board — which polls prices every 8 seconds — was served the same
+    bytes for a minute at a time. Five calls to a live meeting over 12 seconds returned an
+    identical body hash in 12-25ms, against 311ms cold: every repeat was the cache.
+
+    Nothing errored. The board just showed prices that did not move, and any work to poll
+    *faster* was silently pointless, because the second call in a minute can never return
+    a new number. That is the same reasoning `entain_sgm_price` was given `never_cache`
+    for: a price re-read from cache defeats the comparison, because it is the same number.
+
+    Discovery endpoints (`tab_racing_meetings`, `dabble_active_competitions`, …) keep the
+    cache deliberately — they change per day, not per second, and the hit is worth ~100x
+    on repeat.
+    """
+    by_name = {t.name: t for s in SPECS for t in s.all_tools()}
+    missing = sorted(
+        n for n in RACING_PRICE_ENDPOINTS
+        if n in by_name and not getattr(by_name[n], "never_cache", False)
+    )
+    assert not missing, (
+        f"racing price endpoints served from the 60s cache: {missing}. "
+        "A cached racecard makes fast polling return identical numbers — set never_cache."
+    )
+    unknown = sorted(n for n in RACING_PRICE_ENDPOINTS if n not in by_name)
+    assert not unknown, f"endpoint renamed or removed — update this list: {unknown}"

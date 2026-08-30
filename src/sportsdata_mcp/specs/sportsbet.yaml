@@ -222,6 +222,11 @@ endpoints:
     base: default
     path: /sportsbook-racing/Sportsbook/Racing/Events/{eventId}/Racecard
     auth: default
+    # A GET, so the 60s response cache would serve the same prices to every poll. Live
+    # racing prices move in seconds and the board polls far faster than the cache TTL, so
+    # a cached racecard makes fast polling silently pointless — the numbers simply do not
+    # change. Same reasoning as entain_sgm_price. Prices are never cached.
+    never_cache: true
     params:
       - { name: eventId, in: path, type: integer, description: "Racing event id." }
       - { name: selectionNames, in: query, type: boolean, description: "Include full selection (runner) names." }

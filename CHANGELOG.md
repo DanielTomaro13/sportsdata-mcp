@@ -8,6 +8,22 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+### Fixed
+- **Live racing prices were served from the 60s response cache.** Six racecard endpoints
+  now declare `never_cache`: `tab_racing_race`, `pointsbet_racing_race`,
+  `sportsbet_racecard`, `entain_racing_racecard`, `dabble_competition_fixtures` and
+  `dabble_fixture_details`.
+
+  Measured 2026-08-31: five calls to a live meeting over 12 seconds returned an identical
+  body hash in 12-25ms, against 311ms cold — every repeat was the cache. Nothing errored;
+  a consumer polling faster than 60s simply received the same numbers, so any work to poll
+  faster was silently pointless. Same reasoning `entain_sgm_price` already carried.
+
+  Racing **discovery** endpoints (`tab_racing_meetings`, `pointsbet_racing_meetings`,
+  `sportsbet_racing_allracing`, `dabble_active_competitions`) keep the cache deliberately
+  — they change per day, not per second, and the hit is worth ~100x on repeat. A test now
+  pins both halves of that split.
+
 ## 0.32.0 — 2026-08-28
 
 ### Fixed
@@ -44,6 +60,22 @@ Full history is in `git log`; this file covers what a user would notice.
   server's `grant_types_supported`, but `cxp` — the only public client id the site
   exposes — is not authorised for it (`400 unauthorized_client`). The refresh grant
   is the only route, and the refresh token rotates on every use.
+### Fixed
+- **Live racing prices were served from the 60s response cache.** Six racecard endpoints
+  now declare `never_cache`: `tab_racing_race`, `pointsbet_racing_race`,
+  `sportsbet_racecard`, `entain_racing_racecard`, `dabble_competition_fixtures` and
+  `dabble_fixture_details`.
+
+  Measured 2026-08-31: five calls to a live meeting over 12 seconds returned an identical
+  body hash in 12-25ms, against 311ms cold — every repeat was the cache. Nothing errored;
+  a consumer polling faster than 60s simply received the same numbers, so any work to poll
+  faster was silently pointless. Same reasoning `entain_sgm_price` already carried.
+
+  Racing **discovery** endpoints (`tab_racing_meetings`, `pointsbet_racing_meetings`,
+  `sportsbet_racing_allracing`, `dabble_active_competitions`) keep the cache deliberately
+  — they change per day, not per second, and the hit is worth ~100x on repeat. A test now
+  pins both halves of that split.
+ab0c465 (fix: live racing prices were served from the 60s cache)
 
 ## 0.31.1 — 2026-08-27
 

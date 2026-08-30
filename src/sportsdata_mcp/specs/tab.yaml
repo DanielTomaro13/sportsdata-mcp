@@ -140,6 +140,11 @@ endpoints:
     base: default
     path: /tab-info-service/racing/dates/{date}/meetings/{raceType}/{venueMnemonic}/races/{raceNumber}
     auth: oauth
+    # A GET, so the 60s response cache would serve the same prices to every poll. Live
+    # racing prices move in seconds and the board polls far faster than the cache TTL, so
+    # a cached racecard makes fast polling silently pointless — the numbers simply do not
+    # change. Same reasoning as entain_sgm_price. Prices are never cached.
+    never_cache: true
     params:
       - { name: date, in: path, type: string, description: "Meeting date, YYYY-MM-DD." }
       - { name: raceType, in: path, type: string, enum: [R, G, H], description: "Race code: R/G/H." }

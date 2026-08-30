@@ -227,6 +227,11 @@ endpoints:
     base: default
     path: /api/racing/v3/races/{raceId}
     auth: default
+    # A GET, so the 60s response cache would serve the same prices to every poll. Live
+    # racing prices move in seconds and the board polls far faster than the cache TTL, so
+    # a cached racecard makes fast polling silently pointless — the numbers simply do not
+    # change. Same reasoning as entain_sgm_price. Prices are never cached.
+    never_cache: true
     params:
       - { name: raceId, in: path, type: integer, description: 'Race id (e.g. 109756102), from a meetings/featured feed.' }
     response_hint: "{raceId, name, venue, number, trackCondition, runners:[{number, name, price}], results:{winners:[], straightDividends:[]}}"
