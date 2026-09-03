@@ -20,10 +20,10 @@ on:
 jobs:
   doctor:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25  # re-probes now wait up to 60+180+300s before confirming
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
@@ -67,26 +67,50 @@ jobs:
           # blind the check permanently.
           if [ -s new-drift.txt ]; then
             echo "── suspected new drift, re-probing to confirm:"; cat new-drift.txt
-            sleep 20
-            # `provider.*` selects all of a provider's groups (engine-side since
-            # v0.24.0). Before that it matched nothing and doctor exited 0 having
-            # probed NOTHING, silently turning every real drift into a "transient"
-            # pass — the guards below stay because that failure was invisible.
-            retry_groups="$(paste -sd, - < new-drift.txt | sed 's/\([^,]*\)/\1.*/g')"
-            echo "   re-probing groups: ${retry_groups:-<none>}"
-            if [ -z "$retry_groups" ]; then
-              echo "::error::could not resolve groups for the suspects — failing rather than assuming transient"
+
+            # Re-probe SEVERAL times, with a widening gap, and confirm only what fails
+            # EVERY time. A single re-probe 20s later lands inside the same edge-block
+            # window as the first, so a brief Cloudflare block on a busy endpoint was
+            # indistinguishable from real drift — which is what happened to Polymarket's
+            # clob endpoint (2 failures in 10 nightly runs, green in between, alerting
+            # both times). The suspect set only ever shrinks: a provider that recovers
+            # on any attempt is transient by definition and drops out.
+            for wait in 60 180 300; do
+              [ -s new-drift.txt ] || break
+              echo "   waiting ${wait}s before re-probe"
+              sleep "$wait"
+              # `provider.*` selects all of a provider's groups (engine-side since
+              # v0.24.0). Before that it matched nothing and doctor exited 0 having
+              # probed NOTHING, silently turning every real drift into a "transient"
+              # pass — the guards here stay because that failure was invisible.
+              retry_groups="$(paste -sd, - < new-drift.txt | sed 's/\([^,]*\)/\1.*/g')"
+              echo "   re-probing groups: ${retry_groups:-<none>}"
+              if [ -z "$retry_groups" ]; then
+                echo "::error::could not resolve groups for the suspects — failing rather than assuming transient"
+                exit 1
+              fi
+              SPORTSDATA_MCP_GROUPS="$retry_groups" sportsdata-mcp doctor 2>&1 | tee doctor-retry.log || true
+              # Guard: the re-probe must actually have probed something, or "recovered"
+              # is meaningless. verdict() already exits on an empty probe set.
+              verdict doctor-retry.log > failed-retry.txt
+              # Still-failing suspects carry forward; anything that answered is dropped.
+              comm -12 new-drift.txt failed-retry.txt > still-failing.txt
+              recovered="$(comm -23 new-drift.txt still-failing.txt)"
+              # An `if`, not `[ -n ... ] && echo`. Under `bash -e` the && form is safe
+              # only while something follows it — as the LAST command in the block it
+              # exits 1 whenever nothing recovered, failing the step on the ordinary
+              # path. That is a trap set for whoever edits this next, not a bug today.
+              if [ -n "$recovered" ]; then
+                echo "   recovered, dropping: $recovered"
+              fi
+              mv still-failing.txt new-drift.txt
+            done
+
+            if [ -s new-drift.txt ]; then
+              echo "::error::NEW provider drift confirmed — failed the first probe and every re-probe:"
+              cat new-drift.txt
               exit 1
             fi
-            SPORTSDATA_MCP_GROUPS="$retry_groups" sportsdata-mcp doctor 2>&1 | tee doctor-retry.log || true
-            # Guard: the re-probe must actually have probed something, or "recovered"
-            # is meaningless. verdict() already exits on an empty probe set.
-            verdict doctor-retry.log > failed-retry.txt
-            comm -12 new-drift.txt failed-retry.txt > confirmed.txt
-            if [ -s confirmed.txt ]; then
-              echo "::error::NEW provider drift confirmed on re-probe:"; cat confirmed.txt
-              exit 1
-            fi
-            echo "transient — recovered on re-probe, not real drift:"; cat new-drift.txt
+            echo "transient — recovered on re-probe, not real drift"
           fi
           echo "no new drift — all failures are the known cloud-IP blocks"
