@@ -53,6 +53,18 @@ jobs:
               /→ FAIL/ { print prov }
             ' | sort -u
           }
+
+          # The same scan, keeping WHY each provider failed. The verdict only needs the
+          # names, but the alert that lands in an inbox needs the reason: "drift
+          # confirmed" reads as "our spec is wrong" when an HTTP 503 on the provider's
+          # own front page means their site is simply down, and nothing here can fix it.
+          # An alert that misnames the cause is how an alert stops being read.
+          reasons() {
+            sed 's/\x1b\[[0-9;]*m//g' "$1" | awk '
+              /^\[/ { split($1, a, "[\\[/]"); prov = a[2] }
+              /→ FAIL/ { sub(/^[^→]*→ */, ""); print prov "  " $0 }
+            ' | sort -u
+          }
           sort -u .github/drift-known-blocked.txt | grep -v "^#" | grep -v "^$" > known.txt || true
           verdict doctor.log > failed.txt
           comm -23 failed.txt known.txt > new-drift.txt
@@ -108,7 +120,15 @@ jobs:
 
             if [ -s new-drift.txt ]; then
               echo "::error::NEW provider drift confirmed — failed the first probe and every re-probe:"
-              cat new-drift.txt
+              # Name the reason, not just the provider. A 5xx is the provider's site
+              # being down (nothing to fix here, it clears when they come back); a 403
+              # or a bot challenge is a block; anything else is a genuine contract
+              # change worth opening the spec for.
+              reasons doctor-retry.log | grep -Ff new-drift.txt || cat new-drift.txt
+              if reasons doctor-retry.log | grep -Ff new-drift.txt | grep -qE "HTTP 5[0-9][0-9]"; then
+                echo "note: a 5xx is the PROVIDER'S SITE being unavailable, not spec drift."
+                echo "      Nothing to change here — it clears when they are back up."
+              fi
               exit 1
             fi
             echo "transient — recovered on re-probe, not real drift"
