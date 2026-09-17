@@ -217,6 +217,17 @@ CONTRACTS: list[Contract] = [
     Contract("betfair_navigation", {"nodeIds": ["EVENT_TYPE:7"]}, ("nodes", "edges")),
     Contract("dabble_active_competitions", {}, ("data",)),
     Contract("dabble_competition_fixtures", {"competitionId": "ad4c78ec-e39d-45ee-8cec-ff5d485a3205"}, ("data",)),
+    # ── PuntersEdge demo (api.puntersedge.online — keyless, NOT geo-blocked → runs in CI) ──
+    # The keyless sandbox is the only seed available: the keyed tools 401 without a key
+    # and would skip on every run, which is a contract row that never fires. These three
+    # need no params, so they are schedule-independent; they skip on their own when the
+    # list is empty, which overnight in Australia it legitimately is.
+    Contract("puntersedge_demo_racing_next_to_go", {}, ("demo", "races"), "races",
+             ("race_id", "venue", "race_number", "category", "start_time", "runners")),
+    Contract("puntersedge_demo_best_odds", {}, ("demo", "events"), "events",
+             ("home_team", "away_team", "commence_time", "selections", "arb_exists")),
+    Contract("puntersedge_demo_book_sport", {"book": "sportsbet", "sport": "afl"},
+             ("demo", "book", "sport", "type", "items")),
     # ── SuperCoach (supercoach.com.au — public, no auth, not geo-blocked → runs in CI) ──
     # Uniform surface across all 7 games; AFL (calendar-year, in-season) is the probe.
     Contract("supercoach_settings", {"sport": "afl", "year": 2026}, ("competition", "system", "game")),
