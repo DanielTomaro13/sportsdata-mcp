@@ -1,0 +1,334 @@
+spec_version: 1
+
+# PuntersEdge (puntersedge.online) — an Australian + New Zealand racing and sports
+# odds API that aggregates the AU book panel behind one key, rather than being a book
+# itself. It is the cross-book layer this catalogue already builds by hand from
+# sportsbet/tab/betr/pointsbet/entain/unibet: one call returns every book's price on a
+# race, plus the derived best-odds / market-percentage / steamer-drifter views and a
+# permanent closing-line archive.
+#
+# WHY IT IS HERE, given the direct AU books are already integrated. Three things the
+# direct books cannot answer:
+#   * it is NOT geo-blocked — the AU books block non-AU IPs, so from anywhere else in
+#     the world this is the only way to see Australian racing prices at all (it runs in
+#     CI, unlike sportsbet/tab/…);
+#   * it carries NEW ZEALAND racing, which no other provider here covers;
+#   * it keeps a permanent CLOSING-LINE archive (`stats.closing_odds`), so CLV and
+#     backtesting work on AU racing is possible without having polled it yourself.
+# For a single book's own racecard, deep markets or SGM pricing, the direct providers
+# remain better — they expose surfaces an aggregator flattens away.
+#
+# ── SHAPE VERIFICATION (why `shapes_verified: false` at provider level) ──
+# The three `puntersedge.demo` tools were probed LIVE on 2026-09-17 and carry
+# `shapes_verified: true` individually — their hints are transcribed from real
+# responses. The KEYED tools are not: we hold no PuntersEdge key, so their hints come
+# from the publisher's own machine-readable OpenAPI 3.1 schema and its worked examples
+# (https://api.puntersedge.online/openapi.json) rather than from a response we received.
+# That is better than prose docs, but it is still not a live probe, so the caveat
+# stands. A PR flipping these to verified, with corrections, is welcome from anyone who
+# runs it with a key.
+#
+# ── AUTH ──
+# `X-API-Key` header, `optional: true` — a missing key never breaks startup and never
+# touches the demo tools. Free tier is 1,500 credits/month with no card. Endpoint credit
+# costs are quoted per tool below from the API's own OpenAPI descriptions; they are not
+# estimates.
+#
+# ── ERRORS ──
+# Every failure is RFC-9457 `application/problem+json` with `title`/`detail` that name
+# the fix, and the engine already surfaces that body verbatim ("Upstream said: …" on
+# 401, "Body starts: …" otherwise). Nothing needs an `error_signals` block: this API
+# does not report failure with a 200.
+#   401  no key / bad key      → names the console URL and the keyless demo endpoints
+#   402  out of credits        → "Monthly credit allowance exhausted for this plan",
+#                                with the upgrade URL
+#   403  closing-lines archive → Free and Hobby tiers cannot read it; Standard+ can
+#   422  bad bookmaker/market  → FREE, and lists the valid values (a typo costs nothing)
+#   429  plan rate limit       → carries `Retry-After` in seconds; the engine's own
+#                                per-provider throttle normally keeps you clear of it
+#
+# ── RACING IS NOT A `sport_key` ──
+# There is no 'horse-racing' sport_key; passing one to the sports tools 404s. Horse,
+# harness and greyhound racing live entirely under the `puntersedge.racing` tools.
+
+provider:
+  id: puntersedge
+  display_name: "PuntersEdge (AU + NZ racing and sports odds aggregator)"
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/PuntersEdge.md"
+  # The MARKET the data covers, not a geo-block: unlike the AU books, this API is an
+  # ordinary public HTTPS service reachable from anywhere (it is how a non-AU user
+  # reaches Australian racing prices at all).
+  region: [AU, NZ]
+  # See the SHAPE VERIFICATION note above — the three demo tools override this to true.
+  shapes_verified: false
+  # False deliberately, and it is the ESPN-Fantasy distinction rather than an oversight:
+  # the demo tools return real live data with zero setup, so `free` keeps this provider
+  # honestly. The key is an upgrade, not a requirement.
+  requires_user_key: false
+  base_urls:
+    default: https://api.puntersedge.online
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    # Demo endpoints: no key, and no header is sent even when one IS configured.
+    demo:
+      type: none
+    default:
+      type: static_header
+      header: X-API-Key
+      env: PUNTERSEDGE_API_KEY
+      # Optional → the server still starts, and every other provider (and the demo
+      # tools) keep working, when no key is set. Only the keyed tools 401.
+      optional: true
+  defaults:
+    # The keyless demo endpoints are capped at 30 requests/minute PER IP, which is the
+    # tightest limit on the provider, so the throttle is set for them rather than for a
+    # paid plan's much higher ceiling.
+    rate_limit_rps: 2
+    request_timeout_seconds: 30
+    retry_statuses: [429, 500, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 1.0
+
+endpoints:
+  # ─── puntersedge.demo — no key, no signup (3) ─────────────────────────
+  # Probed live 2026-09-17; hints below are transcribed from the actual responses.
+
+  - name: puntersedge_demo_racing_next_to_go
+    group: puntersedge.demo
+    capabilities: [racing.next_to_jump, sport.prices]
+    shapes_verified: true
+    summary: "NO KEY NEEDED. Next 3 AU/NZ races with up to 5 runners each and the best 3 bookmaker win prices per runner. Start here to see real data before deciding whether to get a key."
+    base: default
+    path: /v1/demo/racing/next-to-go
+    auth: demo
+    response_hint: "{demo:true, note, signup_url, shape, races:[{race_id, venue, race_number, category:'horse'|'greyhound'|'harness', start_time, country, runners:[{name, number, bookmakers:[{key, win_price, source_url}]}]}]}  — an ENVELOPE, unlike the keyed puntersedge_racing_next_to_go, which returns a bare array of much richer race objects. `race_id` is the same id, so anything built here carries over."
+    examples:
+      - description: "The next three races, keyless"
+        params: {}
+
+  - name: puntersedge_demo_best_odds
+    group: puntersedge.demo
+    capabilities: [sport.prices, sport.event_markets]
+    shapes_verified: true
+    summary: "NO KEY NEEDED. Best price per selection across books, with an arbitrage flag, for up to 3 upcoming events in one sport."
+    base: default
+    path: /v1/demo/best-odds
+    auth: demo
+    params:
+      - { name: sport, in: query, type: string, description: "Optional sport_key (e.g. afl, nrl). Omit and the API picks a sport that currently has live events." }
+    response_hint: "{demo:true, note, signup_url, sport, cached, events:[{home_team, away_team, commence_time, selections:[{name, best_price, best_bookmaker}], arb_exists, arb_profit_pct}]}  — `arb_exists` is true when the best prices ACROSS books beat the field. Team naming is per-bookmaker, so the same fixture can appear twice under different spellings ('Warriors' and 'New Zealand Warriors'); the keyed tools carry `canonical_event_id` to join them."
+    examples:
+      - description: "Best odds + arb flag for a live sport, keyless"
+        params: {}
+
+  - name: puntersedge_demo_book_sport
+    group: puntersedge.demo
+    capabilities: [sport.prices]
+    shapes_verified: true
+    summary: "NO KEY NEEDED. One bookmaker's live prices for one sport — a few events, or a few races when the sport is a racing code."
+    base: default
+    path: /v1/demo/book-sport
+    auth: demo
+    params:
+      # These really are a separate vocabulary from the keyed API's identifiers — the
+      # upstream says so in its own parameter docs, and getting it wrong is the likeliest
+      # mistake here, so both are spelled out.
+      - { name: book, in: query, type: string, required: true, description: "Bookmaker SLUG for this sandbox endpoint only, e.g. sportsbet, ladbrokes, pointsbet. NOT the keyed API's bookmaker keys (those are betr_au, ladbrokes_au, pointsbetau, playup) — read those off puntersedge_racing_next_to_go instead." }
+      - { name: sport, in: query, type: string, required: true, description: "Sport SLUG for this sandbox endpoint only, e.g. afl, nrl, horse-racing, greyhound-racing. NOT a keyed sport_key: the keyed API has no 'horse-racing' sport_key at all, because racing lives under the puntersedge.racing tools." }
+    response_hint: "{demo:true, note, signup_url, book, sport, type:'sports'|'racing', has_data, cached, items:[…]}  — `items` shape follows `type`: sports → [{home_team, away_team, commence_time, prices:[{name, price}]}]; racing → [{venue, race_number, start_time, runners:[{name, number, price}]}]. Read `type` before indexing."
+    examples:
+      - description: "Sportsbet's AFL prices, keyless"
+        params: {book: sportsbet, sport: afl}
+
+  # ─── puntersedge.racing — AU/NZ horse, harness and greyhound (7) ──────
+  # Credit costs are the API's own published per-endpoint figures.
+
+  - name: puntersedge_racing_next_to_go
+    group: puntersedge.racing
+    capabilities: [racing.next_to_jump, racing.race_card, sport.prices]
+    # never_cache: the whole panel of win/place prices moves continuously while a race is
+    # open, and this is the tool a model re-reads to check whether a price has changed.
+    # Served from the engine's 60s cache, a re-read compares a number against itself.
+    # Same defect as the racecard endpoints in tests/unit/test_price_freshness.py.
+    never_cache: true
+    summary: "The priced card: next AU/NZ races with every runner and EVERY bookmaker's win and place price, plus scratchings and per-book freshness. Costs 2 credits. num_races=200 pulls every currently quoted race in one call."
+    base: default
+    path: /v1/racing/next-to-go
+    auth: default
+    params:
+      - { name: num_races, in: query, type: integer, default: 10, description: "Races to return, up to 200. Pass 200 to bulk-pull every currently quoted race instead of paging." }
+      - { name: categories, in: query, type: string, description: "Comma-separated racing codes: horse, greyhound, harness. Omit for all. NZ runs thoroughbred and harness only — there are no NZ greyhounds in the feed." }
+      - { name: country, in: query, type: string, description: "Comma-separated ISO country codes, e.g. AU or AU,NZ. Omit for every country. Pair with include_unresolved=true or you silently lose most of an AU card." }
+      - { name: include_unresolved, in: query, type: boolean, default: false, description: "Include races whose country is not resolved yet (country is null). Most of an Australian card is unresolved until the meeting is confirmed — 58.8% of horse races in a measured window — so country=AU alone returns far fewer races than actually run." }
+      - { name: venue, in: query, type: string, description: "Comma-separated venue names, case-insensitive, e.g. Randwick or Randwick,Flemington. Matched exactly after case folding, so read `venue` off an unfiltered call rather than guessing the spelling." }
+      - { name: bookmakers, in: query, type: string, description: "Comma-separated bookmaker keys to restrict to, case-insensitive. An unrecognised key returns a free 422 naming the valid keys." }
+    response_hint: "[{race_id, venue, venue_id, venue_canonical, venue_site, race_number, category, start_time, country, race_name, distance_m, track_condition, race_class, scratchings:[{name, number, barrier, scratched_at}], runners:[{name, number, barrier, jockey, trainer, bookmakers:[{key, win_price, place_price, age_seconds, stale, refresh_tier, source_url}]}], data_age_seconds, freshest_age_seconds, refresh_tier, stale, stale_bookmakers}]  (top-level ARRAY). Freshness is reported WORST-FIRST: `data_age_seconds` is the age of the OLDEST quote in the race, so read each bookmaker's own `age_seconds` before comparing two books."
+    examples:
+      - description: "Next 5 AU thoroughbred races with every book's price"
+        params: {num_races: 5, categories: "horse", country: "AU", include_unresolved: true}
+
+  - name: puntersedge_racing_best_odds
+    group: puntersedge.racing
+    capabilities: [racing.race_card, sport.prices]
+    # never_cache: same reasoning as puntersedge_racing_next_to_go — these are live
+    # prices, and `market_percentage` is the arb signal a model would re-read to confirm.
+    never_cache: true
+    summary: "Best win, place and tote price per runner across all books, with the book offering it, the spread to the worst price, and a race-level market percentage under 100 when the best prices beat the field. Costs 3 credits."
+    base: default
+    path: /v1/racing/best-odds
+    auth: default
+    params:
+      - { name: num_races, in: query, type: integer, default: 10, description: "Races to compare, up to 150. Pass 150 to cover the whole day's card in one call." }
+      - { name: categories, in: query, type: string, description: "Comma-separated racing codes: horse, greyhound, harness. Omit for all." }
+      - { name: country, in: query, type: string, description: "Comma-separated ISO country codes, e.g. AU. Foreign races outside Hong Kong are quoted by a median of ONE book, so a cross-book comparison on them compares nothing." }
+      - { name: include_unresolved, in: query, type: boolean, default: false, description: "Include races whose country is not resolved yet (country is null). Off by default; leaving it off with country=AU drops most of an Australian card." }
+      - { name: venue, in: query, type: string, description: "Comma-separated venue names, case-insensitive. Matched exactly after case folding — read `venue` off an unfiltered call rather than guessing." }
+      - { name: bookmakers, in: query, type: string, description: "Restrict the comparison to these bookmaker keys, case-insensitive. An unrecognised key returns a free 422 naming the valid keys." }
+    response_hint: "[{race_id, venue, race_number, race_name, category, country, start_time, books_compared, market_percentage, runners:[{name, number, barrier, jockey, trainer, best_win:{price, bookmaker, age_seconds, stale, source_url}, best_place:{…}, best_tote:{…}, books_quoting_win, books_quoting_place, price_spread_pct}], scratchings, data_age_seconds, stale}]  (top-level ARRAY). `market_percentage` UNDER 100 = a cross-book arb; any single book is always over 100. ⚠ `best_tote` is NOT comparable to `best_win` — a pre-race tote figure is an estimate that moves as the pool fills, and taking the max across books is upward-biased by construction (greyhound pools are thinnest and swing hardest). `books_quoting_win` and `books_quoting_place` are DIFFERENT sets."
+    examples:
+      - description: "Best price per runner across books on the next 5 races"
+        params: {num_races: 5, country: "AU", include_unresolved: true}
+
+  - name: puntersedge_racing_events
+    group: puntersedge.racing
+    capabilities: [racing.meetings_by_date]
+    summary: "The CARD: every AU/NZ race scheduled in the next few hours, priced or not, with distance, class, track condition and scratchings. Costs 1 credit. Use this for the schedule and next-to-go for the prices."
+    base: default
+    path: /v1/racing/events
+    auth: default
+    params:
+      - { name: hours_ahead, in: query, type: integer, default: 4, description: "How far ahead to list, in hours, up to 24." }
+      - { name: categories, in: query, type: string, description: "Comma-separated racing codes: horse, greyhound, harness. Omit for all. AU cards carry all three; NZ cards carry thoroughbred and harness only." }
+      - { name: country, in: query, type: string, description: "Comma-separated ISO country codes, e.g. AU or AU,NZ. Omit for every country. Pair with include_unresolved=true or you silently lose unconfirmed meetings." }
+      - { name: include_unresolved, in: query, type: boolean, default: false, description: "Include races whose country is not resolved yet (country is null). Off by default; most of an AU card is unresolved until the meeting is confirmed." }
+    response_hint: "[{race_id, venue, venue_id, venue_canonical, venue_site, race_number, category, start_time, country, race_name, distance_m, track_condition, weather, race_class, conditions, prize_total, rail, track_name, scratchings:[{name, number, barrier, scratched_at}]}]  (top-level ARRAY, NO prices). A race listed here with no prices yet is one no book has opened — the priced window is puntersedge_racing_next_to_go."
+    examples:
+      - description: "Every AU race carded in the next 12 hours"
+        params: {hours_ahead: 12, country: "AU", include_unresolved: true}
+
+  - name: puntersedge_racing_results
+    group: puntersedge.racing
+    capabilities: [racing.race_results]
+    summary: "Settled AU/NZ results: finishing order, each bookmaker's settled fixed price, starting prices, dividends, scratchings and their deductions. Costs 2 credits."
+    base: default
+    path: /v1/racing/results
+    auth: default
+    params:
+      - { name: hours_back, in: query, type: integer, default: 24, description: "How far back to look, in hours, up to 7 days. Mutually exclusive with `date`." }
+      - { name: date, in: query, type: string, description: "Single-day alias, YYYY-MM-DD, returning that AET meeting date instead of a rolling window. Mutually exclusive with hours_back." }
+      - { name: categories, in: query, type: string, description: "Comma-separated racing codes: horse, greyhound, harness. Omit for all." }
+      - { name: venue, in: query, type: string, description: "Venue name, case-insensitive, e.g. Rosehill." }
+      - { name: country, in: query, type: string, description: "Comma-separated ISO country codes, case-insensitive, e.g. AU or AU,NZ. A result whose country was never resolved is EXCLUDED by any value here, so omit the filter if you need those." }
+      - { name: status, in: query, type: string, enum: [final, interim, abandoned], description: "Filter by settlement status. Settle only against `final` — an `interim` placing can still change on protest, and becomes final once placings have been stable for 30 minutes." }
+      - { name: limit, in: query, type: integer, default: 50, description: "Races to return." }
+      - { name: offset, in: query, type: integer, default: 0, description: "Rows to skip, for paging." }
+    response_hint: "[{race_id, venue, venue_canonical, race_number, category, country, start_time, race_name, distance_m, track_condition, going, status:'final'|'interim'|'abandoned', status_note, field_status, placings:[{name, number, position, win_price, place_price, sp, sp_note}], runners:[{name, number, position, status:'ran'|'scratched'|'late_scratching'|'reserve', dead_heat, jockey, trainer, sp, margin, time_s, abnormal, runner_ref}], deductions, dividends, resulted_at}]  (top-level ARRAY). A `runners` entry is NOT necessarily a starter — read its `status`. A scratched runner can still carry an `sp`, and that price is NOT what its deduction was struck from: take the deduction from `deductions`, never from 1/sp."
+    examples:
+      - description: "Yesterday's settled AU thoroughbred results"
+        params: {hours_back: 24, categories: "horse", country: "AU", status: "final"}
+
+  - name: puntersedge_racing_closing_lines
+    group: puntersedge.racing
+    capabilities: [stats.closing_odds]
+    summary: "The permanent closing-line archive: one row per race/runner/bookmaker with the last price before the jump, the first price after the market opened, and the finishing position. The CLV and backtesting surface. Costs 5 credits (JSON). Needs a Standard plan or higher — Free and Hobby get a 403."
+    base: default
+    path: /v1/racing/closing-lines
+    auth: default
+    params:
+      # The upstream spells these `from` and `to`; `from` is a Python keyword and cannot
+      # be a signature parameter, so both are renamed here and sent under api_name.
+      - { name: date_from, in: query, api_name: from, type: string, description: "ISO date or datetime on the race start. Defaults to the archive floor. Mutually exclusive with `date`. Sent upstream as `from`." }
+      - { name: date_to, in: query, api_name: to, type: string, description: "ISO date or datetime. Defaults to now. Mutually exclusive with `date`. Sent upstream as `to`." }
+      - { name: date, in: query, type: string, description: "Single-day alias, YYYY-MM-DD — exactly from=<date>&to=<date>. Mutually exclusive with from/to." }
+      - { name: venue, in: query, type: string, description: "Venue name, case-insensitive, exact match." }
+      - { name: bookmakers, in: query, type: string, description: "Comma-separated bookmaker keys, case-insensitive. An unrecognised key returns a free 422 naming the valid keys." }
+      - { name: category, in: query, type: string, enum: [horse, harness, greyhound], description: "One racing code. Singular and single-valued here, unlike `categories` on the other racing tools." }
+      - { name: country, in: query, type: string, description: "Two-letter country code, e.g. AU or NZ." }
+      - { name: race_id, in: query, type: string, description: "A single race, joinable to the live price-history store while that race is still inside its 45-day snapshot window." }
+      - { name: closing_only, in: query, type: boolean, default: true, description: "Keep only rows whose last observation was within 300s of the jump. TRUE by default because 14.5% of archived series are not closing lines, and silently mixing them in is how a CLV study goes wrong." }
+      - { name: resulted_only, in: query, type: boolean, default: false, description: "Keep only rows from races that have a result — set true when you need finish_position on every row." }
+      - { name: include_flagged, in: query, type: boolean, default: false, description: "Include rows flagged venue_split_suspect or name_fragment_suspect. False by default; set true only if you intend to handle the contaminated rows." }
+      - { name: format, in: query, type: string, default: json, enum: [json, csv], description: "csv streams a flat table with a stable column order, and costs 20 credits instead of 5." }
+      - { name: limit, in: query, type: integer, default: 500, description: "Rows to return." }
+      - { name: offset, in: query, type: integer, default: 0, description: "Rows to skip, for paging." }
+    response_hint: "{archive_from, limit, offset, total_rows, rows_returned, resulted_rows, rows:[{race_id, venue, venue_id, venue_site, race_number, category, country, start_time, meeting_date_aet, bookmaker_key, runner_name, runner_number, runner_key, runner_ref, open_win_price, close_win_price, open_secs_to_jump, close_secs_to_jump, points_observed, is_closing_line, open_is_baseline, finish_position, result_status, venue_split_suspect, name_fragment_suspect}]}  — an ENVELOPE with `rows`, not a bare array. Read the flags before modelling: only 85.5% of series have their final observation within 300s of the jump."
+    examples:
+      - description: "Yesterday's AU thoroughbred closing lines with results attached"
+        params: {date: "{{today-1}}", category: "horse", country: "AU", resulted_only: true, limit: 500}
+
+  - name: puntersedge_racing_movers
+    group: puntersedge.racing
+    capabilities: [sport.prices]
+    summary: "Steamers and drifters: runners whose price has moved materially since the market opened, confirmed across several books. Costs 3 credits."
+    base: default
+    path: /v1/racing/movers
+    auth: default
+    params:
+      - { name: direction, in: query, type: string, enum: [firming, drifting], description: "Restrict to one direction. Omit for both." }
+      - { name: min_move_pct, in: query, type: number, default: 10.0, description: "Minimum consensus move, in percent." }
+      - { name: min_books, in: query, type: integer, default: 3, description: "Only report a move confirmed by at least this many books — a one-book move is usually that book, not the market." }
+      - { name: categories, in: query, type: string, description: "Comma-separated racing codes: horse, greyhound, harness. Omit for all." }
+      - { name: country, in: query, type: string, description: "Comma-separated ISO country codes, e.g. AU. Pair with include_unresolved=true or unconfirmed meetings drop out." }
+      - { name: include_unresolved, in: query, type: boolean, default: false, description: "Include races whose country is not resolved yet (country is null)." }
+      - { name: max_mins_to_jump, in: query, type: integer, default: 360, description: "Only races jumping within this many minutes." }
+      - { name: limit, in: query, type: integer, default: 50, description: "Movers to return." }
+    response_hint: "[{runner, number, venue, race_number, category, country, start_time, mins_to_jump, direction:'firming'|'drifting', move_pct, open_price, current_price, books_firming, books_drifting, books_unchanged, books_quoting, books_with_history, bookmakers:[{key, open_price, current_price, move_pct, open_secs_to_jump, points, counted_in_consensus}]}]  (top-level ARRAY). `move_pct` is NEGATIVE for a firming runner (price shortened, money has arrived) and positive for a drifter. `open_price` is the first price CAPTURED inside the 60-minute pre-race window, not a true market open, and how close that is to 60 minutes varies sharply by book — read each book's `open_secs_to_jump` rather than assuming."
+    examples:
+      - description: "Runners firming 15%+ on at least 4 books"
+        params: {direction: "firming", min_move_pct: 15, min_books: 4}
+
+  - name: puntersedge_racing_venues
+    group: puntersedge.racing
+    capabilities: [ref.venues]
+    summary: "Canonical venue directory — every AU/NZ track actually served recently, with its canonical id, multi-track site key and every raw spelling observed. The join key between this API's data and official sources that spell venues differently. Costs 1 credit."
+    base: default
+    path: /v1/racing/venues
+    auth: default
+    response_hint: "[{venue_id, venue_canonical, venue_site, country, categories:['horse'|'harness'|'greyhound'], spellings:[…]}]  (top-level ARRAY). The LIST is measured — a venue appears because races actually ran there — while the identity is curated. `venue_site` joins multi-track complexes: Sandown, Sandown Hillside, Sandown Lakeside and Sandown Park all carry site 'sandown'. `spellings` is what lets you map historical data you already stored."
+
+  # ─── puntersedge.sport — pre-match team sports (3) ────────────────────
+
+  - name: puntersedge_sports
+    group: puntersedge.sport
+    capabilities: [sport.competitions_list]
+    summary: "The sports catalogue — every sport_key the odds tools accept, with its title and group. Costs 1 credit. Start here; racing is NOT in this list and has its own tools."
+    base: default
+    path: /v1/sports
+    auth: default
+    response_hint: "[{key:'afl'|'nrl'|'nba'|'soccer_epl'|…, title, group, active}]  (top-level ARRAY). There is no racing sport_key — horse, harness and greyhound racing live under the puntersedge.racing tools, and passing 'horse-racing' to the odds tools returns 404."
+
+  - name: puntersedge_sport_odds
+    group: puntersedge.sport
+    capabilities: [sport.event_markets, sport.prices]
+    summary: "Every bookmaker's prices for one sport's upcoming events, with per-book freshness and a data-quality score. Costs 1 credit PER REQUESTED MARKET, so keep `markets` narrow. PRE-MATCH ONLY — there is no in-play feed."
+    base: default
+    path: /v1/sports/{sport_key}/odds
+    auth: default
+    params:
+      - { name: sport_key, in: path, type: string, required: true, description: "sport_key from puntersedge_sports, e.g. afl, nrl, soccer_epl. There is no racing sport_key — 'horse-racing' returns 404." }
+      - { name: markets, in: query, type: string, default: "h2h", description: "Comma-separated markets: h2h, spreads, totals. Billed 1 credit EACH, deduplicated before billing, and an unknown market is a free 422 rather than a paid empty list." }
+      - { name: bookmakers, in: query, type: string, description: "Comma-separated bookmaker keys to restrict to, case-insensitive. An unrecognised key returns a free 422 naming the valid keys." }
+      - { name: competition, in: query, type: string, description: "Filter to one competition, case-insensitive exact match, e.g. NRLW. A value this sport has never carried returns a 422 listing the ones it has, not an empty 200." }
+      - { name: include_unknown_competition, in: query, type: boolean, default: true, description: "When filtering by `competition`, also return events whose competition is null. On by default because not every bookmaker supplies one and on some sports most of the card is unlabelled — so the filter means 'this competition or unlabelled', not 'this competition'." }
+      - { name: oddsFormat, in: query, type: string, default: decimal, enum: [decimal, american], description: "Price format." }
+      - { name: maxAgeMinutes, in: query, type: integer, default: 360, description: "Exclude bookmaker markets older than this many minutes. The default allows 3-hour supplemental feeds while hiding multi-day stale prices." }
+    response_hint: "[{id, sport_key, sport_title, competition, odds_format, commence_time, home_team, away_team, canonical_event_id, bookmakers:[{key, title, last_update, age_seconds, stale, quality:{score, status, issues, source_count, stale_after_seconds}, markets:[{key:'h2h', quality:{…}, outcomes:[{name, price, point}]}]}], data_quality, data_age_seconds, stale, stale_bookmakers}]  (top-level ARRAY). Outcome `name` is a TEAM NAME, not home/away. An event LEAVES this endpoint the moment it starts — nothing here updates during a match. `canonical_event_id` joins the same fixture across books that spell the teams differently."
+    examples:
+      - description: "Head-to-head prices across every book for the NRL"
+        params: {sport_key: "nrl", markets: "h2h"}
+
+  - name: puntersedge_sport_best_odds
+    group: puntersedge.sport
+    capabilities: [sport.prices, sport.event_markets]
+    summary: "Best available price per selection across all books for one sport's upcoming events, with every book's price alongside and an arbitrage flag. Costs 3 credits. An unknown sport_key returns 404 and costs nothing."
+    base: default
+    path: /v1/best-odds/{sport_key}
+    auth: default
+    params:
+      - { name: sport_key, in: path, type: string, required: true, description: "sport_key from puntersedge_sports, e.g. afl, nrl, soccer_epl. There is no racing sport_key — for racing use puntersedge_racing_best_odds." }
+    response_hint: "[{id, sport_key, home_team, away_team, commence_time, selections:[{name, best_price, best_bookmaker, all_prices:[{bookmaker, price}]}], arb_exists, arb_profit_pct}]  (top-level ARRAY). `arb_exists` is true when the best prices ACROSS books beat the field; `all_prices` carries every book's price on that selection, so the spread is readable without a second call."
+    examples:
+      - description: "Best price per selection across books for the AFL"
+        params: {sport_key: "afl"}

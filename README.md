@@ -10,7 +10,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~841 tools across 64 providers in Claude Desktop,
+Free & open source (MIT). ~854 tools across 65 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -50,10 +50,10 @@ Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.
 
-**Also good — you want sport data anywhere in the world.** The other **682
-tools across 56 providers** are not region-locked: MLB, NBA, NFL, NHL, the
+**Also good — you want sport data anywhere in the world.** The other **695
+tools across 57 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
-plus Pinnacle and the Kalshi and Polymarket prediction markets. 486 of those
+plus Pinnacle and the Kalshi and Polymarket prediction markets. 499 of those
 need no key at all.
 
 **Not a fit — you want US sportsbook odds.** Those eight books are licensed for
@@ -394,6 +394,33 @@ atptour.com is Cloudflare bot-protected — so it isn't modelled.)
 | Group | Tools | Notes |
 |---|---:|---|
 | `racingandsports.racing` | 3 | Today's race meetings (all codes, verified) + sports match list + per-race odds (token) |
+
+### PuntersEdge — `puntersedge.online` (AU + NZ odds aggregator, demo needs no key)
+
+| Group | Tools | Notes |
+|---|---:|---|
+| `puntersedge.demo` | 3 | **No key, no signup** — next-to-go racing, best-odds + arb flag, one book's prices for one sport |
+| `puntersedge.racing` | 7 | Priced card across every book, best win/place/tote per runner, the card, results, movers, canonical venues, permanent closing-line archive |
+| `puntersedge.sport` | 3 | Sports catalogue, per-book prices by `sport_key`, best price per selection with an arb flag |
+
+An **aggregator** over the Australian book panel rather than a book itself, so it
+overlaps the direct AU providers above — but it answers three things they cannot.
+It is **not geo-blocked**, so it is the only way to see Australian racing prices from
+outside Australia (it runs in CI, unlike Sportsbet/TAB/…); it carries **New Zealand**
+racing, which nothing else here covers; and it keeps a **permanent closing-line
+archive**, so CLV and backtesting on AU racing work without having polled it yourself.
+For one book's own racecard, deep markets or SGM pricing the direct providers are still
+better — an aggregator flattens those away.
+
+The three `puntersedge.demo` tools need **no key at all** and return real live data, so
+`free` includes this provider. The rest read `PUNTERSEDGE_API_KEY` (`X-API-Key`); the
+free tier is [1,500 credits/month with no
+card](https://puntersedge.online/api?utm_source=sportsdata_mcp), and each tool's summary
+quotes that endpoint's own credit cost. Racing is **not** a `sport_key` — horse,
+harness and greyhound live entirely under `puntersedge.racing`. The demo tools were
+probed live and claim a verified shape; the keyed ones carry the unverified caveat,
+because their hints come from the publisher's OpenAPI schema rather than from a response
+we received. See [documentation/PuntersEdge.md](documentation/PuntersEdge.md).
 
 ### Data Golf — `datagolf.com` (needs a key)
 
