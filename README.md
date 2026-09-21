@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/DanielTomaro13/sportsdata-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/DanielTomaro13/sportsdata-mcp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/DanielTomaro13/sportsdata-mcp)](https://github.com/DanielTomaro13/sportsdata-mcp/releases/latest)
+[![PyPI](https://img.shields.io/pypi/v/sportsdata-mcp)](https://pypi.org/project/sportsdata-mcp/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/sportsdata-mcp)](https://pypi.org/project/sportsdata-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![sportsdata-mcp MCP server](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp/badges/score.svg)](https://glama.ai/mcp/servers/DanielTomaro13/sportsdata-mcp)
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20this%20project-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/danieltomaro)
