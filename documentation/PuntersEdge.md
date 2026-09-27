@@ -41,7 +41,7 @@ providers remain better — an aggregator flattens those surfaces away.
    (`required_for_access`) and still probes `puntersedge.demo`, which can still FAIL.
    With a key set, a refused keyed call is a FAIL like any other.
 
-A free key is 1,500 credits/month with no card, from
+A free key is 3,000 credits/month with no card (2026-09-28), from
 [puntersedge.online/api](https://puntersedge.online/api).
 **Every tool's summary quotes that endpoint's own credit cost** (1–5 credits; the
 closing-lines CSV format is 20), taken from the API's published descriptions rather
@@ -67,7 +67,8 @@ block — this API does not report failure with a `200`.
 |---|---|---|
 | `401` | no key, or a bad one | where to get a key, and the keyless demo endpoints |
 | `402` | credits exhausted | "Monthly credit allowance exhausted for this plan", plus the upgrade URL |
-| `403` | `puntersedge_racing_closing_lines` on Free/Hobby | the archive needs Standard or higher |
+| `403` | `puntersedge_racing_closing_lines` on Free/Hobby, or on Standard for a range entirely older than 90 days | which plan reads what: Standard a rolling 90 days, Plus and above the whole archive |
+| `403` | `puntersedge_racing_events` past the plan's horizon | the ceiling: 24h on Free/Hobby, 48h on Standard, 168h on Plus and above |
 | `422` | bad bookmaker key, market or competition | **free**, and lists the valid values |
 | `429` | plan rate limit | carries `Retry-After` in seconds |
 
@@ -102,7 +103,7 @@ sandbox slug vocabulary (`sportsbet`, `afl`, `horse-racing`) — *not* the keyed
 bookmaker keys or `sport_key`s; read `type` off the response before indexing `items`,
 because it switches the item shape between sports and racing.
 
-### `puntersedge.racing` — AU/NZ horse, harness and greyhound
+### `puntersedge.racing` — horse, harness and greyhound
 
 | Tool | Path | Capability |
 |---|---|---|
@@ -131,9 +132,11 @@ the moment it starts, so nothing here updates during a match.
 
 ## Things that will bite you
 
-- **`country=AU` alone silently drops most of an Australian card.** A race's country is
-  unresolved until the meeting is confirmed — 58.8% of horse races in the vendor's
-  measured window — so pair any `country` filter with `include_unresolved: true`.
+- **The racing tools serve every country by default, and `country=AU` alone silently
+  drops most of an Australian card.** Outside AU/NZ a race carries a median of one
+  bookmaker, so filter by country — but a race's country is unresolved until the meeting
+  is confirmed (58.8% of horse races in the vendor's measured window), so pair any
+  `country` filter with `include_unresolved: true`.
 - **Freshness is reported worst-first.** `data_age_seconds` on a race is the age of the
   *oldest* bookmaker quote in it. Before comparing two books, read each book's own
   `age_seconds`.

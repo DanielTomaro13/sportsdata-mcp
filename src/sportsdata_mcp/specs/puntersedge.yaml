@@ -28,7 +28,7 @@ spec_version: 1
 # `X-API-Key` header, `optional: true` — a missing key never breaks startup and never
 # touches the demo tools — and `required_for_access: true`, because the keyed tools do
 # refuse without it: doctor SKIPs them when no key is configured, while the demo group
-# is still probed and can still FAIL. Free tier is 1,500 credits/month with no card. Endpoint credit
+# is still probed and can still FAIL. A free key needs no card. Endpoint credit
 # costs are quoted per tool below from the API's own OpenAPI descriptions; they are not
 # estimates.
 #
@@ -40,7 +40,10 @@ spec_version: 1
 #   401  no key / bad key      → names the console URL and the keyless demo endpoints
 #   402  out of credits        → "Monthly credit allowance exhausted for this plan",
 #                                with the upgrade URL
-#   403  closing-lines archive → Free and Hobby tiers cannot read it; Standard+ can
+#   403  closing-lines archive → Free and Hobby cannot read it. Standard reads a rolling
+#                                90 days (a range entirely older is a free 403); Plus
+#                                and above read the whole archive
+#   403  events past horizon   → free, and names the plan's ceiling
 #   422  bad bookmaker/market  → FREE, and lists the valid values (a typo costs nothing)
 #   429  plan rate limit       → carries `Retry-After` in seconds; the engine's own
 #                                per-provider throttle normally keeps you clear of it
@@ -154,7 +157,7 @@ endpoints:
     # Served from the engine's 60s cache, a re-read compares a number against itself.
     # Same defect as the racecard endpoints in tests/unit/test_price_freshness.py.
     never_cache: true
-    summary: "The priced card: next AU/NZ races with every runner and EVERY bookmaker's win and place price, plus scratchings and per-book freshness. Costs 2 credits. num_races=200 pulls every currently quoted race in one call."
+    summary: "The priced card: the next races with every runner and EVERY bookmaker's win and place price, plus scratchings and per-book freshness. Every country by default — pass country=AU with include_unresolved=true for an Australian card. Costs 2 credits up to 20 races, 3 for 21–60, 4 for 61–200; num_races=200 pulls every currently quoted race in one call."
     base: default
     path: /v1/racing/next-to-go
     auth: default
@@ -195,12 +198,12 @@ endpoints:
   - name: puntersedge_racing_events
     group: puntersedge.racing
     capabilities: [racing.meetings_by_date]
-    summary: "The CARD: every AU/NZ race scheduled in the next few hours, priced or not, with distance, class, track condition and scratchings. Costs 1 credit. Use this for the schedule and next-to-go for the prices."
+    summary: "The CARD: every race scheduled in the next few hours, priced or not, with distance, class, track condition and scratchings. Every country by default — pass country=AU with include_unresolved=true for an Australian card. Costs 1 credit. Use this for the schedule and next-to-go for the prices."
     base: default
     path: /v1/racing/events
     auth: default
     params:
-      - { name: hours_ahead, in: query, type: integer, default: 4, description: "How far ahead to list, in hours, up to 24." }
+      - { name: hours_ahead, in: query, type: integer, default: 4, description: "How far ahead to list, in hours. The ceiling depends on the plan — 24 on Free and Hobby, 48 on Standard, 168 on Plus and above — and asking past it is a free 403 that names it." }
       - { name: categories, in: query, type: string, description: "Comma-separated racing codes: horse, greyhound, harness. Omit for all. AU cards carry all three; NZ cards carry thoroughbred and harness only." }
       - { name: country, in: query, type: string, description: "Comma-separated ISO country codes, e.g. AU or AU,NZ. Omit for every country. Pair with include_unresolved=true or you silently lose unconfirmed meetings." }
       - { name: include_unresolved, in: query, type: boolean, default: false, description: "Include races whose country is not resolved yet (country is null). Off by default; most of an AU card is unresolved until the meeting is confirmed." }
@@ -233,7 +236,7 @@ endpoints:
   - name: puntersedge_racing_closing_lines
     group: puntersedge.racing
     capabilities: [stats.closing_odds]
-    summary: "The permanent closing-line archive: one row per race/runner/bookmaker with the last price before the jump, the first price after the market opened, and the finishing position. The CLV and backtesting surface. Costs 5 credits (JSON). Needs a Standard plan or higher — Free and Hobby get a 403."
+    summary: "The permanent closing-line archive: one row per race/runner/bookmaker with the last price before the jump, the first price after the market opened, and the finishing position. The CLV and backtesting surface. Costs 5 credits (JSON). Needs Standard or higher — Free and Hobby get a 403. Standard reads a rolling 90 days, Plus and above the whole archive; `window_days` on the response says which."
     base: default
     path: /v1/racing/closing-lines
     auth: default
@@ -283,7 +286,7 @@ endpoints:
   - name: puntersedge_racing_venues
     group: puntersedge.racing
     capabilities: [ref.venues]
-    summary: "Canonical venue directory — every AU/NZ track actually served recently, with its canonical id, multi-track site key and every raw spelling observed. The join key between this API's data and official sources that spell venues differently. Costs 1 credit."
+    summary: "Canonical venue directory — every track actually served recently, with its canonical id, multi-track site key and every raw spelling observed. The join key between this API's data and official sources that spell venues differently. Costs 1 credit."
     base: default
     path: /v1/racing/venues
     auth: default
