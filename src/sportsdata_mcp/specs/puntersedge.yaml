@@ -7,14 +7,10 @@ spec_version: 1
 # race, plus the derived best-odds / market-percentage / steamer-drifter views and a
 # permanent closing-line archive.
 #
-# WHY IT IS HERE, given the direct AU books are already integrated. Three things the
-# direct books cannot answer:
-#   * it is NOT geo-blocked — the AU books block non-AU IPs, so from anywhere else in
-#     the world this is the only way to see Australian racing prices at all (it runs in
-#     CI, unlike sportsbet/tab/…);
-#   * it carries NEW ZEALAND racing, which no other provider here covers;
-#   * it keeps a permanent CLOSING-LINE archive (`stats.closing_odds`), so CLV and
-#     backtesting work on AU racing is possible without having polled it yourself.
+# WHY IT IS HERE, given the direct AU books are already integrated: a permanent
+# CLOSING-LINE archive (`stats.closing_odds`), so CLV and backtesting work on AU racing
+# is possible without having polled it yourself. It is also not geo-blocked, unlike
+# most of the AU books, so its keyless demo tools run in CI.
 # For a single book's own racecard, deep markets or SGM pricing, the direct providers
 # remain better — they expose surfaces an aggregator flattens away.
 #
@@ -30,7 +26,9 @@ spec_version: 1
 #
 # ── AUTH ──
 # `X-API-Key` header, `optional: true` — a missing key never breaks startup and never
-# touches the demo tools. Free tier is 1,500 credits/month with no card. Endpoint credit
+# touches the demo tools — and `required_for_access: true`, because the keyed tools do
+# refuse without it: doctor SKIPs them when no key is configured, while the demo group
+# is still probed and can still FAIL. Free tier is 1,500 credits/month with no card. Endpoint credit
 # costs are quoted per tool below from the API's own OpenAPI descriptions; they are not
 # estimates.
 #
@@ -55,9 +53,8 @@ provider:
   id: puntersedge
   display_name: "PuntersEdge (AU + NZ racing and sports odds aggregator)"
   doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/PuntersEdge.md"
-  # The MARKET the data covers, not a geo-block: unlike the AU books, this API is an
-  # ordinary public HTTPS service reachable from anywhere (it is how a non-AU user
-  # reaches Australian racing prices at all).
+  # The MARKET the data covers, not a geo-block: unlike most of the AU books, this API
+  # is an ordinary public HTTPS service reachable from anywhere.
   region: [AU, NZ]
   # See the SHAPE VERIFICATION note above — the three demo tools override this to true.
   shapes_verified: false
@@ -81,6 +78,10 @@ provider:
       # Optional → the server still starts, and every other provider (and the demo
       # tools) keep working, when no key is set. Only the keyed tools 401.
       optional: true
+      # …and they always do without it, so doctor SKIPs them when no key is configured
+      # instead of reporting drift. Declared here rather than as `requires_user_key`,
+      # which would also excuse the keyless demo group and drop it from `free`.
+      required_for_access: true
   defaults:
     # The keyless demo endpoints are capped at 30 requests/minute PER IP, which is the
     # tightest limit on the provider, so the throttle is set for them rather than for a
@@ -99,7 +100,7 @@ endpoints:
     group: puntersedge.demo
     capabilities: [racing.next_to_jump, sport.prices]
     shapes_verified: true
-    summary: "NO KEY NEEDED. Next 3 AU/NZ races with up to 5 runners each and the best 3 bookmaker win prices per runner. Start here to see real data before deciding whether to get a key."
+    summary: "No key needed. A small live sample: the next 3 races, up to 5 runners each, with the best 3 bookmaker win prices per runner."
     base: default
     path: /v1/demo/racing/next-to-go
     auth: demo
@@ -112,7 +113,7 @@ endpoints:
     group: puntersedge.demo
     capabilities: [sport.prices, sport.event_markets]
     shapes_verified: true
-    summary: "NO KEY NEEDED. Best price per selection across books, with an arbitrage flag, for up to 3 upcoming events in one sport."
+    summary: "No key needed. A small live sample: the best price per selection across books, with an arbitrage flag, for up to 3 upcoming events in one sport."
     base: default
     path: /v1/demo/best-odds
     auth: demo
@@ -127,7 +128,7 @@ endpoints:
     group: puntersedge.demo
     capabilities: [sport.prices]
     shapes_verified: true
-    summary: "NO KEY NEEDED. One bookmaker's live prices for one sport — a few events, or a few races when the sport is a racing code."
+    summary: "No key needed. A small live sample of one bookmaker's prices for one sport — a few events, or a few races when the sport is a racing code."
     base: default
     path: /v1/demo/book-sport
     auth: demo

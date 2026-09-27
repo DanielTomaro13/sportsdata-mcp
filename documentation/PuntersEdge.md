@@ -3,7 +3,7 @@
 An Australian and New Zealand odds API that aggregates the AU bookmaker panel behind
 one key, rather than being a bookmaker itself. Host `api.puntersedge.online`, OpenAPI
 3.1 at [`/openapi.json`](https://api.puntersedge.online/openapi.json), human docs at
-[puntersedge.online/developers](https://puntersedge.online/developers?utm_source=sportsdata_mcp).
+[puntersedge.online/developers](https://puntersedge.online/developers).
 
 Provider id `puntersedge`, 13 tools across three groups. Demo probed live 2026-09-17.
 
@@ -17,33 +17,32 @@ providers here directly.
 
 ## Why it is here, given the AU books are already integrated
 
-This overlaps `sportsbet`, `tab`, `betr`, `pointsbet`, `entain` and `unibet` — but it
-answers three questions none of them can:
-
-- **It is not geo-blocked.** The AU books are licensed for Australia and block everyone
-  else at the edge. This is an ordinary public HTTPS API, so it is the only way to see
-  Australian racing prices from outside Australia — and the only AU-odds provider here
-  whose tools run in CI.
-- **New Zealand racing**, which nothing else in the catalogue covers.
-- **A permanent closing-line archive** (`stats.closing_odds`), so CLV work and
-  backtesting on AU racing are possible without having polled it yourself.
+This overlaps `sportsbet`, `tab`, `betr`, `pointsbet`, `entain` and `unibet`. What it
+adds is a **permanent closing-line archive** (`stats.closing_odds`), so CLV work and
+backtesting on AU racing are possible without having polled it yourself — plus every
+book's price on a race in one call. It is also **not geo-blocked**, unlike most of the
+AU books, so its demo tools run in CI.
 
 For a single book's own racecard, deep or exotic markets, or SGM pricing, the direct
 providers remain better — an aggregator flattens those surfaces away.
 
 ## Auth
 
-`X-API-Key` header from `PUNTERSEDGE_API_KEY`, declared `optional`. Two consequences
-worth knowing:
+`X-API-Key` header from `PUNTERSEDGE_API_KEY`, declared `optional` and
+`required_for_access`. Three consequences worth knowing:
 
 1. **The three `puntersedge.demo` tools never send a key** and return real live data, so
    this provider is part of the `free` preset. They are rate-limited to **30 requests
    per minute per IP** and are truncated samples, not the full feed.
-2. A missing key never breaks startup. Only the keyed tools refuse, and they refuse
-   loudly — the engine names `PUNTERSEDGE_API_KEY` and quotes the upstream body.
+2. A missing key never breaks startup (`optional`). Only the keyed tools refuse, and
+   they refuse loudly — the engine names `PUNTERSEDGE_API_KEY` and quotes the upstream
+   body.
+3. With no key configured, `sportsdata-mcp doctor` SKIPs the two keyed groups
+   (`required_for_access`) and still probes `puntersedge.demo`, which can still FAIL.
+   With a key set, a refused keyed call is a FAIL like any other.
 
 A free key is 1,500 credits/month with no card, from
-[puntersedge.online/api](https://puntersedge.online/api?utm_source=sportsdata_mcp).
+[puntersedge.online/api](https://puntersedge.online/api).
 **Every tool's summary quotes that endpoint's own credit cost** (1–5 credits; the
 closing-lines CSV format is 20), taken from the API's published descriptions rather
 than estimated.
@@ -159,16 +158,16 @@ the moment it starts, so nothing here updates during a match.
   `puntersedge_racing_best_odds` against `sportsbet_racecard`, `tab_racing_race`,
   `pointsbet_racing_race`, `entain_racing_racecard`. The direct books give one book's
   full card; PuntersEdge gives every book's price on the same race in one call, already
-  reduced to a best price and a market percentage — and works from outside Australia.
+  reduced to a best price and a market percentage.
 - **`racing.race_results`** — `puntersedge_racing_results` alongside
   `sportsbet_racing_resulted_events`, and the racecards that double as results
-  (`tab_racing_race`, `pointsbet_racing_race`). It is the only one of the four carrying
-  dividends, deductions and each book's *settled* price in the same row.
+  (`tab_racing_race`, `pointsbet_racing_race`). It carries dividends, deductions and
+  each book's *settled* price in the same row.
 - **`stats.closing_odds`** — `puntersedge_racing_closing_lines` is the racing
   counterpart to `footballdatauk_season` (football closing odds) and
   `theoddsapi_historical_odds` (international, paid tier).
-- **`ref.venues`** — `puntersedge_racing_venues` is the canonical AU/NZ track directory,
-  which the per-book racecards do not publish.
+- **`ref.venues`** — `puntersedge_racing_venues`: canonical venue ids, multi-track site
+  keys and every raw spelling observed, for joining sources that spell venues differently.
 - **`sport.event_markets` / `sport.prices`** — `puntersedge_sport_odds` and
   `puntersedge_sport_best_odds` line up against Pinnacle, Betfair, the direct AU books
   and `theoddsapi` for the same fixture; `canonical_event_id` joins books that spell the

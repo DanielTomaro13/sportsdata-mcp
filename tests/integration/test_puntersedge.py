@@ -4,8 +4,7 @@ This provider is a hybrid, and the hybrid is the thing worth testing. Three tool
 `puntersedge.demo` need NO key and return real live data; the other ten read
 `PUNTERSEDGE_API_KEY` and refuse without it. So unlike the BYO-key tier, the live probes
 here actually run in CI — `api.puntersedge.online` is a plain public HTTPS API with no
-geo-block, which is the whole reason this provider earns its place alongside the AU books
-it aggregates.
+geo-block.
 
 Two properties are easy to break silently and are pinned below:
 
@@ -110,6 +109,15 @@ def test_the_key_is_optional_and_named(spec):
     assert auth.header == "X-API-Key"
     assert auth.env == "PUNTERSEDGE_API_KEY"
     assert auth.optional is True
+
+
+def test_the_keyed_block_says_it_is_required_for_access(spec):
+    """`optional` only keeps startup from failing; the keyed tools still refuse without
+    the key. Declaring that on the block is what lets doctor skip them with no key
+    configured while the demo group stays probed — `requires_user_key` cannot, because
+    it applies to the whole provider and would take the demo tools out of `free`."""
+    assert spec.provider.auth["default"].required_for_access is True
+    assert spec.provider.requires_user_key is False
 
 
 def test_free_keeps_this_provider():

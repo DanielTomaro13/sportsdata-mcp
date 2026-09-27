@@ -399,28 +399,14 @@ atptour.com is Cloudflare bot-protected — so it isn't modelled.)
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `puntersedge.demo` | 3 | **No key, no signup** — next-to-go racing, best-odds + arb flag, one book's prices for one sport |
-| `puntersedge.racing` | 7 | Priced card across every book, best win/place/tote per runner, the card, results, movers, canonical venues, permanent closing-line archive |
-| `puntersedge.sport` | 3 | Sports catalogue, per-book prices by `sport_key`, best price per selection with an arb flag |
+| `puntersedge.demo` | 3 | No key — next-to-go racing, best odds + arb flag, one book's prices for one sport |
+| `puntersedge.racing` | 7 | Every book's price per race, best win/place/tote per runner, the card, results, movers, venues, closing-line archive |
+| `puntersedge.sport` | 3 | Sports catalogue, per-book prices by `sport_key`, best price per selection + arb flag |
 
-An **aggregator** over the Australian book panel rather than a book itself, so it
-overlaps the direct AU providers above — but it answers three things they cannot.
-It is **not geo-blocked**, so it is the only way to see Australian racing prices from
-outside Australia (it runs in CI, unlike Sportsbet/TAB/…); it carries **New Zealand**
-racing, which nothing else here covers; and it keeps a **permanent closing-line
-archive**, so CLV and backtesting on AU racing work without having polled it yourself.
-For one book's own racecard, deep markets or SGM pricing the direct providers are still
-better — an aggregator flattens those away.
-
-The three `puntersedge.demo` tools need **no key at all** and return real live data, so
-`free` includes this provider. The rest read `PUNTERSEDGE_API_KEY` (`X-API-Key`); the
-free tier is [1,500 credits/month with no
-card](https://puntersedge.online/api?utm_source=sportsdata_mcp), and each tool's summary
-quotes that endpoint's own credit cost. Racing is **not** a `sport_key` — horse,
-harness and greyhound live entirely under `puntersedge.racing`. The demo tools were
-probed live and claim a verified shape; the keyed ones carry the unverified caveat,
-because their hints come from the publisher's OpenAPI schema rather than from a response
-we received. See [documentation/PuntersEdge.md](documentation/PuntersEdge.md).
+An aggregator over the Australian book panel rather than a book itself, not geo-blocked
+unlike most of the AU books, with a permanent closing-line archive for CLV and
+backtesting work. The demo tools need no key; the rest read `PUNTERSEDGE_API_KEY`. See
+[documentation/PuntersEdge.md](documentation/PuntersEdge.md).
 
 ### Data Golf — `datagolf.com` (needs a key)
 
