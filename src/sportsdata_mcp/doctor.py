@@ -20,7 +20,7 @@ from .config import Config
 from .errors import PersistedQueryNotFoundError, ToolError
 from .http_client import HTTPClient
 from .registry import _build_body, _build_headers, _build_query, _interpolate_path
-from .spec import AuthNone, Dispatcher, Endpoint, Spec
+from .spec import AuthNone, Dispatcher, Endpoint, Spec, key_required
 from .spec_loader import expand_wildcard_groups
 
 Echo = Callable[[str], None]
@@ -83,14 +83,19 @@ def _zero_variable_op(spec: Spec):
     return None
 
 
-def _key_is_missing(http: HTTPClient, provider, auth_key: str) -> bool:
-    """Does this provider need a user-supplied key that is not configured here?
+def _key_required(provider, auth_key: str) -> bool:
+    """See `spec.key_required` — kept under this name for doctor's call sites."""
+    return key_required(provider, auth_key)
 
-    Both halves matter. `requires_user_key` alone is not enough — a developer WITH a key
+
+def _key_is_missing(http: HTTPClient, provider, auth_key: str) -> bool:
+    """Does this endpoint need a user-supplied key that is not configured here?
+
+    Both halves matter. Needing a key is not enough on its own — a developer WITH a key
     should still see a real failure. And an unconfigured optional-auth provider that works
     anonymously (ESPN Fantasy) must not be excused, because for it a 401 IS drift.
     """
-    if not provider.requires_user_key:
+    if not _key_required(provider, auth_key):
         return False
     try:
         return isinstance(http._auth_provider(auth_key), NullAuthProvider)
@@ -116,7 +121,7 @@ async def _probe_endpoint(http: HTTPClient, provider, ep: Endpoint, args: dict, 
         return "fail"
     except ToolError as e:
         # e.g. AuthMissingError when a required secret isn't set — report, don't crash.
-        if provider.requires_user_key:
+        if _key_required(provider, ep.auth):
             echo(f"  {_DIM}→ SKIP: no key configured for this provider{_RESET}")
             return "skip"
         echo(f"  {_RED}→ FAIL: {e.message}{_RESET}")
@@ -244,7 +249,7 @@ async def _run_provider(spec: Spec, enabled: set[str], cfg: Config, echo: Echo, 
                 # and reporting it as such is why both sat on the known-blocked list —
                 # which permanently blinds the check to their REAL drift. Skipping here
                 # instead keeps that list for genuinely blocked providers.
-                if provider.requires_user_key:
+                if _key_required(provider, key):
                     echo(f"  {_DIM}→ SKIP: no key configured for this provider{_RESET}")
                     res.skipped += 1
                 else:

@@ -114,6 +114,9 @@ RACING_PRICE_ENDPOINTS = {
     "entain_racing_racecard",
     "dabble_competition_fixtures",
     "dabble_fixture_details",
+    # The aggregated form of the same surface — every book's live price on one race.
+    "puntersedge_racing_next_to_go",
+    "puntersedge_racing_best_odds",
 }
 
 

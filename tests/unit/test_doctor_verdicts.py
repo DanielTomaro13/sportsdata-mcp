@@ -156,3 +156,60 @@ def test_key_is_missing_needs_both_halves(monkeypatch):
     fantasy = _spec("espnfantasy")
     http3 = HTTPClient(fantasy.provider, Config())
     assert _key_is_missing(http3, fantasy.provider, "default") is False
+
+
+# ─── a key required by one auth block, not the whole provider ───────────
+
+
+def _refused(r):
+    return httpx.Response(401, json={"title": "X-API-Key header required"})
+
+
+def test_key_is_missing_reads_the_auth_block_too(monkeypatch):
+    """PuntersEdge keeps `requires_user_key: false` for its keyless demo group, so the
+    provider-level rule cannot see that its keyed block needs a key. The block says so
+    itself; ESPN Fantasy's optional cookie block does not, and must stay unexcused."""
+    monkeypatch.delenv("PUNTERSEDGE_API_KEY", raising=False)
+    monkeypatch.delenv("ESPN_FANTASY_COOKIE", raising=False)
+    pe = _spec("puntersedge")
+    http = HTTPClient(pe.provider, Config())
+    assert _key_is_missing(http, pe.provider, "default") is True
+    assert _key_is_missing(http, pe.provider, "demo") is False
+
+    fantasy = _spec("espnfantasy")
+    http2 = HTTPClient(fantasy.provider, Config())
+    assert _key_is_missing(http2, fantasy.provider, "private") is False
+
+
+@pytest.mark.anyio
+async def test_a_block_that_requires_its_key_is_skipped_without_one(monkeypatch):
+    """Before the flag, every nightly drift run reported both keyed PuntersEdge groups as
+    new drift: HTTP 401 without a key, from a provider that is not `requires_user_key`."""
+    monkeypatch.delenv("PUNTERSEDGE_API_KEY", raising=False)
+    assert await _probe("puntersedge", _refused, "puntersedge_sports") == "skip"
+
+
+@pytest.mark.anyio
+async def test_a_block_that_requires_its_key_still_fails_with_one(monkeypatch):
+    """The excuse is for an ABSENT key. A configured key being refused is a real failure."""
+    monkeypatch.setenv("PUNTERSEDGE_API_KEY", "configured")
+    assert await _probe("puntersedge", _refused, "puntersedge_sports") == "fail"
+
+
+@pytest.mark.anyio
+async def test_the_flag_does_not_excuse_the_providers_keyless_group(monkeypatch):
+    """Why it is per block: listing puntersedge in drift-known-blocked.txt would have
+    blinded the check to the demo group too, and a 401 there IS drift."""
+    monkeypatch.delenv("PUNTERSEDGE_API_KEY", raising=False)
+    assert await _probe("puntersedge", _refused, "puntersedge_demo_racing_next_to_go") == "fail"
+
+
+@pytest.mark.anyio
+async def test_an_optional_block_without_the_flag_still_fails(monkeypatch):
+    """ESPN Fantasy's cookie block is `optional` and does not set the flag — public
+    leagues work anonymously — so its guarantee is unchanged: a 401 is still drift."""
+    monkeypatch.delenv("ESPN_FANTASY_COOKIE", raising=False)
+    outcome = await _probe(
+        "espnfantasy", _refused, "espnfantasy_league", args={"seasonId": 2025, "leagueId": 1234}
+    )
+    assert outcome == "fail"

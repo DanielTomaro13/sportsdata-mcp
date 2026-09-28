@@ -28,6 +28,14 @@ class AuthStaticHeader(BaseModel):
     # leagues are open, private leagues need the espn_s2/SWID cookie). Mirrors
     # AuthOAuthRefresh.optional.
     optional: bool = False
+    # The upstream refuses requests on this block without the key. Separate from
+    # `optional`, which only decides whether startup fails when the key is unset: an
+    # optional block can be an upgrade (ESPN Fantasy's cookie — public leagues work
+    # anonymously, so a 401 there IS drift) or the only way in (PuntersEdge's keyed
+    # tools). Doctor SKIPs an endpoint on a block that sets this when no key is
+    # configured, as it does for a `requires_user_key` provider, and still FAILs it once
+    # a key is. Per block, because a hybrid's keyless endpoints must still be probed.
+    required_for_access: bool = False
 
 
 class AuthStaticQuery(BaseModel):
@@ -42,6 +50,8 @@ class AuthStaticQuery(BaseModel):
     # BYO-key provider from breaking startup for everyone who hasn't configured it; the
     # upstream's own 401 is then what the caller sees, which is the honest error.
     optional: bool = False
+    # Same contract as AuthStaticHeader.required_for_access.
+    required_for_access: bool = False
 
 
 class AuthOAuthRefresh(BaseModel):
@@ -79,6 +89,8 @@ class AuthOAuthRefresh(BaseModel):
     # authenticated tier). Auth-required providers keep the default (a loud
     # AuthMissingError).
     optional: bool = False
+    # Same contract as AuthStaticHeader.required_for_access.
+    required_for_access: bool = False
 
 
 class AuthKalshiRSA(BaseModel):
@@ -114,6 +126,8 @@ class AuthStaticBasic(BaseModel):
     password_env: str | None = None
     password: str | None = None
     optional: bool = False
+    # Same contract as AuthStaticHeader.required_for_access.
+    required_for_access: bool = False
 
 
 # Every attribute across every auth type that names an environment variable. Listing
@@ -128,6 +142,22 @@ AUTH_ENV_ATTRS = (
     "client_secret_env",
     "refresh_token_env",
 )
+
+
+def key_required(provider, auth_key: str = "default") -> bool:
+    """Does a tool on this auth block need a user-supplied key to work at all?
+
+    True for a `requires_user_key` provider, or for one block marked
+    `required_for_access` (a hybrid: PuntersEdge's keyless demo group shares a provider
+    with two keyed groups). Every place that answers "will this work with no setup"
+    reads it — the doctor verdict, the `free` preset, the model-facing Auth: line and the
+    coverage probe — because when the first of those learned about the block flag and
+    the other three did not, `free` shipped ten tools that 401 for everyone in it, each
+    described to the model as working without a key.
+    """
+    if provider.requires_user_key:
+        return True
+    return bool(getattr(provider.auth.get(auth_key), "required_for_access", False))
 
 
 def auth_env_names(provider) -> set[str]:
@@ -260,6 +290,9 @@ class Provider(BaseModel):
     #
     # The `free` preset is computed from this flag, so a new BYO provider cannot
     # silently make "works with no setup" a lie.
+    #
+    # A provider with keyless AND keyed endpoints (PuntersEdge) keeps this false, so its
+    # keyless half stays in `free`, and marks the keyed auth block `required_for_access`.
     requires_user_key: bool = False
 
     # The market(s) this provider actually serves, as ISO-3166 alpha-2 codes. None means

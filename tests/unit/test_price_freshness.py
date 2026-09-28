@@ -69,6 +69,12 @@ def test_the_get_pricers_declare_it_explicitly(endpoints, name):
 RACING_PRICE_ENDPOINTS = [
     "dabble_competition_fixtures", "dabble_fixture_details", "entain_racing_racecard",
     "pointsbet_racing_race", "sportsbet_racecard", "tab_racing_race",
+    # PuntersEdge is the aggregated form of the same thing: one call returns EVERY
+    # book's live price on a race, and `market_percentage` is the arb signal a model
+    # re-reads to confirm a move. Cached, that re-read compares a number against
+    # itself exactly as the single-book racecards above did. Its own DISCOVERY tools
+    # (puntersedge_racing_events, _venues, _results, _closing_lines) keep the cache.
+    "puntersedge_racing_best_odds", "puntersedge_racing_next_to_go",
 ]
 
 
