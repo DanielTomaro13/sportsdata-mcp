@@ -20,7 +20,7 @@ from .config import Config
 from .errors import PersistedQueryNotFoundError, ToolError
 from .http_client import HTTPClient
 from .registry import _build_body, _build_headers, _build_query, _interpolate_path
-from .spec import AuthNone, Dispatcher, Endpoint, Spec
+from .spec import AuthNone, Dispatcher, Endpoint, Spec, key_required
 from .spec_loader import expand_wildcard_groups
 
 Echo = Callable[[str], None]
@@ -84,16 +84,8 @@ def _zero_variable_op(spec: Spec):
 
 
 def _key_required(provider, auth_key: str) -> bool:
-    """Is a user-supplied key needed to use this auth block at all?
-
-    Either the whole provider says so (`requires_user_key`) or the block does
-    (`required_for_access`). The block form exists for hybrids: PuntersEdge's keyless demo
-    group shares a provider with two keyed groups, so the provider flag would also excuse
-    a demo 401 that really is drift — and drop the demo tools from `free`.
-    """
-    if provider.requires_user_key:
-        return True
-    return bool(getattr(provider.auth.get(auth_key), "required_for_access", False))
+    """See `spec.key_required` — kept under this name for doctor's call sites."""
+    return key_required(provider, auth_key)
 
 
 def _key_is_missing(http: HTTPClient, provider, auth_key: str) -> bool:

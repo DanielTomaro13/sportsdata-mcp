@@ -105,6 +105,19 @@ def test_readme_australian_book_claim_is_accurate():
     claimed_rest = int(_re.search(r"\*\*(\d+)\s*\n?tools across (\d+) providers\*\*", section).group(1))
     assert claimed_rest == rest_tools, f"README claims {claimed_rest} non-AU tools, actual {rest_tools}"
 
+    # "…K of those need no key" was the one number here nothing checked, which is how
+    # it went up by 13 for a provider whose ten keyed tools all 401 without one. Counted
+    # per TOOL, through the same `key_required` the `free` preset and Auth: line use.
+    from sportsdata_mcp.spec import key_required
+
+    rest = [s for s in load_all_specs() if (s.provider.region or []) != ["AU"]]
+    keyless = sum(
+        1 for s in rest for t in s.all_tools()
+        if not key_required(s.provider, getattr(t, "auth", "default"))
+    )
+    claimed_keyless = int(_re.search(r"(\d+) of those\s+need no key", section).group(1))
+    assert claimed_keyless == keyless, f"README says {claimed_keyless} need no key, actual {keyless}"
+
 
 def test_every_manifest_key_maps_to_a_real_env_var():
     """A key prompt that writes an env var nothing reads is worse than no prompt: the

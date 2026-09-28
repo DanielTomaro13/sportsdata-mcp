@@ -53,7 +53,7 @@ and harness, with tote pools and exchange money — is covered to the same depth
 **Also good — you want sport data anywhere in the world.** The other **695
 tools across 57 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
-plus Pinnacle and the Kalshi and Polymarket prediction markets. 499 of those
+plus Pinnacle and the Kalshi and Polymarket prediction markets. 489 of those
 need no key at all.
 
 **Not a fit — you want US sportsbook odds.** Those eight books are licensed for

@@ -302,8 +302,19 @@ def _keyless_groups(groups: list[str], specs: list[Spec] | None) -> list[str]:
     """
     if not specs:
         return list(groups)
+    from .spec import key_required
+
     needs_key = {s.provider.id for s in specs if s.provider.requires_user_key}
-    return [g for g in groups if g.split(".", 1)[0] not in needs_key]
+    # Per GROUP as well: a hybrid provider (PuntersEdge) keeps `requires_user_key` false
+    # so its keyless demo group stays in `free`, and marks its keyed auth block
+    # `required_for_access`. A group is out of `free` when EVERY tool in it sits on such a
+    # block — decided per provider alone, `free` carried ten tools that 401 for every user.
+    tools_by_group: dict[str, list[bool]] = defaultdict(list)
+    for s in specs:
+        for tool in s.all_tools():
+            tools_by_group[tool.group].append(key_required(s.provider, getattr(tool, "auth", "default")))
+    keyed_groups = {g for g, flags in tools_by_group.items() if flags and all(flags)}
+    return [g for g in groups if g.split(".", 1)[0] not in needs_key and g not in keyed_groups]
 
 
 def _match_token(token: str, groups: list[str], specs: list[Spec] | None = None) -> list[str]:

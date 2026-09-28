@@ -144,6 +144,22 @@ AUTH_ENV_ATTRS = (
 )
 
 
+def key_required(provider, auth_key: str = "default") -> bool:
+    """Does a tool on this auth block need a user-supplied key to work at all?
+
+    True for a `requires_user_key` provider, or for one block marked
+    `required_for_access` (a hybrid: PuntersEdge's keyless demo group shares a provider
+    with two keyed groups). Every place that answers "will this work with no setup"
+    reads it — the doctor verdict, the `free` preset, the model-facing Auth: line and the
+    coverage probe — because when the first of those learned about the block flag and
+    the other three did not, `free` shipped ten tools that 401 for everyone in it, each
+    described to the model as working without a key.
+    """
+    if provider.requires_user_key:
+        return True
+    return bool(getattr(provider.auth.get(auth_key), "required_for_access", False))
+
+
 def auth_env_names(provider) -> set[str]:
     """Every env var this provider's auth reads, whatever the auth type."""
     return {

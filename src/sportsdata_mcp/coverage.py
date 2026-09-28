@@ -31,7 +31,7 @@ from .config import Config
 from .doctor import _pick_endpoint_probe
 from .http_client import HTTPClient
 from .registry import _build_headers, _build_query, _interpolate_path
-from .spec import Endpoint, Spec
+from .spec import Endpoint, Spec, key_required
 
 Echo = Callable[[str], None]
 
@@ -107,7 +107,11 @@ def _pick_probe(spec: Spec) -> tuple[Endpoint | None, dict | None]:
     still serves — a hard-coded date is how a healthy provider gets reported as broken.
     """
     gettable = [e for e in spec.endpoints if e.method == "GET"]
-    return _pick_endpoint_probe(gettable)
+    # A hybrid provider's keyed endpoints 401 without a key, which would report a
+    # healthy provider as down. Probe one that needs no key when there is one — before
+    # this, PuntersEdge only reported correctly because a demo endpoint is listed first.
+    keyless = [e for e in gettable if not key_required(spec.provider, e.auth)]
+    return _pick_endpoint_probe(keyless or gettable)
 
 
 async def _probe(spec: Spec, cfg: Config, sem: asyncio.Semaphore) -> ProviderStatus:

@@ -248,7 +248,7 @@ def _build_body(ep: Endpoint, kwargs: dict) -> dict | list | None:
 # ─── Descriptions ──────────────────────────────────────────────────────
 
 
-def _auth_line(provider) -> str:
+def _auth_line(provider, auth_key: str = "default") -> str:
     """One line telling the model what this tool needs before it will work.
 
     An agent that knows a call needs API_TENNIS_KEY can say so instead of retrying, and
@@ -260,8 +260,15 @@ def _auth_line(provider) -> str:
     from .spec import auth_env_names
 
     envs = sorted(auth_env_names(provider))
+    from .spec import key_required
+
     if provider.requires_user_key and envs:
         return f"\nAuth: needs your own key in {' or '.join(envs)}."
+    if key_required(provider, auth_key) and envs:
+        # A hybrid provider's keyed block (`required_for_access`). Name that block's own
+        # variable: its tools need exactly that key, not any env var the provider reads.
+        block_env = getattr(provider.auth.get(auth_key), "env", None)
+        return f"\nAuth: needs your own key in {block_env or ' or '.join(envs)}."
     if envs:
         return f"\nAuth: works without a key; {' or '.join(envs)} unlocks more if set."
     return "\nAuth: none needed."
@@ -326,7 +333,7 @@ def _describe(
         if ex.params:
             shown = dates.render_for_display(ex.params)
             lines.append(f"  {json.dumps(shown, default=str)}")
-    if auth := _auth_line(provider):
+    if auth := _auth_line(provider, getattr(tool, "auth", "default")):
         lines.append(auth)
     if alts := _alternatives_line(tool, provider, cap_index):
         lines.append(alts)
