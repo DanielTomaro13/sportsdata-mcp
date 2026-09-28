@@ -8,6 +8,31 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+## 0.33.0 — 2026-09-28
+
+### Added
+- **PuntersEdge** (`puntersedge`, 13 tools) — an Australian and New Zealand racing and
+  sports odds aggregator. One call returns every book's price on a race, with best
+  win/place/tote per runner, a race-level market percentage (under 100 is a cross-book
+  arb), steamers and drifters, results, a canonical AU/NZ venue directory, and a
+  **permanent closing-line archive** (`stats.closing_odds`) for CLV and backtesting
+  work. Not geo-blocked, unlike most of the Australian books.
+  - `puntersedge.demo` (3 tools) needs **no key** and is in `free`.
+  - `puntersedge.racing` (7) and `puntersedge.sport` (3) read `PUNTERSEDGE_API_KEY`;
+    the free tier is 3,000 credits/month. Their response shapes come from the
+    publisher's OpenAPI schema rather than a live response, and are marked unverified.
+  - Contributed by @Propertyscout001 on behalf of PuntersEdge (#27).
+- **`required_for_access` on auth blocks**, for a provider with both keyless and
+  key-only tools. It is separate from `optional`, which only decides whether startup
+  fails without the key. A tool on a block that sets it:
+  - is left out of `free` when every tool in its group needs the key;
+  - tells the model `Auth: needs your own key in <VAR>` rather than "works without a
+    key";
+  - is SKIPPED by `doctor` when no key is configured, and still FAILS once one is;
+  - is not chosen as the `coverage` probe when a keyless endpoint exists.
+
+  No existing provider sets it, so nothing else changes.
+
 ## 0.32.1 — 2026-08-31
 
 ### Fixed
