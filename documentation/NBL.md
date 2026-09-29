@@ -42,8 +42,8 @@ The payload you want is always under `data`.
 
 ## Season scoping
 
-Most routes take **`year` = the season START year**: `2025` = **NBL26** (the
-2025-26 season, current), `2026` = **NBL27**. `seasonType` ∈ `regular` | `all` |
+Most routes take **`year` = the season START year**: `2025` = **NBL26**, `2026` =
+**NBL27** (the 2026-27 season, current since 19 September 2026). `seasonType` ∈ `regular` | `all` |
 `in_season` | `preseason` | `finals`.
 
 A few stats routes instead need the season **UUID** (`seasonId`) — get it from
@@ -61,7 +61,9 @@ come back empty — the call still resolves.
 | `nbl_season_current` | `nbl/seasons/current?limit=` | `ref.seasons` |
 | `nbl_teams` | `nbl/teams` | `ref.teams` |
 | `nbl_ladder` | `nbl/standings/{year}/{seasonType}` | `stats.ladder` |
-| `nbl_schedule` | `nbl/matches/in/season/{year}/{seasonType}` | `sport.fixtures_by_date`, `sport.match_score` |
+| `nbl_schedule` | `nbl/matches/in/season/{year}/{seasonType}?limit=&offset=` | `sport.fixtures_by_date`, `sport.match_score` |
+| `nbl_match_boxscore` | `match/{matchId}` | `sport.match_boxscore`, `stats.player_match`, `sport.match_score` |
+| `nbl_match_playbyplay` | `match/{matchId}` | `stats.play_by_play` |
 | `nbl_match_outcomes` | `match/outcomes/for/nbl/teams/in/season/{year}/{seasonType}` | `sport.match_score`, `stats.head_to_head` |
 | `nbl_next_matches` | `next/matches/for/teams/in/nbl/{year}` | `sport.fixtures_by_date` |
 | `nbl_players` | `nbl/players/in/season/{year}` | `ref.players` |
@@ -77,18 +79,51 @@ come back empty — the call still resolves.
 1. `nbl_seasons` → find the current season (latest `year`, `season_type=regular`);
    keep its `id` (UUID) and `year`.
 2. `nbl_ladder` / `nbl_schedule` / `nbl_team_stats` with that `year`.
-3. `nbl_players` → player `id`s → `nbl_player_stats` (season averages) or
+3. One game: take a finished match's `id` from `nbl_schedule` (`match_status` is
+   `complete`) → `nbl_match_boxscore` or `nbl_match_playbyplay`.
+4. `nbl_players` → player `id`s → `nbl_player_stats` (season averages) or
    `nbl_player_boxscores` (game log).
-4. `nbl_stat_leaders` with the season **UUID**.
+5. `nbl_stat_leaders` with the season **UUID**.
+
+## The schedule pages at 100 rows
+
+The schedule feed returns **100 rows unless asked for more**, and a season is about
+200 (165 regular-season games plus pre-season, the Blitz and finals). Its rows are not
+in date order either, so the first 100 are an arbitrary slice. Until September 2026
+`nbl_schedule` sent no limit and got the back half of the season: every game played so
+far was missing, in a response that looked complete. It now sends `limit=400`; use
+`offset` to page if a phase ever exceeds that. Sort by `start_time` yourself.
+
+## One game: box score and play-by-play
+
+`/get/match/{matchId}` is the feed NBL.com's own game centre reads. It returns the whole
+game in about 1.3 MB, 1.1 MB of it play-by-play, so two tools read it and each keeps
+only its own part:
+
+- **`nbl_match_boxscore`** (~22 KB): the header and final score, every player's line
+  and team totals. **Team rows are per quarter**: `period` `'0'` is the full game and
+  `'1'`–`'4'` the quarters, so filter on it before summing. Player rows are full-game.
+  The NBL has four-point shots, hence the `four_points_*` columns.
+- **`nbl_match_playbyplay`** (~300 KB): every event with period, clock, shot clock,
+  `action_type` (`2pt`, `3pt`, `freeThrow`, `rebound`, `foul`, `substitution`,
+  `possession`, …), `success` on shots, shot `coordinates`, the player, and the running
+  score (`score_1` home, `score_2` away). About 40% of events are possession and clock
+  bookkeeping.
+
+**Types differ between levels.** A match's `home_score` / `away_score` are **strings**
+(`"86"`) in both the schedule and the match feed, while every stat is a number and
+percentages are fractions (`0.4` = 40%).
 
 ## Shapes
 
 - **Ladder** (`data[]`): `{position, played, won, lost, points_percentage,
   win_percentage, points_for, points_against, last_5, streak, team}` — 10 clubs.
-- **Match** (`data[]`): `{id, external_id, start_time, round, match_status,
-  home_score, away_score, attendance, match_slug, play_by_play, home_team{…},
-  away_team{…}}`. Each team object carries `name`, `team_code`, `team_logo` and
-  brand colours.
+- **Match** (`data[]`): `{id, external_id, start_time, round, match_type, status,
+  match_status, home_score, away_score, attendance, match_slug, match_title,
+  play_by_play, venue{name}, home_team{…}, away_team{…}}`. A finished game is
+  `status: CONFIRMED`, `match_status: complete`. `play_by_play` is an id once a game has
+  play-by-play and null before; it is not a flag. Each team object carries `id`,
+  `name`, `team_code`, `team_logo` and `color_primary`.
 - **Player** (`data[]`): `{jersey_number, playing_position, player:{id,
   first_name, last_name}, team:{id, name, team_code}, season}`. Names are **split**
   (`first_name` / `last_name`), not a single `name`.

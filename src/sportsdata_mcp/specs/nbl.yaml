@@ -103,17 +103,87 @@ endpoints:
   - name: nbl_schedule
     group: nbl.basketball
     capabilities: [sport.fixtures_by_date, sport.match_score]
-    summary: "Every match for one season — each with start_time, round, match_status (complete/upcoming/live), home/away scores, attendance, match_slug/title, a play_by_play flag, the Genius external_id, and full home_team/away_team objects (name, team_code, logos, colours). `seasonType=all` for the whole season."
+    summary: "Every match for one season: start_time, round, status, home/away scores, attendance, venue, match_slug/title, and home_team/away_team (id, name, team_code, logo, colour). `id` is the match id for nbl_match_boxscore and nbl_match_playbyplay. Rows are NOT in date order, so sort by start_time. `seasonType=all` for the whole season."
     base: default
     path: /get/nbl/matches/in/season/{year}/{seasonType}
     auth: default
     params:
       - *year_param
-      - { name: seasonType, in: path, type: string, required: true, default: "all", enum: [all, regular, in_season, preseason, finals], description: "Phase to list (default all)." }
-    response_hint: "{type, count, data:[{id, external_id, start_time, round, match_status, home_score, away_score, attendance, match_slug, match_title, play_by_play, home_team:{id, name, team_code, team_logo, color_primary}, away_team:{…}}]}"
+      - { name: seasonType, in: path, type: string, required: true, default: "all", enum: [all, regular, in_season, preseason, finals], description: "Phase to list (default all). The NBL Blitz pre-season tournament is filed under in_season." }
+      # The feed pages at 100 rows by default and a season is ~200 (165 regular-season
+      # games plus pre-season, Blitz and finals). Without an explicit limit this tool
+      # returned an arbitrary 100 of them, and since rows are not in date order, that
+      # was the back half of the season: every game played so far was missing and the
+      # response looked complete. Measured 2026-09-29: default 100 rows, limit=1000 209.
+      - { name: limit, in: query, type: integer, default: 400, description: "Rows to return. 400 covers a whole season in one call; the feed's own default is 100, which silently drops the rest." }
+      - { name: offset, in: query, type: integer, description: "Rows to skip, for paging past `limit`." }
+    # A full season is ~870 KB as sent, mostly broadcaster logos and match artwork.
+    # Keep what the tool documents; drop the imagery.
+    response_fields: [id, external_id, start_time, round, match_type, status, match_status, home_score, away_score, attendance, match_slug, match_title, play_by_play, venue.name, home_team.id, home_team.name, home_team.team_code, home_team.team_logo, home_team.color_primary, away_team.id, away_team.name, away_team.team_code, away_team.team_logo, away_team.color_primary]
+    response_hint: "{type, count, data:[{id, external_id, start_time, round, match_type, status:'SCHEDULED'|'CONFIRMED'|'DRAFT', match_status:'scheduled'|'complete'|'draft', home_score, away_score, attendance, match_slug, match_title, play_by_play, venue:{name}, home_team:{id, name, team_code, team_logo, color_primary}, away_team:{…}}]}  — a finished game is status CONFIRMED / match_status complete. `play_by_play` is an id string once a game has play-by-play and null before; it is not a flag. Scores are STRINGS ('86', not 86) and null until a game is played."
     examples:
-      - description: "Full NBL26 schedule + results"
-        params: { year: 2025, seasonType: all }
+      - description: "Full NBL27 schedule and results"
+        params: { year: 2026, seasonType: all }
+
+  # ─── One match: the feed NBL.com's own game centre reads ──────────────
+  # /get/match/{id} returns EVERYTHING for one game in ~1.3 MB: header, player and team
+  # box scores, and the full play-by-play (1,129 KB of that on its own). Two tools read
+  # the same URL and project different parts, the way fpl does with bootstrap-static,
+  # so asking for a box score never costs a model the play-by-play.
+  - name: nbl_match_boxscore
+    group: nbl.basketball
+    capabilities: [sport.match_boxscore, stats.player_match, sport.match_score]
+    summary: "One game's box score: final score, every player's line (minutes, points, rebounds, assists, shooting splits including four-pointers, +/-, efficiency) and team totals by quarter. Get the match id from nbl_schedule (data[].id)."
+    base: default
+    path: /get/match/{matchId}
+    auth: default
+    params:
+      - { name: matchId, in: path, type: string, required: true, description: "Match UUID from nbl_schedule (data[].id)." }
+    response_fields:
+      [id, match_title, start_time, round, match_type, status, match_status, home_score, away_score, attendance, venue.name,
+       home_team.id, home_team.name, home_team.team_code, away_team.id, away_team.name, away_team.team_code,
+       boxscore_field_mapping,
+       player_match_statistics.player.full_name, player_match_statistics.player.jersey_number, player_match_statistics.player.playing_position,
+       player_match_statistics.team.team_code, player_match_statistics.period, player_match_statistics.starter, player_match_statistics.participated,
+       player_match_statistics.minutes, player_match_statistics.points, player_match_statistics.rebounds, player_match_statistics.offensive_rebounds,
+       player_match_statistics.defensive_rebounds, player_match_statistics.assists, player_match_statistics.steals, player_match_statistics.blocks,
+       player_match_statistics.turnovers, player_match_statistics.personal_fouls, player_match_statistics.technical_fouls,
+       player_match_statistics.field_goals_made, player_match_statistics.field_goals_attempted, player_match_statistics.field_goals_percentage,
+       player_match_statistics.two_points_made, player_match_statistics.two_points_attempted,
+       player_match_statistics.three_points_made, player_match_statistics.three_points_attempted, player_match_statistics.three_points_percentage,
+       player_match_statistics.four_points_made, player_match_statistics.four_points_attempted,
+       player_match_statistics.free_throws_made, player_match_statistics.free_throws_attempted, player_match_statistics.free_throws_percentage,
+       player_match_statistics.plus_minus, player_match_statistics.efficiency,
+       team_match_statistics.team.team_code, team_match_statistics.period, team_match_statistics.points, team_match_statistics.rebounds,
+       team_match_statistics.offensive_rebounds, team_match_statistics.defensive_rebounds, team_match_statistics.assists,
+       team_match_statistics.steals, team_match_statistics.blocks, team_match_statistics.turnovers, team_match_statistics.fouls,
+       team_match_statistics.field_goals_made, team_match_statistics.field_goals_attempted,
+       team_match_statistics.three_points_made, team_match_statistics.three_points_attempted,
+       team_match_statistics.four_points_made, team_match_statistics.four_points_attempted,
+       team_match_statistics.free_throws_made, team_match_statistics.free_throws_attempted, team_match_statistics.timeouts]
+    response_hint: "{type, count, data:[{id, match_title, start_time, status, home_score, away_score, venue:{name}, home_team:{id, name, team_code}, away_team:{…}, boxscore_field_mapping:{points:'PTS', …}, player_match_statistics:[{player:{full_name, jersey_number, playing_position}, team:{team_code}, period:'0', starter, participated, minutes:'24:30', points, rebounds, assists, …}], team_match_statistics:[{team:{team_code}, period:'0'|'1'…'4', points, rebounds, …}]}]}  — `data` is a one-element list. TEAM rows are per quarter: period '0' is the full game and '1'-'4' the quarters, so filter on period before summing or you count every point twice. Player rows are full-game (period '0'). The NBL has four-point shots, hence the four_points_* columns. Check `participated` to skip players who did not play. TYPES: the header's home_score/away_score are STRINGS ('86'), while every stat is a number, and percentages are fractions (0.4 = 40%), so convert before comparing a stat to the score."
+    examples:
+      - description: "Tasmania JackJumpers v NZ Breakers, NBL Blitz, 6 Sep 2026"
+        params: { matchId: "3d09795f-58a7-11f1-aed3-b7a799a5060e" }
+
+  - name: nbl_match_playbyplay
+    group: nbl.basketball
+    capabilities: [stats.play_by_play]
+    summary: "One game's full play-by-play: every event with period, game clock, shot clock, type, the player, success on shots, shot coordinates and the running score. Large: ~1,000 events for a game. Get the match id from nbl_schedule (data[].id)."
+    base: default
+    path: /get/match/{matchId}
+    auth: default
+    params:
+      - { name: matchId, in: path, type: string, required: true, description: "Match UUID from nbl_schedule (data[].id)." }
+    response_fields:
+      [id, match_title, status, home_score, away_score, home_team.name, home_team.team_code, away_team.name, away_team.team_code,
+       play_by_play.action_id, play_by_play.period, play_by_play.period_type, play_by_play.clock, play_by_play.shot_clock,
+       play_by_play.action_type, play_by_play.readable_action_type, play_by_play.success, play_by_play.score_1, play_by_play.score_2,
+       play_by_play.coordinates, play_by_play.team.team_code, play_by_play.player.full_name, play_by_play.player.jersey_number, play_by_play.timestamp]
+    response_hint: "{type, count, data:[{id, match_title, status, home_score, away_score, home_team:{name, team_code}, away_team:{…}, play_by_play:[{action_id, period, period_type, clock:'02:12', shot_clock, action_type:'2pt'|'3pt'|'freeThrow'|'rebound'|'foul'|'substitution'|'possession'|…, readable_action_type:'2-Point Shot - Driving Layup', success, score_1, score_2, coordinates:{x, y}, team:{team_code}, player:{full_name, jersey_number}, timestamp}]}]}  — score_1 is the HOME score and score_2 the away score. `success` is set on shots only. `player` is absent on team events (possession, period markers). Free throws are `freeThrow`, camel-cased. About 40% of events are possession and clock bookkeeping, not plays. score_1/score_2 are integers, but the header home_score/away_score are STRINGS."
+    examples:
+      - description: "Tasmania JackJumpers v NZ Breakers, NBL Blitz, 6 Sep 2026"
+        params: { matchId: "3d09795f-58a7-11f1-aed3-b7a799a5060e" }
 
   - name: nbl_match_outcomes
     group: nbl.basketball

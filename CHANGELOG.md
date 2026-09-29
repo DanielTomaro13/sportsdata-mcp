@@ -8,6 +8,21 @@ Full history is in `git log`; this file covers what a user would notice.
 
 ## Unreleased
 
+### Added
+- **`nbl_match_boxscore` and `nbl_match_playbyplay`** — one NBL game's box score and full
+  play-by-play, from the feed NBL.com's own game centre reads. Both take the match `id`
+  from `nbl_schedule`. The feed sends the whole game in ~1.3 MB, so each tool keeps only
+  its own part: the box score is ~22 KB, the play-by-play ~300 KB.
+
+### Fixed
+- **`nbl_schedule` returned only 100 matches, and they were the wrong 100.** The feed
+  pages at 100 rows and a season is ~200, not in date order. With no limit sent, the
+  tool returned the back half of the season, so every game played so far was missing
+  from a response that looked complete (measured 29 Sep 2026: 100 rows starting
+  14 Nov, against 209 in the season). It now requests the whole season and accepts
+  `offset`. Each match is also trimmed to the documented fields; a full season drops
+  from ~870 KB to ~150 KB, mostly broadcaster logos and artwork.
+
 ## 0.33.0 — 2026-09-28
 
 ### Added

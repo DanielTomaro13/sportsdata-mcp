@@ -12,7 +12,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~854 tools across 65 providers in Claude Desktop,
+Free & open source (MIT). ~856 tools across 65 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -52,10 +52,10 @@ Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.
 
-**Also good — you want sport data anywhere in the world.** The other **695
+**Also good — you want sport data anywhere in the world.** The other **697
 tools across 57 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
-plus Pinnacle and the Kalshi and Polymarket prediction markets. 489 of those
+plus Pinnacle and the Kalshi and Polymarket prediction markets. 491 of those
 need no key at all.
 
 **Not a fit — you want US sportsbook odds.** Those eight books are licensed for
@@ -367,13 +367,13 @@ The core `supercoach_players` feed is per-round and large (~1–3 MB); use `ppts
 
 | Group | Tools | Notes |
 |---|---:|---|
-| `nbl.basketball` | 14 | Seasons, teams, ladder, schedule (scores), players + rosters, per-player season stats + game-log box scores, team stats, season stat leaders (sortable), and news |
+| `nbl.basketball` | 16 | Seasons, teams, ladder, schedule (scores), one game's box score and play-by-play, players + rosters, per-player season stats + game-log box scores, team stats, season stat leaders (sortable), and news |
 
 The league's own site data API — a Redis-cached proxy (**"rosetta"**) over Genius
 Sports stats at `prod.rosetta.nbl.com.au/get/…`. **No token**, but **referer-gated**
 (403s without an `nbl.com.au` Origin + Referer — both baked into the spec). Every
 response is enveloped `{type, count, source, data:[…]}`. Season-scoped by `year`
-(the season start year: 2025 = NBL26, current); stat-leaders takes the season UUID
+(the season start year: 2026 = NBL27, current); stat-leaders takes the season UUID
 from `nbl_seasons`. Distinct from the SuperCoach `nbl` fantasy feed — this is the
 official box-score source. See [documentation/NBL.md](documentation/NBL.md).
 

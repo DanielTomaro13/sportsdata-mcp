@@ -123,6 +123,13 @@ PROJECTING = {
     # bet. See test_fanduel_sgp.py, which asserts the token cannot survive.
     "fanduel": "its SGP pricer runs on the betslip service; the projection strips the "
                "betReference placement token",
+    # Size again, in two places. NBL.com's game-centre feed returns one game as ~1.3MB, of
+    # which 1.1MB is play-by-play and half of every event is a repeated team object (logo
+    # URL, image placeholder), so nbl_match_boxscore and nbl_match_playbyplay each keep
+    # only their own part: ~22KB and ~300KB. And the schedule, once it stopped truncating
+    # at 100 rows, is ~870KB a season, mostly broadcaster logos; trimmed to the fields the
+    # tool documents it is ~150KB. Measured 2026-09-29.
+    "nbl": "one game's feed is 1.3MB (1.1MB play-by-play), a full season's schedule ~870KB",
 }
 
 

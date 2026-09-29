@@ -260,6 +260,8 @@ CONTRACTS: list[Contract] = [
     Contract("nbl_ladder", {"year": 2025, "seasonType": "regular"}, ("type", "count", "data"), "data", ("position", "won", "lost")),
     Contract("nbl_schedule", {"year": 2025, "seasonType": "all"}, ("type", "count", "data"), "data", ("id", "round", "home_team", "away_team")),
     Contract("nbl_players", {"year": 2025}, ("type", "count", "data"), "data", ("jersey_number", "player", "team")),
+    Contract("nbl_match_boxscore", {"matchId": "3d09795f-58a7-11f1-aed3-b7a799a5060e"}, ("type", "count", "data"), "data",
+             ("home_score", "away_score", "player_match_statistics", "team_match_statistics")),
     Contract("nbl_news", {"limit": 5}, list_at="", item_keys=("id", "title", "slug", "published_date")),
     # ── WTA (api.wtatennis.com — official, public, no auth; runs in CI) ──
     Contract(

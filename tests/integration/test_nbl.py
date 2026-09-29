@@ -18,7 +18,11 @@ from fastmcp.exceptions import ToolError as MCPToolError
 from sportsdata_mcp.config import Config
 from sportsdata_mcp.server import build_server
 
-YEAR = 2025  # NBL26 (the 2025-26 season) is current
+YEAR = 2025  # NBL26, a completed season: stable data for the season-scoped probes
+CURRENT = 2026  # NBL27, the season in progress (started 2026-09-19)
+# A finished game with a box score and play-by-play: Tasmania JackJumpers v NZ Breakers,
+# NBL Blitz, 6 Sep 2026.
+BLITZ_MATCH = "3d09795f-58a7-11f1-aed3-b7a799a5060e"
 NBL26_SEASON_ID = "1f8e4a79-e98b-457b-85a5-e4b898c6c0bd"
 
 
@@ -45,7 +49,7 @@ async def test_nbl_tools_registered(nbl_server):
     assert {
         "nbl_seasons", "nbl_teams", "nbl_ladder", "nbl_schedule",
         "nbl_players", "nbl_player_stats", "nbl_team_stats", "nbl_stat_leaders",
-        "nbl_news",
+        "nbl_news", "nbl_match_boxscore", "nbl_match_playbyplay",
     } <= names
 
 
@@ -125,3 +129,46 @@ async def test_seasons_discovery_live(nbl_server):
         pytest.xfail(f"nbl unavailable: {e}")
     assert res["count"] > 10
     assert {"id", "name", "year", "season_type"} <= set(res["data"][0])
+
+
+@pytest.mark.live
+async def test_schedule_returns_the_whole_season_live(nbl_server):
+    """The feed pages at 100 rows and a season is ~200, not in date order. Before the
+    explicit limit this returned 100 rows starting in mid-November, so every game played
+    so far was missing from a response that looked complete."""
+    try:
+        sch = _payload(await nbl_server.call_tool("nbl_schedule", {"year": CURRENT, "seasonType": "all"}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"nbl unavailable: {e}")
+    assert len(sch["data"]) > 100, f"only {len(sch['data'])} matches — the schedule is being truncated again"
+    earliest = min(m["start_time"] for m in sch["data"])
+    assert earliest < f"{CURRENT}-10-01", f"earliest match is {earliest}: the start of the season is missing"
+
+
+@pytest.mark.live
+async def test_match_boxscore_live(nbl_server):
+    try:
+        box = _payload(await nbl_server.call_tool("nbl_match_boxscore", {"matchId": BLITZ_MATCH}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"nbl unavailable: {e}")
+    m = box["data"][0]
+    assert m["player_match_statistics"] and "play_by_play" not in m
+    # Team rows are per quarter; the period-0 rows must reproduce the final score.
+    totals = {t["team"]["team_code"]: t["points"] for t in m["team_match_statistics"] if t["period"] == "0"}
+    # The header's scores are strings ('86') while every stat is a number.
+    assert sorted(totals.values()) == sorted([int(m["home_score"]), int(m["away_score"])]), totals
+
+
+@pytest.mark.live
+async def test_match_playbyplay_live(nbl_server):
+    try:
+        pbp = _payload(await nbl_server.call_tool("nbl_match_playbyplay", {"matchId": BLITZ_MATCH}))
+    except (MCPToolError, RuntimeError) as e:
+        pytest.xfail(f"nbl unavailable: {e}")
+    ev = pbp["data"][0]["play_by_play"]
+    assert len(ev) > 100
+    shots = [e for e in ev if e["action_type"] in ("2pt", "3pt")]
+    assert shots and all("success" in e for e in shots)
+    last = ev[-1]
+    head = pbp["data"][0]
+    assert (last["score_1"], last["score_2"]) == (int(head["home_score"]), int(head["away_score"]))
