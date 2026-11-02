@@ -12,7 +12,7 @@
 
 **Ask your AI which bookmaker is paying more — and get a real answer.**
 
-Free & open source (MIT). ~856 tools across 65 providers in Claude Desktop,
+Free & open source (MIT). ~862 tools across 66 providers in Claude Desktop,
 Cursor, or any MCP client. `uvx sportsdata-mcp serve` and you're done.
 
 > **You:** Which book has the best price on Parramatta v Penrith, and how big is the spread?
@@ -52,8 +52,8 @@ Australian books**: Sportsbet, TAB, PointsBet, BetR, Ladbrokes/Neds, Betfair,
 Dabble, Unibet. Nothing else exposes that, and racing — thoroughbred, greyhound
 and harness, with tote pools and exchange money — is covered to the same depth.
 
-**Also good — you want sport data anywhere in the world.** The other **697
-tools across 57 providers** are not region-locked: MLB, NBA, NFL, NHL, the
+**Also good — you want sport data anywhere in the world.** The other **703
+tools across 58 providers** are not region-locked: MLB, NBA, NFL, NHL, the
 Premier League, cricket, golf, tennis, F1, UFC, fantasy (ESPN, Sleeper, FPL),
 plus Pinnacle and the Kalshi and Polymarket prediction markets. 491 of those
 need no key at all.
@@ -823,7 +823,7 @@ are out of scope. Flow: `twitter_user_by_username("AFL")` → id →
 
 ## Bring your own key
 
-Seventeen providers need a key you sign up for yourself. They are **excluded from the `free`
+Eighteen providers need a key you sign up for yourself. They are **excluded from the `free`
 preset** and from the default group set, so nothing here changes unless you opt in — set
 the environment variable and add the group.
 
@@ -846,6 +846,7 @@ the environment variable and add the group.
 | `isportsapi` | `ISPORTS_API_KEY` | 5 | **Asian-handicap** odds across Asian books |
 | `entitysport` | `ENTITYSPORT_TOKEN` | 5 | Cricket **ball-by-ball commentary** (deeper than `cricketdata`) |
 | `golfcourseapi` | `GOLFCOURSE_API_KEY` | 2 | 30k+ golf courses with per-hole par, yardage and stroke index |
+| `firecrawl_alexandria` | `FIRECRAWL_API_KEY` | 6 | StartWho, Draft Sharks, CBS Sports and FFToday projections, NFL.com's official injury report and **Statcast** boards, via [Firecrawl Alexandria](https://www.firecrawl.dev/alexandria) |
 
 ```bash
 export THE_ODDS_API_KEY=...
@@ -854,9 +855,10 @@ sportsdata-mcp serve --groups "free,theoddsapi.*"
 
 ### Two things to know before you rely on these
 
-**Their response shapes are documented, not verified.** We hold no key for any of them,
+**Their response shapes are documented, not verified.** The exception is
+`firecrawl_alexandria`, whose shapes were probed live with a key. We hold no key for the others,
 so the shapes in each spec come from the vendor's own documentation rather than from a
-live probe. Every one of these tools carries an explicit note telling the model to
+live probe. Every one of the others carries an explicit note telling the model to
 inspect the payload it actually received rather than trusting the sketch. Elsewhere in
 this catalogue the shapes were probed and corrected — roughly one in three turned out to
 differ from what the docs implied — so treat this tier as the lower-confidence one until

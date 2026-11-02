@@ -175,6 +175,8 @@ CONTRACTS: list[Contract] = [
     Contract("datagolf_player_list", {}, list_at="", item_keys=("dg_id", "player_name")),
     Contract("datagolf_approach_skill", {}, ("last_updated", "time_period", "data"), "data", ("dg_id", "player_name")),
     Contract("datagolf_hist_results_event_list", {}, list_at="", item_keys=("event_id", "event_name", "calendar_year", "tour")),
+    # ── Firecrawl Alexandria (needs FIRECRAWL_API_KEY → skips in CI; discovery is free) ──
+    Contract("firecrawl_alexandria_search", {"query": "NFL injury report", "limit": 3}, ("success", "data")),
     # ── Kalshi (api.elections.kalshi.com — public market data) ──
     Contract("kalshi_markets", {"limit": 2}, ("cursor", "markets"), "markets", ("ticker", "event_ticker", "title", "status")),
     Contract("kalshi_series_list", {"category": "Sports"}, ("series",), "series", ("ticker", "title", "category")),

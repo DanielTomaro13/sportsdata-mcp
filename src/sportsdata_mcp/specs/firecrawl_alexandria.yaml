@@ -1,0 +1,172 @@
+spec_version: 1
+
+# Firecrawl Alexandria (api.firecrawl.dev): structured data tools for sports and fantasy
+# sites behind one Firecrawl API key. BYO key.
+#
+# SHAPES PROBED LIVE (shapes_verified: true). The response_hints below were read off live
+# calls made with a real key on 2026-10-27, not taken from vendor docs.
+#
+# THREE STEPS. firecrawl_alexandria_search ranks tools for a plain-English question;
+# firecrawl_alexandria_find_tools returns a tool's inputs and credit cost; both are free.
+# firecrawl_alexandria_run executes one tool and bills its listed credits (5 for each
+# sports tool probed on 2026-10-27, 0 for Polymarket). The three sports tools at the bottom are
+# firecrawl_alexandria_run with the provider and capability fixed, so they can carry
+# capability tags.
+#
+# RESULTS ARE WRAPPED. Run calls answer {success, data:{alexandria:[{provider, capability,
+# creditsCost, data}]}}; the payload is data.alexandria[0].data. An unknown capability is
+# a 404 that lists the provider's valid ones; an unknown provider is a 404 with no list.
+#
+# AUTH is "Authorization: Bearer <key>" from FIRECRAWL_API_KEY. A bad key is a 401. A 403
+# can mean no key was sent or the team lacks access; the error text says which.
+
+provider:
+  id: firecrawl_alexandria
+  display_name: "Firecrawl Alexandria (sports and fantasy data tools, BYO key)"
+  requires_user_key: true
+  doc_url: "https://github.com/DanielTomaro13/sportsdata-mcp/blob/main/documentation/FirecrawlAlexandria.md"
+  shapes_verified: true
+  base_urls:
+    default: https://api.firecrawl.dev
+  default_headers:
+    User-Agent: "sportsdata-mcp (+https://github.com/DanielTomaro13/sportsdata-mcp)"
+    Accept: "application/json"
+  auth:
+    default:
+      type: static_header
+      header: Authorization
+      value_prefix: "Bearer "
+      env: FIRECRAWL_API_KEY
+      optional: true
+  defaults:
+    rate_limit_rps: 2
+    burst: 2
+    request_timeout_seconds: 120
+    retry_statuses: [408, 429, 502, 503, 504]
+    max_retries: 2
+    retry_backoff_seconds: 2.0
+
+endpoints:
+  - name: firecrawl_alexandria_search
+    group: firecrawl_alexandria.discovery
+    summary: "Find Firecrawl Alexandria data tools for a question, e.g. 'NFL injury report' or 'fantasy football rankings'. Free. Returns provider + capability pairs to pass to firecrawl_alexandria_find_tools or firecrawl_alexandria_run. Pick by provider and capability, not by position in the list."
+    method: POST
+    path: /v2/search
+    read_only: true
+    # Untagged: discovery over the catalogue, not a sports question in itself.
+    capabilities: []
+    params:
+      - { name: query, in: body, type: string, required: true, description: "Plain-English description of the data you want." }
+      - { name: limit, in: body, type: integer, default: 10, description: "Tools to return." }
+      - { name: sources, in: body, type: json, default: ["alexandria"], enum: [["alexandria"]], description: "Leave as is: tools only, which is free." }
+      - { name: origin, in: body, type: string, default: "sportsdata-mcp", enum: ["sportsdata-mcp"], description: "Integration tag. Leave as is." }
+    response_hint: "{success, data:{tools:[{provider, capability, description}]}, creditsUsed (0), id, warning?}  (a short list with a warning is worth one retry)"
+    examples:
+      - description: "Tools that answer an injury question"
+        params: {query: "NFL injury report"}
+
+  - name: firecrawl_alexandria_find_tools
+    group: firecrawl_alexandria.discovery
+    # Untagged: catalogue browsing, not a sports question in itself.
+    capabilities: []
+    summary: "Browse the Firecrawl Alexandria catalogue (sports category by default): providers, their capabilities, each tool's input options and credit cost. Free. Use level=providers to list providers, level=tools with providers=[...] to list their tools, and expand=[\"options\",\"response\"] to read inputs and response fields."
+    method: POST
+    path: /v2/scrape
+    read_only: true
+    params:
+      - { name: tool_provider, api_name: alexandria.provider, in: body, type: string, default: "firecrawl", enum: ["firecrawl"], description: "Leave as is." }
+      - { name: tool_capability, api_name: alexandria.capability, in: body, type: string, default: "find-tools", enum: ["find-tools"], description: "Leave as is." }
+      - { name: level, api_name: alexandria.options.level, in: body, type: string, default: "tools", enum: ["providers", "tools"], description: "providers = one row per provider with toolCount; tools = one row per capability." }
+      - { name: categories, api_name: alexandria.options.categories, in: body, type: json, default: ["sports"], description: "Catalogue categories to browse. Default [\"sports\"]." }
+      - { name: providers, api_name: alexandria.options.providers, in: body, type: json, description: "Provider ids, e.g. [\"nfl-com\", \"startwho-com\"]." }
+      - { name: capabilities, api_name: alexandria.options.capabilities, in: body, type: json, description: "Narrow to these capabilities of the chosen providers." }
+      - { name: expand, api_name: alexandria.options.expand, in: body, type: json, description: "Extra detail per tool: any of [\"options\", \"response\", \"examples\"]." }
+      - { name: limit, api_name: alexandria.options.limit, in: body, type: integer, default: 50, description: "Rows per page." }
+      - { name: offset, api_name: alexandria.options.offset, in: body, type: integer, description: "Paging offset." }
+      - { name: origin, in: body, type: string, default: "sportsdata-mcp", enum: ["sportsdata-mcp"], description: "Integration tag. Leave as is." }
+    response_hint: "{success, data:{alexandria:[{provider:'firecrawl', capability:'find-tools', creditsCost:0, data:{level, total, items:[{provider, capability, name, description, creditsCost, options:[{name, type, about, required, oneOf, min, max}], response:{about, key, fields}, execute:{provider, capability}, next}], next}}]}}  (level=providers items: {provider, name, description, toolCount, next})"
+    examples:
+      - description: "Every sports provider"
+        params: {level: "providers"}
+      - description: "NFL.com tools with their inputs"
+        params: {providers: ["nfl-com"], expand: ["options"]}
+
+  - name: firecrawl_alexandria_run
+    group: firecrawl_alexandria.run
+    # Untagged: one tool over the whole catalogue, so no single question fits it.
+    capabilities: []
+    summary: "Run any Firecrawl Alexandria tool by provider and capability (from firecrawl_alexandria_search or firecrawl_alexandria_find_tools), with its options. Bills the tool's creditsCost, which find_tools shows before the call."
+    method: POST
+    path: /v2/scrape
+    read_only: true
+    params:
+      - { name: provider, api_name: alexandria.provider, in: body, type: string, required: true, description: "Provider id, e.g. espn-com, draftsharks-com, sleeper-com, baseballsavant-mlb-com." }
+      - { name: capability, api_name: alexandria.capability, in: body, type: string, required: true, description: "Capability path, e.g. fantasy-sports-rankings/weekly_rankings." }
+      - { name: options, api_name: alexandria.options, in: body, type: json, default: {}, description: "The tool's inputs, named as in the find_tools options list, e.g. {\"position\": \"QB\"}." }
+      - { name: origin, in: body, type: string, default: "sportsdata-mcp", enum: ["sportsdata-mcp"], description: "Integration tag. Leave as is." }
+    response_hint: "{success, scrape_id, data:{alexandria:[{provider, capability, creditsCost, data:{…tool payload…}, records, upstreamStatus}], creditsCost}}"
+    examples:
+      - description: "Draft Sharks weekly half-PPR QB rankings"
+        params: {provider: "draftsharks-com", capability: "fantasy-sports-rankings/weekly_rankings", options: {position: "QB", scoring: "HALF", limit: 10}}
+
+  - name: firecrawl_alexandria_fantasy_projections
+    group: firecrawl_alexandria.sports
+    capabilities: [stats.fantasy_projections]
+    summary: "This week's NFL fantasy projections for one position from StartWho, built from sportsbook player props, with every book's line behind each number. Bills the creditsCost find_tools lists."
+    method: POST
+    path: /v2/scrape
+    read_only: true
+    params:
+      - { name: tool_provider, api_name: alexandria.provider, in: body, type: string, default: "startwho-com", enum: ["startwho-com"], description: "Leave as is." }
+      - { name: tool_capability, api_name: alexandria.capability, in: body, type: string, default: "fantasy-sports-rankings/projections", enum: ["fantasy-sports-rankings/projections"], description: "Leave as is." }
+      - { name: position, api_name: alexandria.options.position, in: body, type: string, required: true, enum: ["QB", "RB", "WR", "TE", "K", "DST", "FLX", "ALL"], description: "DST = team defense, FLX = RB/WR/TE, ALL = every position." }
+      - { name: scoring, api_name: alexandria.options.scoring, in: body, type: string, default: "PPR", enum: ["STD", "HALF", "PPR"], description: "Scoring format." }
+      - { name: week, api_name: alexandria.options.week, in: body, type: integer, description: "NFL week (19-22 = playoffs). Omit for the current week; a week with no published projections fails." }
+      - { name: limit, api_name: alexandria.options.limit, in: body, type: integer, description: "Top N players. Omit for the whole list." }
+      - { name: origin, in: body, type: string, default: "sportsdata-mcp", enum: ["sportsdata-mcp"], description: "Integration tag. Leave as is." }
+    response_hint: "{success, data:{alexandria:[{provider, capability, creditsCost, data:{week, week_label, position, scoring, count, total_count, last_updated, observed_at_ms, source_url, players:[{name, player_id, position, team, opponent, game_kickoff_at, locked, projected_points, vegas_percent, bookmaker_points:[{sportsbook, projected_points, prop_count}], props:[{prop_type, line, odds, ev_value, projected_points, source, bookmakers:[{sportsbook, line, over_odds, under_odds}]}]}]}}]}}"
+    examples:
+      - description: "Top five PPR quarterbacks this week"
+        params: {position: "QB", scoring: "PPR", limit: 5}
+
+  - name: firecrawl_alexandria_nfl_injury_report
+    group: firecrawl_alexandria.sports
+    capabilities: [sport.injuries]
+    summary: "Official NFL.com injury and practice report for one week: per-day practice participation (FULL/LIMITED/DIDNOT) and game status (OUT/DOUBTFUL/QUESTIONABLE), league-wide or for one club. League-wide is ~350 rows, so pass team when you can. Bills the creditsCost find_tools lists."
+    method: POST
+    path: /v2/scrape
+    read_only: true
+    params:
+      - { name: tool_provider, api_name: alexandria.provider, in: body, type: string, default: "nfl-com", enum: ["nfl-com"], description: "Leave as is." }
+      - { name: tool_capability, api_name: alexandria.capability, in: body, type: string, default: "sports-league-data/injury_report", enum: ["sports-league-data/injury_report"], description: "Leave as is." }
+      - { name: team, api_name: alexandria.options.team, in: body, type: string, description: "NFL abbreviation (ATL, KC, LAR, WAS…) or club UUID." }
+      - { name: week, api_name: alexandria.options.week, in: body, type: integer, description: "Week number. Defaults to the current week; required when season is not the current one." }
+      - { name: season, api_name: alexandria.options.season, in: body, type: integer, description: "Season year. Defaults to the current season." }
+      - { name: season_type, api_name: alexandria.options.season_type, in: body, type: string, enum: ["PRE", "REG", "POST"], description: "Defaults to the current phase." }
+      - { name: origin, in: body, type: string, default: "sportsdata-mcp", enum: ["sportsdata-mcp"], description: "Integration tag. Leave as is." }
+    response_hint: "{success, data:{alexandria:[{provider, capability, creditsCost, data:{count, season, season_type, week, weeks_available, team, report_date, source_url, observed_at_ms, reports:[{player:{id, display_name, first_name, last_name, position, gsis_id}, team:{abbreviation, full_name, id}, injuries, injury_status, practice_status, practice_injuries, practice_days:[{date, status}], report_date, season, season_type, week}]}}]}}"
+    examples:
+      - description: "This week's Kansas City report"
+        params: {team: "KC"}
+
+  - name: firecrawl_alexandria_statcast_leaderboard
+    group: firecrawl_alexandria.sports
+    capabilities: [stats.advanced_metrics, stats.leaders_season]
+    summary: "One MLB Baseball Savant Statcast leaderboard for a season: expected stats (xBA/xSLG/xwOBA), exit velocity and barrels, sprint speed, outs above average or pitch arsenals. player_id is the MLBAM id the mlb provider uses. Bills the creditsCost find_tools lists."
+    method: POST
+    path: /v2/scrape
+    read_only: true
+    params:
+      - { name: tool_provider, api_name: alexandria.provider, in: body, type: string, default: "baseballsavant-mlb-com", enum: ["baseballsavant-mlb-com"], description: "Leave as is." }
+      - { name: tool_capability, api_name: alexandria.capability, in: body, type: string, default: "baseball-statcast/get_leaderboard", enum: ["baseball-statcast/get_leaderboard"], description: "Leave as is." }
+      - { name: board, api_name: alexandria.options.board, in: body, type: string, required: true, enum: ["expected_statistics", "statcast", "sprint_speed", "outs_above_average", "pitch_arsenals"], description: "Which leaderboard." }
+      - { name: season, api_name: alexandria.options.season, in: body, type: integer, required: true, description: "Season year (Statcast tracking starts in 2015)." }
+      - { name: player_type, api_name: alexandria.options.player_type, in: body, type: string, enum: ["batter", "pitcher"], description: "Default batter; applies to expected_statistics and statcast only." }
+      - { name: min, api_name: alexandria.options.min, in: body, type: string, description: "Qualification threshold: q (qualified) or a number." }
+      - { name: limit, api_name: alexandria.options.limit, in: body, type: integer, default: 50, description: "Rows per page (max 1000)." }
+      - { name: cursor, api_name: alexandria.options.cursor, in: body, type: string, description: "next_cursor from the previous page." }
+      - { name: origin, in: body, type: string, default: "sportsdata-mcp", enum: ["sportsdata-mcp"], description: "Integration tag. Leave as is." }
+    response_hint: "{success, data:{alexandria:[{provider, capability, creditsCost, data:{board, season, player_type, min, columns, count, total, next_cursor, source_url, rows:[{player_id, name, metrics:{…one key per column…}}]}}]}}"
+    examples:
+      - description: "Qualified batters' expected stats, 2026"
+        params: {board: "expected_statistics", season: 2026, limit: 10}
