@@ -846,7 +846,7 @@ the environment variable and add the group.
 | `isportsapi` | `ISPORTS_API_KEY` | 5 | **Asian-handicap** odds across Asian books |
 | `entitysport` | `ENTITYSPORT_TOKEN` | 5 | Cricket **ball-by-ball commentary** (deeper than `cricketdata`) |
 | `golfcourseapi` | `GOLFCOURSE_API_KEY` | 2 | 30k+ golf courses with per-hole par, yardage and stroke index |
-| `firecrawl_alexandria` | `FIRECRAWL_API_KEY` | 6 | StartWho, Draft Sharks, CBS Sports and FFToday projections, NFL.com's official injury report and **Statcast** boards, via [Firecrawl Alexandria](https://www.firecrawl.dev/alexandria) |
+| `firecrawl_alexandria` | `FIRECRAWL_API_KEY` | 6 | StartWho, Draft Sharks, CBS Sports and FFToday projections, NFL.com's official injury report and **Statcast** boards, via [Firecrawl Alexandria](https://alexandria.firecrawl.dev) |
 
 ```bash
 export THE_ODDS_API_KEY=...
